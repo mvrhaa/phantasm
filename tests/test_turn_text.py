@@ -179,7 +179,12 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
     (call,) = provider.calls
     system, user = call.messages
     assert call.model == "fake-1"
-    assert [tool.name for tool in call.tools] == ["read_file", "list_dir", "set_expression"]
+    assert [tool.name for tool in call.tools] == [
+        "read_file",
+        "list_dir",
+        "search_files",
+        "set_expression",
+    ]
     assert system.role == "system"
     system_text = system.content[0].text  # type: ignore[union-attr]
     assert system_text.startswith("# Who you are")

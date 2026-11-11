@@ -31,7 +31,7 @@ SNIFF_BYTES = 8192
 MAX_LIST_DEPTH = 5
 MAX_LIST_ENTRIES = 500
 
-_PATH_HELP = "Absolute path, or a path that starts with ~"
+PATH_HELP = "Absolute path, or a path that starts with ~"
 
 _IMAGE_SIGNATURES = [
     (b"\x89PNG\r\n\x1a\n", "image/png"),
@@ -71,7 +71,7 @@ def _image_mime(head: bytes) -> str | None:
 
 
 class ReadFileInput(BaseModel):
-    path: str = Field(description=_PATH_HELP)
+    path: str = Field(description=PATH_HELP)
     offset: int = Field(default=1, ge=1, description="Line to start from, counting from 1")
     limit: int = Field(default=DEFAULT_READ_LINES, ge=1, description="Most lines to return")
 
@@ -173,7 +173,7 @@ class ReadFile(Tool[ReadFileInput]):
 
 
 class ListDirInput(BaseModel):
-    path: str = Field(description=_PATH_HELP)
+    path: str = Field(description=PATH_HELP)
     depth: int = Field(
         default=1, ge=1, le=MAX_LIST_DEPTH, description="Levels to show; 1 is this folder only"
     )
