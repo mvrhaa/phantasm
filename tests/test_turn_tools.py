@@ -312,6 +312,15 @@ async def test_provider_failure_after_a_tool_step_keeps_calls_paired(harness: Ha
     assert stored[-1].content == []
 
 
+async def test_empty_final_answer_is_not_stored(harness: Harness) -> None:
+    provider = FakeProvider([[TextDelta(text="Adding."), call(a=1, b=1)], []])
+
+    await harness.run(provider, calculator())
+
+    assert (harness.finished.status, harness.finished.text) == ("ok", "Adding.")
+    assert roles(await harness.stored()) == "user assistant tool"
+
+
 # --- Over the WebSocket ------------------------------------------------------
 
 

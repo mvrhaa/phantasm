@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from zero.config import Config
 from zero.core.events import EventBus
-from zero.core.turn import TurnManager
+from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.server.connections import ConnectionManager
 from zero.store.db import Database

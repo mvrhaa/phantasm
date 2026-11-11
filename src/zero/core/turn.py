@@ -13,10 +13,12 @@ from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
+from zero.core.expression import EXPRESSION_SET, EXPRESSION_TOOL, ExpressionTool
 from zero.core.stub_tools import StubToolRegistry, StubToolResult, error_result
 from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
+    Expression,
     TextPart,
     ToolFinished,
     ToolStarted,
@@ -60,6 +62,14 @@ def _text_content(text: str) -> list[ContentPart]:
     return [TextPart(text=text)] if text else []
 
 
+def _only_expression(calls: list[ToolCall], results: list[StubToolResult]) -> bool:
+    """True if every call of a step set the expression, and every one worked."""
+    return all(
+        call.name == EXPRESSION_TOOL and not result.is_error
+        for call, result in zip(calls, results, strict=True)
+    )
+
+
 class Turn:
     """One user message and everything the model does in response to it.
 
@@ -100,6 +110,8 @@ class Turn:
         self._tools = tools if tools is not None else StubToolRegistry()
         self._reply = reply
         self._retry_delays = tuple(retry_delays)
+        character = client.character if client is not None else None
+        self._expression = ExpressionTool(character) if character is not None else None
 
     async def run(self) -> None:
         """Run the turn to the end. Never raises: failures end the turn with an error."""
@@ -132,14 +144,17 @@ class Turn:
             logger.exception("Turn %s failed", self.id)
             status, error = "error", "internal error"
 
-        await self._messages.append(
-            self.session_id,
-            "assistant",
-            _text_content(progress.step_text),
-            turn_id=self.id,
-            status="ok" if status == "max_steps" else status,
-            source=self._source,
-        )
+        # Providers reject empty assistant messages, so an empty answer is kept
+        # only as a mark that the turn broke off.
+        if progress.step_text or status in ("error", "cancelled"):
+            await self._messages.append(
+                self.session_id,
+                "assistant",
+                _text_content(progress.step_text),
+                turn_id=self.id,
+                status="ok" if status == "max_steps" else status,
+                source=self._source,
+            )
         await self._sessions.touch(self.session_id)
         self.done = True
         await self._events.publish(
@@ -148,6 +163,7 @@ class Turn:
                 turn_id=self.id,
                 status=status,
                 text=progress.text,
+                expression=self._expression.final if self._expression is not None else None,
                 usage=progress.usage,
                 error=error,
             )
@@ -156,19 +172,27 @@ class Turn:
     async def _steps(self, progress: _Progress) -> bool:
         """Call the model step by step until it answers without asking for tools.
 
+        A step that has already written its answer and only sets the expression
+        also ends the turn: calling the model again would just cost time.
+
         A turn makes at most ``max_steps`` model calls. If the model still
         wants tools when only one call is left, that call goes without tools so
         the model has to sum up. Returns True when the limit was reached.
         """
         prompt = await self._build_prompt()
         specs = self._tools.specs()
+        if self._expression is not None:
+            specs.append(self._expression.spec)
         max_steps = max(self._config.agent.max_steps, 1)
 
         for _ in range(max_steps - 1):
             calls = await self._call_model(prompt, specs, progress)
             if not calls:
                 return False
-            await self._run_tools(prompt, calls, progress)
+            answered = bool(progress.step_text)
+            results = await self._run_tools(prompt, calls, progress)
+            if answered and _only_expression(calls, results):
+                return False
 
         ignored = await self._call_model(prompt, [], progress)
         if ignored:
@@ -226,8 +250,8 @@ class Turn:
 
     async def _run_tools(
         self, prompt: list[Message], calls: list[ToolCall], progress: _Progress
-    ) -> None:
-        """Run the calls one by one, then add them with their results to the conversation.
+    ) -> list[StubToolResult]:
+        """Run the calls one by one, add them with their results to the conversation.
 
         The assistant message and its tool results are saved only after every
         call is done, so the history never holds a call without its result.
@@ -276,9 +300,15 @@ class Turn:
                 )
             )
         self.cancel.raise_if_cancelled()
+        return results
 
     async def _run_tool(self, call: ToolCall) -> StubToolResult:
-        """Run one call, telling clients when it starts and how it ends."""
+        """Run one call, telling clients when it starts and how it ends.
+
+        ``set_expression`` is handled by the turn itself and is marked hidden,
+        so clients do not show it as a separate tool line.
+        """
+        expression = self._expression if call.name == EXPRESSION_TOOL else None
         await self._events.publish(
             ToolStarted(
                 session_id=self.session_id,
@@ -286,9 +316,13 @@ class Turn:
                 call_id=call.id,
                 tool=call.name,
                 input=call.input,
+                hidden=expression is not None,
             )
         )
-        result = await self._tools.execute(call)
+        if expression is not None:
+            result = await self._set_expression(expression, call)
+        else:
+            result = await self._tools.execute(call)
         await self._events.publish(
             ToolFinished(
                 session_id=self.session_id,
@@ -298,6 +332,19 @@ class Turn:
             )
         )
         return result
+
+    async def _set_expression(self, expression: ExpressionTool, call: ToolCall) -> StubToolResult:
+        """Change the character's expression and tell the clients at once."""
+        try:
+            state = expression.apply(call.input)
+        except ValueError as exc:
+            return error_result(str(exc))
+        await self._events.publish(
+            Expression(
+                session_id=self.session_id, turn_id=self.id, pose=state.pose, mood=state.mood
+            )
+        )
+        return StubToolResult(content=[TextPart(text=EXPRESSION_SET)])
 
     async def _pause(self, seconds: float) -> None:
         """Sleep, but stop with ``TurnCancelled`` as soon as the turn is cancelled."""
@@ -311,52 +358,3 @@ class Turn:
         stored = await self._messages.list(self.session_id, limit=HISTORY_FETCH_LIMIT)
         history = build_history(stored, self._config.agent.history_token_budget)
         return [Message(role="system", content=[TextPart(text=system)]), *history]
-
-
-class TurnManager:
-    """Runs turns as background tasks and keeps track of the ones in progress."""
-
-    def __init__(self) -> None:
-        self._tasks: dict[str, asyncio.Task[None]] = {}
-        self._turns: dict[str, Turn] = {}
-
-    @property
-    def active(self) -> list[Turn]:
-        """Turns that are still running."""
-        return list(self._turns.values())
-
-    def get(self, turn_id: str) -> Turn | None:
-        """The running turn with this id, or None."""
-        return self._turns.get(turn_id)
-
-    def busy(self, session_id: str) -> bool:
-        """True while a turn of this session is unfinished.
-
-        A turn counts as finished once it has saved everything, just before it
-        announces ``turn.finished``, so a client may send the next message as
-        soon as it sees that event.
-        """
-        return any(t.session_id == session_id and not t.done for t in self._turns.values())
-
-    def start(self, turn: Turn) -> None:
-        """Start a turn in the background and forget it once it is done."""
-        task = asyncio.create_task(turn.run(), name=f"turn-{turn.id}")
-        self._tasks[turn.id] = task
-        self._turns[turn.id] = turn
-        task.add_done_callback(lambda _: self._forget(turn.id))
-
-    def _forget(self, turn_id: str) -> None:
-        self._tasks.pop(turn_id, None)
-        self._turns.pop(turn_id, None)
-
-    async def wait_idle(self) -> None:
-        """Wait until every running turn has finished."""
-        while self._tasks:
-            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
-
-    async def shutdown(self) -> None:
-        """Stop all running turns; used when the application shuts down."""
-        tasks = list(self._tasks.values())
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)

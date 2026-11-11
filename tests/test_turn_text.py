@@ -74,10 +74,15 @@ def test_echo_turn_emits_events_in_order() -> None:
         events = until_finished(ws)
 
     types = [event["type"] for event in events]
-    assert types[:2] == ["session.created", "turn.started"]
-    assert types[-1] == "turn.finished"
-    assert set(types[2:-1]) == {"text.delta"}
-    assert len(types[2:-1]) == 4
+    assert types == [
+        "session.created",
+        "turn.started",
+        *["text.delta"] * 4,
+        "tool.started",
+        "expression",
+        "tool.finished",
+        "turn.finished",
+    ]
 
     started, finished = events[1], events[-1]
     session_id = events[0]["session"]["id"]
@@ -85,9 +90,12 @@ def test_echo_turn_emits_events_in_order() -> None:
     assert (started["session_id"], started["source"]) == (session_id, "desktop")
     assert all(e["turn_id"] == started["turn_id"] for e in events[1:])
     assert all(e["session_id"] == session_id for e in events[1:])
-    assert "".join(e["delta"] for e in events[2:-1]) == "echo: hello big world"
+    assert "".join(e["delta"] for e in events[2:6]) == "echo: hello big world"
+    assert (events[6]["tool"], events[6]["hidden"]) == ("set_expression", True)
+    assert (events[7]["pose"], events[7]["mood"]) == ("idle", "neutral")
     assert finished["status"] == "ok"
     assert finished["text"] == "echo: hello big world"
+    assert finished["expression"] == {"pose": "idle", "mood": "neutral"}
     assert finished["usage"] == {"input_tokens": 3, "output_tokens": 4}
     assert "error" not in finished
 
@@ -104,6 +112,7 @@ def test_answer_is_stored_in_history() -> None:
     assert [(m["role"], m["content"][0]["text"]) for m in stored] == [
         ("user", "hi"),
         ("assistant", "echo: hi"),
+        ("tool", "Expression set."),
     ]
     assert all(m["turn_id"] == turn_id for m in stored)
     assert all((m["status"], m["source"]) == ("ok", "desktop") for m in stored)
@@ -162,7 +171,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
     (call,) = provider.calls
     system, user = call.messages
     assert call.model == "fake-1"
-    assert call.tools == []
+    assert [tool.name for tool in call.tools] == ["set_expression"]
     assert system.role == "system"
     system_text = system.content[0].text  # type: ignore[union-attr]
     assert system_text.startswith("# Who you are")

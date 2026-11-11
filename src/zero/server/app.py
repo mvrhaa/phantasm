@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from zero import APP_NAME, __version__
 from zero.config import Config
 from zero.core.events import EventBus
-from zero.core.turn import TurnManager
+from zero.core.turn_manager import TurnManager
 from zero.paths import db_path
 from zero.providers.base import LLMProvider
 from zero.providers.registry import ProviderNotConfigured, get_provider

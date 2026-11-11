@@ -9,7 +9,14 @@ from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.stub_tools import StubToolRegistry
 from zero.core.turn import Turn
-from zero.protocol.messages import Envelope, TextPart, ToolFinished, ToolStarted, TurnFinished
+from zero.protocol.messages import (
+    ClientInfo,
+    Envelope,
+    TextPart,
+    ToolFinished,
+    ToolStarted,
+    TurnFinished,
+)
 from zero.providers.base import LLMProvider, Message
 from zero.store.messages import MessagesRepo, StoredMessage
 from zero.store.sessions import SessionsRepo
@@ -52,6 +59,7 @@ class Harness:
         *,
         max_steps: int | None = None,
         text: str = "hi",
+        client: ClientInfo | None = None,
         retry_delays: Sequence[float] = NO_DELAYS,
     ) -> Turn:
         """Build a turn in this session; retries do not wait unless asked to."""
@@ -62,7 +70,7 @@ class Harness:
             session_id=self.session_id,
             text=text,
             source="desktop",
-            client=None,
+            client=client,
             config=config,
             provider=provider,
             sessions=self.sessions,
@@ -79,9 +87,10 @@ class Harness:
         *,
         max_steps: int | None = None,
         text: str = "hi",
+        client: ClientInfo | None = None,
     ) -> Turn:
         """Build a turn and run it to the end."""
-        turn = self.turn(provider, tools, max_steps=max_steps, text=text)
+        turn = self.turn(provider, tools, max_steps=max_steps, text=text, client=client)
         await turn.run()
         return turn
 

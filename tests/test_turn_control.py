@@ -11,7 +11,8 @@ from starlette.testclient import WebSocketTestSession
 from tests.turns import Harness, RecordingClient, roles, text_of, until
 from zero.config import Config
 from zero.core.stub_tools import StubToolRegistry
-from zero.core.turn import NOT_RUN, RETRY_DELAYS_S, Turn, TurnManager
+from zero.core.turn import NOT_RUN, RETRY_DELAYS_S, Turn
+from zero.core.turn_manager import TurnManager
 from zero.protocol.messages import Envelope, TurnFinished
 from zero.providers.base import ProviderError, StreamEvent, TextDelta, ToolCall, ToolCallEvent
 from zero.providers.fake import FakeProvider
