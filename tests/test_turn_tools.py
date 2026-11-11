@@ -28,6 +28,7 @@ class Add(Tool[AddInput]):
     name = "add"
     description = "Add two numbers"
     input_model = AddInput
+    default_policy = "allow"
 
     def __init__(self, log: list[dict[str, Any]] | None = None) -> None:
         self.log = log

@@ -33,7 +33,9 @@ class NoInput(BaseModel):
 
 
 class FuncTool(Tool[Any]):
-    """A tool made from an async function that returns text; handy in tests."""
+    """A tool made from an async function that returns text; handy in tests. Runs unasked."""
+
+    default_policy = "allow"
 
     def __init__(
         self,

@@ -11,7 +11,7 @@ from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.protocol.messages import ContentPart, TextPart
 from zero.providers.base import ToolCall, ToolSpec
-from zero.tools.permissions import PathGuard
+from zero.tools.permissions import PathGuard, decide
 
 MAX_OUTPUT_CHARS = 30_000
 CANCELLED = "Cancelled: the user stopped the turn."
@@ -137,10 +137,12 @@ class ToolRegistry:
         return [tool.spec() for tool in self._tools.values()]
 
     async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolResult:
-        """Validate the input, run the tool and cut its text output to size.
+        """Validate the input, check the call is permitted, run it and cut the output to size.
 
-        Nothing escapes: an unknown tool, invalid input or a failing tool gives
-        an error result that the model can read and react to.
+        Whether the call may run is decided by ``decide`` from the tool's
+        policy, the config and the tool's own ``approval_reason``. Nothing
+        escapes: an unknown tool, invalid input, a call that is not permitted or
+        a failing tool gives an error result that the model can read and react to.
         """
         tool = self._tools.get(call.name)
         if tool is None:
@@ -154,9 +156,18 @@ class ToolRegistry:
             )
         try:
             reason = await tool.approval_reason(params, ctx)
-            if reason is not None:
+            policy = decide(
+                tool.name,
+                tool.default_policy,
+                ctx.config.permissions,
+                needs_approval=reason is not None,
+            )
+            if policy == "deny":
+                return error_result(f"{tool.name} is turned off in the settings.")
+            if policy == "ask":
                 # Approvals do not exist yet, so a call that needs one is refused.
-                return error_result(f"{reason}, {NEEDS_APPROVAL}")
+                why = reason or f"{tool.name} is set to ask the user first"
+                return error_result(f"{why}, {NEEDS_APPROVAL}")
             result = await tool.run(params, ctx)
         except TurnCancelled:
             return error_result(CANCELLED)

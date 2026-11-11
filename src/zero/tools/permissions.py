@@ -1,11 +1,11 @@
-"""The sandbox: which paths tools may touch."""
+"""Permissions of tools: whether a call may run, and which paths tools may touch."""
 
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Self
 
-from zero.config import PermissionsConfig
+from zero.config import PermissionsConfig, Policy
 
 _RELATIVE_HINT = "use an absolute path or one that starts with ~"
 
@@ -90,3 +90,35 @@ class PathGuard:
             roots = ", ".join(_shown(root) for root in self.allowed_roots) or "none"
             raise PathDenied(f"{_shown(resolved)} is outside the folders tools may use ({roots}).")
         return resolved
+
+
+def decide(
+    tool_name: str,
+    default_policy: Policy,
+    permissions: PermissionsConfig,
+    saved_rules: Collection[str] = (),
+    *,
+    needs_approval: bool = False,
+) -> Policy:
+    """Whether a call may run (allow), must wait for the user (ask) or may not run (deny).
+
+    The tool's own policy is the one in ``permissions.tool_policies`` or, if
+    the config does not name the tool, ``default_policy``. Rules apply in order:
+
+    1. a tool whose policy is ``deny`` is denied, whatever else is said;
+    2. a call the tool itself wants approved (``needs_approval``) is asked;
+    3. a tool in ``saved_rules`` (the user chose "always allow") is allowed;
+    4. ``bypass_approvals`` allows the call;
+    5. otherwise the tool's policy decides.
+
+    So neither a saved rule nor bypass ever lifts a deny or skips an approval
+    the tool demands for a risky call, such as reading a file with secrets.
+    """
+    policy = permissions.tool_policies.get(tool_name, default_policy)
+    if policy == "deny":
+        return "deny"
+    if needs_approval:
+        return "ask"
+    if tool_name in saved_rules or permissions.bypass_approvals:
+        return "allow"
+    return policy
