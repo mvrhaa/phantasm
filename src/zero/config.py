@@ -148,8 +148,16 @@ def load_config(path: Path | None = None) -> Config:
 
 
 def save_config(config: Config, path: Path | None = None) -> None:
-    """Write the config as indented JSON, replacing the file atomically."""
+    """Write the config as indented JSON, replacing the file atomically.
+
+    The config is validated again first, so a value changed in place (for
+    example inside ``tool_policies``) cannot produce a file that fails to load.
+    """
     path = path or config_path()
+    try:
+        Config.model_validate(config.model_dump())
+    except ValidationError as exc:
+        raise ConfigError(f"Refusing to save an invalid config: {_describe_errors(exc)}") from None
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
     tmp_path.write_text(config.model_dump_json(indent=2) + "\n", encoding="utf-8")

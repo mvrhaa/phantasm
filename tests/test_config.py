@@ -236,3 +236,15 @@ def test_config_error_does_not_echo_invalid_values() -> None:
         load_config()
 
     assert "hunter2" not in str(excinfo.value)
+
+
+def test_save_refuses_a_config_made_invalid_in_place() -> None:
+    config = load_config()
+    before = config_path().read_text(encoding="utf-8")
+    config.permissions.tool_policies["run_command"] = "sometimes"  # type: ignore[assignment]
+
+    with pytest.raises(ConfigError, match="permissions.tool_policies.run_command"):
+        save_config(config)
+
+    assert config_path().read_text(encoding="utf-8") == before
+    assert load_config().permissions.tool_policies["run_command"] == "ask"

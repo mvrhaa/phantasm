@@ -19,10 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 def _read_token(path: Path) -> str | None:
-    """Return the stored token, or None if the file is missing or blank."""
+    """Return the stored token, or None if the file is missing, blank or not text."""
     try:
         token = path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
+        return None
+    except UnicodeDecodeError:
+        logger.warning("Token file %s is corrupted, generating a new token", path)
         return None
     return token or None
 

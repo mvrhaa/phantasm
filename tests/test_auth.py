@@ -132,3 +132,15 @@ def test_verify_rejects_everything_else(candidate: str | None) -> None:
 def test_verify_never_accepts_an_empty_expected_token() -> None:
     assert verify("", "") is False
     assert verify("anything", "") is False
+
+
+def test_corrupted_token_file_is_regenerated(caplog: pytest.LogCaptureFixture) -> None:
+    token_path().write_bytes(b"\xff\xfe\x00garbage")
+
+    with caplog.at_level(logging.WARNING, logger="zero.server.auth"):
+        token = get_or_create_token()
+
+    assert len(token) == 43
+    assert token_path().read_text(encoding="utf-8") == token
+    assert file_mode(token_path()) == 0o600
+    assert "corrupted" in caplog.text
