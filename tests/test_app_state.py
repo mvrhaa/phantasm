@@ -22,7 +22,7 @@ def test_startup_opens_a_migrated_database_in_zero_home() -> None:
 
         assert db_path().is_file()
         assert state.db.path == db_path()
-        assert client.portal.call(state.db.version) == 2
+        assert client.portal.call(state.db.version) == 3
         assert client.get("/health").status_code == 200
 
 

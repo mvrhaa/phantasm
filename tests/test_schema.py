@@ -1,8 +1,9 @@
 """Tests for the real migrations shipped with the package."""
 
+import shutil
 import sqlite3
 from collections.abc import AsyncIterator
-from contextlib import closing
+from pathlib import Path
 
 import pytest
 
@@ -44,8 +45,8 @@ def test_initial_migration_ships_with_the_package() -> None:
 
 async def test_fresh_database_is_migrated_to_the_latest_version() -> None:
     async with Database(db_path()) as database:
-        assert await database.migrate() == [1, 2]
-        assert await database.version() == 2
+        assert await database.migrate() == [1, 2, 3]
+        assert await database.version() == 3
         assert await database.migrate() == []
 
 
@@ -56,6 +57,12 @@ async def test_tables_exist_after_migration(db: Database) -> None:
         "messages",
         "tool_runs",
         "approval_rules",
+        "memories",
+        "memories_fts",
+        "memories_fts_config",
+        "memories_fts_data",
+        "memories_fts_docsize",
+        "memories_fts_idx",
     }
 
 
@@ -78,24 +85,21 @@ async def test_a_call_id_may_repeat_in_tool_runs(db: Database) -> None:
     assert await count(db, "tool_runs") == 2
 
 
-async def test_migration_2_keeps_existing_tool_runs() -> None:
-    async with Database(db_path()) as database:
-        await database.migrate()
-    # Roll the schema back to version 1 by hand and add a run in the old shape.
-    with closing(sqlite3.connect(db_path())) as raw:
-        raw.executescript(
-            "DROP TABLE tool_runs;"
-            "CREATE TABLE tool_runs (call_id TEXT PRIMARY KEY, session_id TEXT NOT NULL,"
-            " turn_id TEXT NOT NULL, tool TEXT NOT NULL, label TEXT, input_json TEXT,"
-            " status TEXT, summary TEXT, output_preview TEXT, duration_ms INTEGER,"
-            " created_at TEXT NOT NULL);"
-            "INSERT INTO tool_runs (call_id, session_id, turn_id, tool, label, created_at)"
-            f" VALUES ('old', 's1', 't1', 'read_file', '~/a.md', '{NOW}');"
-            "DELETE FROM schema_version WHERE version = 2;"
+async def test_migration_2_keeps_existing_tool_runs(tmp_path: Path) -> None:
+    only_first = tmp_path / "migrations"
+    only_first.mkdir()
+    shutil.copy(MIGRATIONS_DIR / "0001_init.sql", only_first)
+    async with Database(db_path(), migrations_dir=only_first) as database:
+        assert await database.migrate() == [1]
+        await database.conn.execute(
+            "INSERT INTO tool_runs (call_id, session_id, turn_id, tool, label, created_at) "
+            "VALUES ('old', 's1', 't1', 'read_file', '~/a.md', ?)",
+            (NOW,),
         )
+        await database.conn.commit()
 
     async with Database(db_path()) as database:
-        assert await database.migrate() == [2]
+        assert (await database.migrate())[0] == 2
         async with database.conn.execute("SELECT id, call_id, label FROM tool_runs") as cursor:
             ((run_id, call_id, label),) = await cursor.fetchall()
 
@@ -141,6 +145,7 @@ async def test_migration_2_keeps_existing_tool_runs() -> None:
             },
         ),
         ("approval_rules", {"tool", "decision", "created_at"}),
+        ("memories", {"id", "text", "tags", "created_at", "updated_at", "uses"}),
     ],
 )
 async def test_table_columns_match_the_spec(table: str, expected: set[str], db: Database) -> None:
