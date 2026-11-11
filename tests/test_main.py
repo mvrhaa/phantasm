@@ -8,7 +8,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from zero.__main__ import main
+from zero import __main__ as entry
+from zero.__main__ import PortState, main
 from zero.logging_setup import log_file_path
 from zero.paths import config_path, token_path
 
@@ -23,6 +24,12 @@ class FakeUvicorn:
 
     def __call__(self, app: FastAPI, **kwargs: Any) -> None:
         self.calls.append((app, kwargs))
+
+
+@pytest.fixture(autouse=True)
+def port_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip the real single-instance probe so these tests never touch the network."""
+    monkeypatch.setattr(entry, "probe_port", lambda host, port: PortState.FREE)
 
 
 @pytest.fixture

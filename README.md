@@ -18,7 +18,8 @@
 
 ```bash
 uv sync                                               # окружение и зависимости
-uv run python -c "import zero; print(zero.APP_NAME)"  # проверка, что пакет импортируется
+uv run python -m zero                                 # запуск сервиса на 127.0.0.1:47400
+curl 127.0.0.1:47400/health                           # проверка, что сервис отвечает
 uv run pytest -q                                      # тесты
 uv run ruff check . && uv run ruff format --check .   # линт и формат
 ```
