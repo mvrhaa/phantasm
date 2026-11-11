@@ -4,7 +4,8 @@ The brain speaks only this format. Every provider adapter translates it to
 its own API and back.
 """
 
-from typing import Annotated, Any, Literal, Self
+from collections.abc import AsyncIterator
+from typing import Annotated, Any, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -83,3 +84,55 @@ StreamEvent = Annotated[
     TextDelta | ToolCallEvent | UsageEvent | StopEvent, Field(discriminator="type")
 ]
 """Anything a provider yields while streaming an answer."""
+
+
+# --- Provider interface --------------------------------------------------------
+
+
+class ProviderError(Exception):
+    """A provider request failed. ``retryable`` tells whether trying again may help."""
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.message = message
+        self.retryable = retryable
+
+
+class CancelSignal(Protocol):
+    """What a provider needs to notice that the turn was cancelled."""
+
+    @property
+    def cancelled(self) -> bool: ...
+
+    def raise_if_cancelled(self) -> None: ...
+
+
+@runtime_checkable
+class LLMProvider(Protocol):
+    """The interface every provider adapter implements."""
+
+    name: str
+
+    def stream(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        model: str,
+        *,
+        max_tokens: int = 4096,
+        cancel: CancelSignal,
+    ) -> AsyncIterator[StreamEvent]:
+        """Yield the model's answer piece by piece.
+
+        Implemented as an async generator. Failures are raised as
+        ``ProviderError``; the stream stops early once ``cancel`` is set.
+        """
+        ...
+
+    async def count_tokens(self, messages: list[Message], tools: list[ToolSpec]) -> int | None:
+        """Return the prompt size in tokens, or None if the provider cannot tell."""
+        ...
+
+    def supports_images(self, model: str) -> bool:
+        """Tell whether the model accepts image content parts."""
+        ...

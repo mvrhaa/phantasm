@@ -1,5 +1,6 @@
 """Tests for the provider-independent types."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -7,7 +8,10 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from zero.protocol.messages import ImagePart, TextPart
 from zero.providers.base import (
+    CancelSignal,
+    LLMProvider,
     Message,
+    ProviderError,
     StopEvent,
     StreamEvent,
     TextDelta,
@@ -140,3 +144,67 @@ def test_invalid_stream_event_is_rejected(data: dict[str, Any]) -> None:
 
 def test_usage_defaults_to_zero() -> None:
     assert (UsageEvent().input_tokens, UsageEvent().output_tokens) == (0, 0)
+
+
+class NeverCancelled:
+    cancelled = False
+
+    def raise_if_cancelled(self) -> None:
+        return None
+
+
+class TinyProvider:
+    """The smallest class that satisfies LLMProvider."""
+
+    name = "tiny"
+
+    async def stream(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        model: str,
+        *,
+        max_tokens: int = 4096,
+        cancel: CancelSignal,
+    ) -> AsyncIterator[StreamEvent]:
+        yield TextDelta(text=f"{len(messages)} messages for {model}")
+        yield StopEvent(reason="end")
+
+    async def count_tokens(self, messages: list[Message], tools: list[ToolSpec]) -> int | None:
+        return None
+
+    def supports_images(self, model: str) -> bool:
+        return False
+
+
+async def test_a_conforming_class_can_be_used_as_a_provider() -> None:
+    provider: LLMProvider = TinyProvider()
+    messages = [Message(role="user", content=[TextPart(text="hi")])]
+
+    events = [e async for e in provider.stream(messages, [], "m-1", cancel=NeverCancelled())]
+
+    assert isinstance(provider, LLMProvider)
+    assert events == [TextDelta(text="1 messages for m-1"), StopEvent(reason="end")]
+    assert await provider.count_tokens(messages, []) is None
+    assert provider.supports_images("m-1") is False
+
+
+def test_an_unrelated_class_is_not_a_provider() -> None:
+    class NotAProvider:
+        name = "nope"
+
+    assert not isinstance(NotAProvider(), LLMProvider)
+
+
+def test_provider_error_is_not_retryable_by_default() -> None:
+    error = ProviderError("bad request")
+
+    assert isinstance(error, Exception)
+    assert (error.message, error.retryable, str(error)) == ("bad request", False, "bad request")
+
+
+def test_provider_error_can_be_retryable() -> None:
+    with pytest.raises(ProviderError) as excinfo:
+        raise ProviderError("server overloaded", retryable=True)
+
+    assert excinfo.value.retryable is True
