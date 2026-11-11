@@ -15,6 +15,7 @@ from zero.tools.permissions import PathGuard
 
 MAX_OUTPUT_CHARS = 30_000
 CANCELLED = "Cancelled: the user stopped the turn."
+NEEDS_APPROVAL = "so this call needs the user's approval, which cannot be asked for yet."
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,15 @@ class Tool[InputT: BaseModel](ABC):
     def label(self, params: InputT) -> str:
         """A short line for the UI, such as ``$ ls -la`` or ``~/notes.md``."""
         return self.name
+
+    async def approval_reason(self, params: InputT, ctx: ToolContext) -> str | None:
+        """Why this particular call needs the user's approval whatever the rules say.
+
+        None for an ordinary call. A tool returns a reason for calls riskier
+        than it usually is, such as reading a file that may hold secrets; even
+        ``bypass_approvals`` does not skip such a call.
+        """
+        return None
 
     def spec(self) -> ToolSpec:
         """The tool as the model sees it; the schema comes from ``input_model``."""
@@ -143,6 +153,10 @@ class ToolRegistry:
                 f"Invalid input for {call.name!r}: {_describe(exc)}. Fix it and call again."
             )
         try:
+            reason = await tool.approval_reason(params, ctx)
+            if reason is not None:
+                # Approvals do not exist yet, so a call that needs one is refused.
+                return error_result(f"{reason}, {NEEDS_APPROVAL}")
             result = await tool.run(params, ctx)
         except TurnCancelled:
             return error_result(CANCELLED)

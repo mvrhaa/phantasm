@@ -20,7 +20,7 @@ from zero.server.ws import router as ws_router
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
-from zero.tools.base import ToolRegistry
+from zero.tools.builtin import builtin_registry
 
 APP_ID = "zero"
 
@@ -59,7 +59,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=EventBus(connections),
                 turns=TurnManager(),
-                tools=ToolRegistry(),
+                tools=builtin_registry(),
                 provider=provider or _choose_provider(config),
             )
             turns = app.state.zero.turns

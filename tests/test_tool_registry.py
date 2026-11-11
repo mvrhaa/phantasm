@@ -14,6 +14,7 @@ from zero.providers.base import ToolCall
 from zero.tools.base import (
     CANCELLED,
     MAX_OUTPUT_CHARS,
+    NEEDS_APPROVAL,
     Tool,
     ToolContext,
     ToolRegistry,
@@ -249,6 +250,46 @@ async def test_error_returned_by_the_tool_is_passed_on() -> None:
     result = await execute(registry_with(returning(error_result("no such file"))), "fixed")
 
     assert result == error_result("no such file")
+
+
+class Careful(Greet):
+    """Greets anyone except Eve, whom it greets only with the user's approval."""
+
+    name = "careful"
+
+    async def approval_reason(self, params: GreetInput, ctx: ToolContext) -> str | None:
+        return "Eve is a stranger" if params.name == "Eve" else None
+
+
+async def test_ordinary_call_needs_no_approval() -> None:
+    tool = Careful()
+
+    result = await execute(registry_with(tool), "careful", {"name": "Ann"})
+
+    assert not result.is_error
+    assert len(tool.seen) == 1
+
+
+async def test_call_that_needs_approval_is_refused_until_approvals_exist() -> None:
+    tool = Careful()
+
+    result = await execute(registry_with(tool), "careful", {"name": "Eve"})
+
+    assert result.is_error
+    assert text_of(result) == f"Eve is a stranger, {NEEDS_APPROVAL}"
+    assert tool.seen == []
+
+
+async def test_failure_while_deciding_on_approval_is_an_error() -> None:
+    class Confused(Greet):
+        name = "confused"
+
+        async def approval_reason(self, params: GreetInput, ctx: ToolContext) -> str | None:
+            raise RuntimeError("lost")
+
+    result = await execute(registry_with(Confused()), "confused", {"name": "Ann"})
+
+    assert text_of(result) == "Tool 'confused' failed: lost"
 
 
 # --- Output size -------------------------------------------------------------
