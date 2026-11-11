@@ -1,11 +1,14 @@
 """Shared pytest fixtures."""
 
+import logging
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from zero import clock
+from zero.logging_setup import reset_logging
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +16,16 @@ def zero_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point ZERO_HOME at a temporary directory so tests never touch real app data."""
     monkeypatch.setenv("ZERO_HOME", str(tmp_path))
     return tmp_path
+
+
+@pytest.fixture
+def clean_root_logger() -> Iterator[None]:
+    """Undo the changes ``setup_logging`` makes to the global root logger."""
+    root = logging.getLogger()
+    level = root.level
+    yield
+    reset_logging()
+    root.setLevel(level)
 
 
 class FrozenClock:

@@ -2,7 +2,6 @@
 
 import logging
 import re
-from collections.abc import Iterator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -12,15 +11,7 @@ from zero import logging_setup
 from zero.logging_setup import reset_logging, setup_logging
 from zero.paths import logs_dir
 
-
-@pytest.fixture(autouse=True)
-def clean_root_logger() -> Iterator[None]:
-    """Undo the changes setup_logging makes to the global root logger."""
-    root = logging.getLogger()
-    level = root.level
-    yield
-    reset_logging()
-    root.setLevel(level)
+pytestmark = pytest.mark.usefixtures("clean_root_logger")
 
 
 def own_handlers() -> list[logging.Handler]:

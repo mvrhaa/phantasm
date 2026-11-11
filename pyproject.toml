@@ -5,7 +5,10 @@ description = "Local brain of an AI companion for macOS"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.162.4",
+    "httpx>=0.28.1",
     "pydantic>=2.14.3",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [build-system]
