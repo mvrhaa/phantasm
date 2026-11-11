@@ -1,12 +1,28 @@
 """Assembling what is sent to the model: the system prompt and the history."""
 
-from collections.abc import Sequence
+import math
+from collections.abc import Callable, Sequence
 from datetime import datetime, tzinfo
 from pathlib import Path
 
-from zero.protocol.messages import Character, ClientInfo
+from zero.protocol.messages import (
+    Character,
+    ClientInfo,
+    ContentPart,
+    FilePart,
+    ImagePart,
+    TextPart,
+)
+from zero.providers.base import Message, ToolCall
+from zero.store.messages import StoredMessage
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+IMAGE_OMITTED = "[image omitted]"
+CHARS_PER_TOKEN = 3.5
+IMAGE_TOKENS = 1000
+
+CountFn = Callable[[Message], int]
 
 _SOURCE_NOTES = {
     "phone": (
@@ -103,3 +119,73 @@ def build_system_prompt(
         _time(now, tz),
     ]
     return "\n\n".join(block for block in blocks if block)
+
+
+def estimate_tokens(message: Message) -> int:
+    """Rough size of a message in tokens, for providers that cannot count."""
+    chars = 0
+    images = 0
+    for part in message.content:
+        if isinstance(part, TextPart):
+            chars += len(part.text)
+        elif isinstance(part, ImagePart):
+            images += 1
+        elif isinstance(part, FilePart):
+            chars += len(part.name) + len(part.path)
+    for call in message.tool_calls:
+        chars += len(call.name) + len(call.model_dump_json())
+    return math.ceil(chars / CHARS_PER_TOKEN) + images * IMAGE_TOKENS
+
+
+def _to_message(stored: StoredMessage, keep_images: bool) -> Message:
+    content: list[ContentPart] = [
+        TextPart(text=IMAGE_OMITTED) if isinstance(part, ImagePart) and not keep_images else part
+        for part in stored.content
+    ]
+    return Message(
+        role=stored.role,
+        content=content,
+        tool_calls=[ToolCall.model_validate(call) for call in stored.tool_calls],
+        tool_call_id=stored.tool_call_id,
+        is_error=stored.is_error,
+    )
+
+
+def _split_into_turns(messages: Sequence[StoredMessage]) -> list[list[StoredMessage]]:
+    """Group messages so that each group starts with a user message.
+
+    A group holds a whole turn: the user message, the assistant's tool calls
+    and their results. Cutting history between groups never separates a tool
+    call from its result.
+    """
+    turns: list[list[StoredMessage]] = []
+    for message in messages:
+        if message.role == "user" or not turns:
+            turns.append([])
+        turns[-1].append(message)
+    return turns
+
+
+def build_history(
+    messages: Sequence[StoredMessage],
+    budget: int,
+    count_fn: CountFn = estimate_tokens,
+) -> list[Message]:
+    """Pick the latest messages that fit into ``budget`` tokens, oldest first.
+
+    History is cut only between turns. The latest turn is always included,
+    even if it alone is over budget. Images survive only in the latest turn;
+    in earlier ones they are replaced with a short note.
+    """
+    turns = _split_into_turns(messages)
+    kept: list[list[Message]] = []
+    used = 0
+    for index in range(len(turns) - 1, -1, -1):
+        is_latest = index == len(turns) - 1
+        converted = [_to_message(stored, keep_images=is_latest) for stored in turns[index]]
+        size = sum(count_fn(message) for message in converted)
+        if not is_latest and used + size > budget:
+            break
+        kept.append(converted)
+        used += size
+    return [message for turn in reversed(kept) for message in turn]
