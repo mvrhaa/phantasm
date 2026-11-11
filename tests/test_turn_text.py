@@ -63,6 +63,13 @@ def until_finished(ws: WebSocketTestSession) -> list[dict[str, Any]]:
             return events
 
 
+def titled(ws: WebSocketTestSession) -> dict[str, Any]:
+    """Wait for the title a new session gets once its first turn is over."""
+    event = ws.receive_json()
+    assert event["type"] == "session.updated"
+    return event
+
+
 def history(ws: WebSocketTestSession, session_id: str) -> list[dict[str, Any]]:
     ws.send_json({"type": "history.get", "session_id": session_id})
     return ws.receive_json()["messages"]
@@ -106,6 +113,7 @@ def test_answer_is_stored_in_history() -> None:
         events = until_finished(ws)
         session_id = events[0]["session"]["id"]
         turn_id = events[1]["turn_id"]
+        titled(ws)
 
         stored = history(ws, session_id)
 
@@ -203,6 +211,7 @@ def test_provider_error_ends_the_turn_with_status_error() -> None:
     with running(provider) as (client, state), connected(client, state) as ws:
         send(ws, "hi")
         events = until_finished(ws)
+        titled(ws)
         stored = history(ws, events[0]["session"]["id"])
 
         ws.send_json({"type": "ping"})
@@ -245,6 +254,7 @@ def test_turn_updates_the_session_time() -> None:
     with running() as (client, state), connected(client, state) as ws:
         send(ws, "hi")
         created = until_finished(ws)[0]["session"]
+        titled(ws)
 
         ws.send_json({"type": "session.list"})
         (listed,) = ws.receive_json()["sessions"]

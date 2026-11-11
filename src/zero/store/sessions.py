@@ -64,6 +64,18 @@ class SessionsRepo:
         await self._db.conn.commit()
         return await self.get(session_id) if cursor.rowcount else None
 
+    async def set_title_if_missing(self, session_id: str, title: str) -> Session | None:
+        """Give an untitled session a title, leaving ``updated_at`` as it is.
+
+        Returns None if the session already has a title or does not exist, so
+        an automatic title never replaces one the user chose.
+        """
+        cursor = await self._db.conn.execute(
+            "UPDATE sessions SET title = ? WHERE id = ? AND title IS NULL", (title, session_id)
+        )
+        await self._db.conn.commit()
+        return await self.get(session_id) if cursor.rowcount else None
+
     async def touch(self, session_id: str, updated_at: datetime | None = None) -> Session | None:
         """Set ``updated_at`` (now by default). None if the session does not exist."""
         cursor = await self._db.conn.execute(

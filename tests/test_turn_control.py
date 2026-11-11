@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
@@ -220,6 +221,36 @@ async def test_session_is_free_once_clients_see_turn_finished(harness: Harness) 
     assert busy_at_finish == [False]
 
 
+async def test_work_after_a_turn_runs_once_turn_finished_is_out(harness: Harness) -> None:
+    manager = TurnManager()
+    seen: list[tuple[str, bool]] = []
+
+    async def after() -> None:
+        seen.append((harness.types[-1], manager.busy(harness.session_id)))
+
+    manager.start(harness.turn(FakeProvider([[TextDelta(text="hi")]])), after=after)
+    await manager.wait_idle()
+
+    assert seen == [("turn.finished", False)]
+
+
+async def test_failing_work_after_a_turn_is_logged(
+    harness: Harness, caplog: pytest.LogCaptureFixture
+) -> None:
+    manager = TurnManager()
+
+    async def after() -> None:
+        raise RuntimeError("boom")
+
+    turn = harness.turn(FakeProvider([[TextDelta(text="hi")]]))
+    manager.start(turn, after=after)
+    await manager.wait_idle()
+
+    assert harness.finished.status == "ok"
+    assert manager.active == []
+    assert f"Follow-up of turn {turn.id} failed" in caplog.text
+
+
 # --- Over the WebSocket ------------------------------------------------------
 
 
@@ -255,6 +286,7 @@ def test_cancel_over_websocket_saves_the_partial_answer() -> None:
 
         ws.send_json({"type": "turn.cancel", "id": "x1", "turn_id": turn_id})
         events += read_until(ws, "turn.finished")
+        read_until(ws, "session.updated")
 
         ws.send_json({"type": "history.get", "session_id": session_id})
         stored = ws.receive_json()["messages"]

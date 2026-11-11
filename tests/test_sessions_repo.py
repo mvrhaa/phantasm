@@ -109,6 +109,31 @@ async def test_rename_unknown_session_returns_none(repo: SessionsRepo) -> None:
     assert await repo.list() == []
 
 
+async def test_set_title_if_missing_titles_an_untitled_session(
+    repo: SessionsRepo, frozen_clock
+) -> None:
+    created = await repo.create()
+    frozen_clock.advance(60)
+
+    titled = await repo.set_title_if_missing(created.id, "Trip to Rome")
+
+    assert titled is not None
+    assert titled.title == "Trip to Rome"
+    assert titled.updated_at == START
+    assert await repo.get(created.id) == titled
+
+
+async def test_set_title_if_missing_keeps_an_existing_title(repo: SessionsRepo) -> None:
+    created = await repo.create("Chosen by the user")
+
+    assert await repo.set_title_if_missing(created.id, "Automatic") is None
+    assert await repo.get(created.id) == created
+
+
+async def test_set_title_if_missing_on_unknown_session_returns_none(repo: SessionsRepo) -> None:
+    assert await repo.set_title_if_missing("missing", "Title") is None
+
+
 async def test_touch_sets_updated_at_to_now(repo: SessionsRepo, frozen_clock) -> None:
     created = await repo.create("Plans")
     frozen_clock.advance(30)

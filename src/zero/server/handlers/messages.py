@@ -1,8 +1,10 @@
 """Handlers of ``message.send`` and ``turn.cancel``: starting and stopping turns."""
 
 import logging
+from functools import partial
 
 from zero.core.events import ReplyTo
+from zero.core.titles import title_new_session
 from zero.core.turn import Turn
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel
@@ -21,6 +23,7 @@ async def handle_message_send(
     The turn runs in the background; its events go to every client. Only the
     sender's ``turn.started`` carries ``reply_to``. A session runs one turn at
     a time: a message into a busy session is answered with ``turn_busy``.
+    An untitled session gets a title from this message once the turn is over.
     """
     if state.provider is None:
         await connection.send(
@@ -59,6 +62,17 @@ async def handle_message_send(
         )
         return
 
+    after = None
+    if session.title is None:
+        after = partial(
+            title_new_session,
+            session.id,
+            message.text,
+            provider=state.provider,
+            model=state.config.provider.model,
+            sessions=state.sessions,
+            events=state.events,
+        )
     state.turns.start(
         Turn(
             session_id=session.id,
@@ -71,7 +85,8 @@ async def handle_message_send(
             messages=state.messages,
             events=state.events,
             reply=ReplyTo(connection.id, message.id),
-        )
+        ),
+        after=after,
     )
 
 

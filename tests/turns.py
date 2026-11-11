@@ -75,7 +75,7 @@ class Harness:
             provider=provider,
             sessions=self.sessions,
             messages=self.messages,
-            events=EventBus(Audience([self.client])),
+            events=self.bus,
             tools=tools,
             retry_delays=retry_delays,
         )
@@ -93,6 +93,11 @@ class Harness:
         turn = self.turn(provider, tools, max_steps=max_steps, text=text, client=client)
         await turn.run()
         return turn
+
+    @property
+    def bus(self) -> EventBus:
+        """A bus that delivers events to this harness's client."""
+        return EventBus(Audience([self.client]))
 
     @property
     def types(self) -> list[str]:

@@ -335,6 +335,7 @@ def test_tool_call_over_websocket() -> None:
             events = []
             while not events or events[-1]["type"] != "turn.finished":
                 events.append(ws.receive_json())
+            assert ws.receive_json()["type"] == "session.updated"
 
             ws.send_json({"type": "history.get", "session_id": events[0]["session"]["id"]})
             stored = ws.receive_json()["messages"]

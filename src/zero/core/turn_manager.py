@@ -1,8 +1,15 @@
 """Running turns in the background and keeping track of the ones in progress."""
 
 import asyncio
+import logging
+from collections.abc import Awaitable, Callable
 
 from zero.core.turn import Turn
+
+AfterTurn = Callable[[], Awaitable[None]]
+"""Follow-up work started once a turn has finished, such as titling its session."""
+
+logger = logging.getLogger(__name__)
 
 
 class TurnManager:
@@ -30,12 +37,25 @@ class TurnManager:
         """
         return any(t.session_id == session_id and not t.done for t in self._turns.values())
 
-    def start(self, turn: Turn) -> None:
-        """Start a turn in the background and forget it once it is done."""
-        task = asyncio.create_task(turn.run(), name=f"turn-{turn.id}")
+    def start(self, turn: Turn, after: AfterTurn | None = None) -> None:
+        """Start a turn in the background and forget it once it is done.
+
+        ``after`` runs in the same task once ``turn.finished`` has gone out, so
+        clients get the answer without waiting for it. Its failures are logged.
+        """
+        task = asyncio.create_task(self._run(turn, after), name=f"turn-{turn.id}")
         self._tasks[turn.id] = task
         self._turns[turn.id] = turn
         task.add_done_callback(lambda _: self._forget(turn.id))
+
+    async def _run(self, turn: Turn, after: AfterTurn | None) -> None:
+        await turn.run()
+        if after is None:
+            return
+        try:
+            await after()
+        except Exception:
+            logger.exception("Follow-up of turn %s failed", turn.id)
 
     def _forget(self, turn_id: str) -> None:
         self._tasks.pop(turn_id, None)
