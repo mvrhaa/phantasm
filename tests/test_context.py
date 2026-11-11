@@ -87,10 +87,20 @@ def test_expression_block_lists_poses_and_moods() -> None:
     assert "instead of emoji" in text
 
 
-def test_memories_are_listed() -> None:
+def test_memories_are_listed_with_a_hint_to_search_the_rest() -> None:
     text = prompt(memories=["writes Python", "lives in Prague"])
 
-    assert "- writes Python\n- lives in Prague" in text
+    assert (
+        "# What you remember about the user\n\n- writes Python\n- lives in Prague\n\n"
+        "These are the memories used most and saved last; find the rest with memory_search."
+    ) in text
+
+
+def test_base_rules_say_what_may_be_remembered() -> None:
+    text = prompt()
+
+    assert "# Memory" in text
+    assert "only when the user told it about themselves or asked you to remember it" in text
 
 
 def test_memory_block_is_left_out_when_there_is_nothing_to_remember() -> None:

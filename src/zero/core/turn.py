@@ -6,7 +6,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
 from zero import clock
 from zero.approvals.manager import Approver
@@ -35,6 +35,7 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
+from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
 from zero.tools.base import (
@@ -53,10 +54,18 @@ from zero.tools.client_actions import (
 from zero.tools.permissions import PathGuard
 
 HISTORY_FETCH_LIMIT = 500
+PROMPT_MEMORIES = 10  # how many memories go into the system prompt
 RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
 NOT_RUN = "Not run: the user cancelled the turn."
 
 TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
+
+
+class MemorySource(Protocol):
+    """Gives the memories for the system prompt."""
+
+    async def top(self, n: int = 10) -> Sequence[Memory]: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +102,7 @@ class Turn:
     such calls are refused. ``approval_rules`` holds the "always allow" answers.
     The actions the client declared in ``hello`` join ``tools`` for this turn;
     ``action_caller`` reaches that client when the model calls one.
+    ``memory`` gives the facts about the user that go into the system prompt.
     ``tool_runs`` keeps a record of the tool calls for the history.
     """
 
@@ -113,6 +123,7 @@ class Turn:
         approval_rules: ApprovalRules | None = None,
         tool_runs: ToolRunRecorder | None = None,
         action_caller: ActionCaller | None = None,
+        memory: MemorySource | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -137,6 +148,7 @@ class Turn:
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
         self._used_computer = False  # a computer_* action raises the step limit
         self._reply = reply
+        self._memory = memory
         self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
         self._expression = ExpressionTool(character) if character is not None else None
@@ -367,7 +379,10 @@ class Turn:
 
     async def _build_prompt(self) -> list[Message]:
         """System prompt followed by the history that fits the token budget."""
-        system = build_system_prompt(self._client, self._source, now=clock.now())
+        memories = await self._memory.top(PROMPT_MEMORIES) if self._memory is not None else []
+        system = build_system_prompt(
+            self._client, self._source, [memory.text for memory in memories], now=clock.now()
+        )
         stored = await self._messages.list(self.session_id, limit=HISTORY_FETCH_LIMIT)
         history = build_history(stored, self._config.agent.history_token_budget)
         return [Message(role="system", content=[TextPart(text=system)]), *history]

@@ -72,9 +72,18 @@ def _expression(character: Character) -> str:
     )
 
 
+MEMORY_HINT = "These are the memories used most and saved last; find the rest with memory_search."
+
+
 def _memories(memories: Sequence[str]) -> str:
     return "\n".join(
-        ["# What you remember about the user", "", *(f"- {memory}" for memory in memories)]
+        [
+            "# What you remember about the user",
+            "",
+            *(f"- {memory}" for memory in memories),
+            "",
+            MEMORY_HINT,
+        ]
     )
 
 
