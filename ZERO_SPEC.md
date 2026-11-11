@@ -231,7 +231,7 @@ Zero → клиент:
 
 | type | Поля | Ответ / эффект |
 |---|---|---|
-| `message.send` | `session_id?`, `text`, `attachments?: [{name, mime, data_b64 \| path}]`, `source: "desktop"\|"phone"` | `turn.started`, затем поток событий хода. Без `session_id` создаётся новая сессия. |
+| `message.send` | `session_id?`, `text`, `attachments?: [{name, mime, data_b64 \| path}]`, `source: "desktop"\|"phone"` | `turn.started`, затем поток событий хода. Без `session_id` создаётся новая сессия. Вложения копируются в `files/` и хранятся как `ContentPart file` с путём (не base64); `path` проходит PathGuard, лимит 100 MB. Плохое вложение даёт `error invalid_message`, ход не начинается. В модель картинка уходит только из текущего сообщения (если модель видит картинки и картинка до 5 MB), остальные файлы — короткой текстовой заметкой с путём. |
 | `turn.cancel` | `turn_id` | Ход отменяется (раздел 7.4), приходит `turn.finished` со `status: "cancelled"` |
 | `approval.respond` | `approval_id`, `decision: "allow"\|"deny"\|"always"`, `note?` | Ход продолжается |
 | `action.result` | `call_id`, `ok: bool`, `content: [ContentPart]`, `error?` | Результат действия клиента возвращается в agent loop |
@@ -265,7 +265,7 @@ Zero → клиент:
 ```json
 { "type": "text", "text": "…" }
 { "type": "image", "mime": "image/png", "data_b64": "…" }
-{ "type": "file", "name": "report.pdf", "path": "…" }
+{ "type": "file", "name": "report.pdf", "path": "…", "mime": "application/pdf" }   // mime необязателен
 ```
 
 ### 6.6 Коды ошибок
@@ -437,6 +437,8 @@ class ToolResult:
 - Каждое `action` из `hello` превращается в инструмент с тем же именем, описанием и схемой.
 - Вызов: мозг шлёт `action.call` нужному клиенту и ждёт `action.result` с таким же `call_id` не дольше `timeout_s`.
 - Если клиент отключился, вызов возвращает `client_gone`. По таймауту возвращается `action_timeout`. Обе ошибки уходят модели как tool error.
+- `call_id` в `action.call` выдаёт мозг (UUID), он не совпадает с id вызова от модели. Ответить на вызов может только то подключение, которому он отправлен; чужой или повторный `action.result` игнорируется.
+- Действие не может подменить встроенный инструмент или `set_expression`: при совпадении имён действие пропускается.
 - Политика берётся из объявления клиента, но **конфиг мозга может её только ужесточить** (`allow → ask → deny`), но не ослабить.
 - Типовые действия десктоп-клиента (для справки, реализуются в «теле»): `screenshot`, `computer_view`, `computer_act`, `open_url`.
 
@@ -463,7 +465,9 @@ class ToolResult:
 v1 устроена просто и предсказуемо:
 - Таблица `memories(id, text, tags, created_at, updated_at, uses)`.
 - `memory_search` работает через **SQLite FTS5** по `text` и `tags`. Векторы не используются (их можно добавить позже за тем же интерфейсом `MemoryStore.search()`).
-- В системный промпт попадают **10 последних или чаще всего используемых** записей и подсказка, что остальное ищется через `memory_search`.
+- Запрос разбивается на слова, каждое берётся в кавычки (синтаксис FTS из запроса безопасен) и ищется по префиксу грубой основы: у слов от 5 букв отбрасываются 2 последние, но остаётся не меньше 4 («Прага» находит «Праге»). Слова соединяются через `OR`, порядок — по bm25.
+- Тот же текст при повторном сохранении не создаёт дубль, а обновляет запись.
+- В системный промпт попадают **10** записей: половина — чаще всего используемые (`uses > 0`), остальное — самые свежие, так что новый факт виден сразу. Плюс подсказка, что остальное ищется через `memory_search`.
 - Модель сохраняет в память только то, что пользователь сказал о себе или явно попросил запомнить. Это правило стоит в базовом промпте.
 
 ---
@@ -517,7 +521,8 @@ CREATE TABLE memories (
   id TEXT PRIMARY KEY, text TEXT NOT NULL, tags TEXT,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, uses INTEGER NOT NULL DEFAULT 0
 );
-CREATE VIRTUAL TABLE memories_fts USING fts5(text, tags, content='memories', content_rowid='rowid');
+CREATE VIRTUAL TABLE memories_fts USING fts5(text, tags, content='memories', content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2');   -- миграция 0003, плюс триггеры синхронизации
 
 CREATE TABLE approval_rules (
   tool TEXT PRIMARY KEY, decision TEXT NOT NULL, created_at TEXT NOT NULL
