@@ -206,6 +206,16 @@ def test_unknown_policy_raises_config_error(policy: object) -> None:
         load_config()
 
 
+@pytest.mark.parametrize("key", ["allowed_roots", "denied_paths"])
+def test_relative_sandbox_path_raises_config_error(key: str) -> None:
+    write_config({"permissions": {key: ["~/ok", "/also/ok", "projects/secret"]}})
+
+    with pytest.raises(ConfigError, match=f"permissions.{key}: .*absolute or start with ~") as err:
+        load_config()
+
+    assert "projects/secret" not in str(err.value)
+
+
 def test_paths_keep_tilde_after_load_and_save() -> None:
     write_config({"permissions": {"allowed_roots": ["~/projects"], "denied_paths": ["~/.aws"]}})
 

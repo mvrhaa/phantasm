@@ -39,6 +39,7 @@ from zero.providers.base import (
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
 from zero.tools.base import ToolContext, ToolRegistry, ToolResult, error_result, text_result
+from zero.tools.permissions import PathGuard
 
 HISTORY_FETCH_LIMIT = 500
 RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
@@ -118,6 +119,7 @@ class Turn:
             client_id=client.client_id if client is not None else None,
             cancel=self.cancel,
             config=config,
+            paths=PathGuard.from_config(config.permissions),
         )
 
     async def run(self) -> None:

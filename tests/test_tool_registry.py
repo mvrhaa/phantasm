@@ -22,6 +22,7 @@ from zero.tools.base import (
     text_result,
     truncate_text,
 )
+from zero.tools.permissions import PathGuard
 
 
 class GreetInput(BaseModel):
@@ -58,8 +59,14 @@ class Echo(Tool[GreetInput]):
 
 
 def context() -> ToolContext:
+    config = Config()
     return ToolContext(
-        session_id="s1", turn_id="t1", client_id="c1", cancel=CancelToken(), config=Config()
+        session_id="s1",
+        turn_id="t1",
+        client_id="c1",
+        cancel=CancelToken(),
+        config=config,
+        paths=PathGuard.from_config(config.permissions),
     )
 
 

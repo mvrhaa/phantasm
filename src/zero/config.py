@@ -87,6 +87,14 @@ class PermissionsConfig(_Section):
     denied_paths: list[str] = Field(default_factory=lambda: ["~/.ssh", "~/Library/Keychains"])
     tool_policies: dict[str, Policy] = Field(default_factory=lambda: dict(DEFAULT_TOOL_POLICIES))
 
+    @field_validator("allowed_roots", "denied_paths")
+    @classmethod
+    def _paths_must_be_absolute(cls, value: list[str]) -> list[str]:
+        # A relative entry would depend on the service's working directory.
+        if any(not (item.startswith("~") or Path(item).is_absolute()) for item in value):
+            raise ValueError("every path must be absolute or start with ~")
+        return value
+
 
 class Config(_Section):
     """Root of ``config.json``."""

@@ -11,6 +11,7 @@ from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.protocol.messages import ContentPart, TextPart
 from zero.providers.base import ToolCall, ToolSpec
+from zero.tools.permissions import PathGuard
 
 MAX_OUTPUT_CHARS = 30_000
 CANCELLED = "Cancelled: the user stopped the turn."
@@ -46,6 +47,7 @@ class ToolContext:
     client_id: str | None  # None when no client started the turn, e.g. a scheduled one
     cancel: CancelToken
     config: Config
+    paths: PathGuard  # every path a tool touches goes through ``paths.check``
 
 
 class Tool[InputT: BaseModel](ABC):

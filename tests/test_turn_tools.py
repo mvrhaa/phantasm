@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -13,6 +14,7 @@ from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
 from zero.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
+from zero.tools.permissions import PathDenied
 
 
 class AddInput(BaseModel):
@@ -162,6 +164,8 @@ async def test_tools_get_the_context_of_their_turn(harness: Harness) -> None:
     assert (ctx.session_id, ctx.turn_id, ctx.client_id) == (harness.session_id, turn.id, "c-42")
     assert ctx.cancel is turn.cancel
     assert ctx.config.agent.max_steps == 40
+    with pytest.raises(PathDenied):
+        ctx.paths.check("~/.ssh/id_rsa")
 
 
 async def test_calls_of_one_step_run_in_order_and_share_one_message(harness: Harness) -> None:
