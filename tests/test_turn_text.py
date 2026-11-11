@@ -194,6 +194,9 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "todo_add",
         "todo_update",
         "todo_list",
+        "schedule_create",
+        "schedule_list",
+        "schedule_delete",
         "set_expression",
     ]
     assert system.role == "system"

@@ -22,6 +22,7 @@ from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
+from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.todo import TodoRepo
 from zero.store.tool_runs import ToolRunsRepo
@@ -67,7 +68,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=events,
                 turns=TurnManager(),
-                tools=builtin_registry(memory, TodoRepo(db)),
+                tools=builtin_registry(memory, TodoRepo(db), SchedulesRepo(db)),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
