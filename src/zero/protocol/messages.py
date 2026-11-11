@@ -369,6 +369,14 @@ class ApprovalResolved(TurnEvent):
     by_client_id: str
 
 
+class FileSent(TurnEvent):
+    """A file was sent to the user, e.g. by ``send_file``; clients show it in the chat."""
+
+    type: Literal["file"] = "file"
+    call_id: str | None = None  # the tool call that sent it
+    file: FilePart
+
+
 class Expression(TurnEvent):
     """The character changed its pose and mood."""
 
@@ -439,6 +447,7 @@ ServerEvent = Annotated[
     | ActionCall
     | ApprovalRequest
     | ApprovalResolved
+    | FileSent
     | Expression
     | TurnFinished
     | SessionListOk

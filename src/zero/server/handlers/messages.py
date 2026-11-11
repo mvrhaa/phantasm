@@ -87,6 +87,7 @@ async def handle_message_send(
             tools=state.tools,
             approvals=state.approvals,
             approval_rules=state.approval_rules,
+            tool_runs=state.tool_runs,
             reply=ReplyTo(connection.id, message.id),
         ),
         after=after,

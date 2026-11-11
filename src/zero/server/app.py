@@ -22,6 +22,7 @@ from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
+from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.builtin import builtin_registry
 
 APP_ID = "zero"
@@ -65,6 +66,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 tools=builtin_registry(),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
+                tool_runs=ToolRunsRepo(db),
                 provider=provider or _choose_provider(config),
             )
             turns = app.state.zero.turns

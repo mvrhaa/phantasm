@@ -14,6 +14,7 @@ from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
+from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import ToolRegistry
 
 
@@ -32,6 +33,7 @@ class AppState:
     tools: ToolRegistry  # built-in tools, shared by every turn
     approvals: ApprovalManager
     approval_rules: ApprovalRulesRepo
+    tool_runs: ToolRunsRepo
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 

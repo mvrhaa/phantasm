@@ -14,14 +14,12 @@ from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
-from zero.core.expression import EXPRESSION_SET, EXPRESSION_TOOL, ExpressionTool
+from zero.core.expression import EXPRESSION_TOOL, ExpressionTool
+from zero.core.tool_runner import ToolRunner, ToolRunRecorder
 from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
-    Expression,
     TextPart,
-    ToolFinished,
-    ToolStarted,
     TurnFinished,
     TurnStarted,
     Usage,
@@ -45,7 +43,6 @@ from zero.tools.base import (
     ToolRegistry,
     ToolResult,
     error_result,
-    text_result,
 )
 from zero.tools.permissions import PathGuard
 
@@ -71,14 +68,6 @@ def _text_content(text: str) -> list[ContentPart]:
     return [TextPart(text=text)] if text else []
 
 
-def _tool_status(result: ToolResult) -> Literal["ok", "error", "denied", "cancelled"]:
-    if result.cancelled:
-        return "cancelled"
-    if result.denied:
-        return "denied"
-    return "error" if result.is_error else "ok"
-
-
 def _only_expression(calls: list[ToolCall], results: list[ToolResult]) -> bool:
     """True if every call of a step set the expression, and every one worked."""
     return all(
@@ -96,6 +85,7 @@ class Turn:
     ``retry_delays`` are the pauses before each retry of a failed model call.
     ``approvals`` asks the user about tool calls that need it; without it
     such calls are refused. ``approval_rules`` holds the "always allow" answers.
+    ``tool_runs`` keeps a record of the tool calls for the history.
     """
 
     def __init__(
@@ -113,6 +103,7 @@ class Turn:
         tools: ToolRegistry | None = None,
         approvals: Approver | None = None,
         approval_rules: ApprovalRules | None = None,
+        tool_runs: ToolRunRecorder | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -142,6 +133,15 @@ class Turn:
             paths=PathGuard.from_config(config.permissions),
             approvals=approvals,
             approval_rules=approval_rules,
+        )
+        self._runner = ToolRunner(
+            session_id=session_id,
+            turn_id=self.id,
+            events=events,
+            tools=self._tools,
+            context=self._tool_context,
+            expression=self._expression,
+            runs=tool_runs,
         )
 
     async def run(self) -> None:
@@ -294,7 +294,7 @@ class Turn:
             if self.cancel.cancelled:
                 results.append(error_result(NOT_RUN))
             else:
-                results.append(await self._run_tool(call))
+                results.append(await self._runner.run(call))
 
         assistant = Message(
             role="assistant", content=_text_content(progress.step_text), tool_calls=calls
@@ -332,50 +332,6 @@ class Turn:
             )
         self.cancel.raise_if_cancelled()
         return results
-
-    async def _run_tool(self, call: ToolCall) -> ToolResult:
-        """Run one call, telling clients when it starts and how it ends.
-
-        ``set_expression`` is handled by the turn itself and is marked hidden,
-        so clients do not show it as a separate tool line.
-        """
-        expression = self._expression if call.name == EXPRESSION_TOOL else None
-        await self._events.publish(
-            ToolStarted(
-                session_id=self.session_id,
-                turn_id=self.id,
-                call_id=call.id,
-                tool=call.name,
-                input=call.input,
-                hidden=expression is not None,
-            )
-        )
-        if expression is not None:
-            result = await self._set_expression(expression, call)
-        else:
-            result = await self._tools.execute(call, self._tool_context)
-        await self._events.publish(
-            ToolFinished(
-                session_id=self.session_id,
-                turn_id=self.id,
-                call_id=call.id,
-                status=_tool_status(result),
-            )
-        )
-        return result
-
-    async def _set_expression(self, expression: ExpressionTool, call: ToolCall) -> ToolResult:
-        """Change the character's expression and tell the clients at once."""
-        try:
-            state = expression.apply(call.input)
-        except ValueError as exc:
-            return error_result(str(exc))
-        await self._events.publish(
-            Expression(
-                session_id=self.session_id, turn_id=self.id, pose=state.pose, mood=state.mood
-            )
-        )
-        return text_result(EXPRESSION_SET)
 
     async def _pause(self, seconds: float) -> None:
         """Sleep, but stop with ``TurnCancelled`` as soon as the turn is cancelled."""

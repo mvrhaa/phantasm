@@ -79,7 +79,11 @@ async def handle_session_delete(
 
 
 async def handle_history_get(connection: Connection, message: HistoryGet, state: AppState) -> None:
-    """Answer with one page of a session's messages, oldest first."""
+    """Answer with one page of a session's messages, oldest first.
+
+    With ``include_tools`` the page also holds the tool messages and the tool
+    runs of its turns, so a client can draw the tool lines again.
+    """
     if await state.sessions.get(message.session_id) is None:
         await _not_found(connection, message.session_id, message.id)
         return
@@ -97,6 +101,15 @@ async def handle_history_get(connection: Connection, message: HistoryGet, state:
         for item in stored
         if message.include_tools or item.role != "tool"
     ]
+    runs = []
+    if message.include_tools:
+        turn_ids = {item.turn_id for item in stored if item.turn_id is not None}
+        runs = await state.tool_runs.for_turns(message.session_id, turn_ids)
     await connection.send(
-        HistoryOk(reply_to=message.id, session_id=message.session_id, messages=messages)
+        HistoryOk(
+            reply_to=message.id,
+            session_id=message.session_id,
+            messages=messages,
+            tool_runs=runs,
+        )
     )

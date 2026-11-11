@@ -11,6 +11,7 @@ from zero.approvals.manager import Answer, ApprovalAsk, Approver, Decision
 from zero.config import Config
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
+from zero.core.tool_runner import ToolRunRecorder
 from zero.core.turn import Turn
 from zero.protocol.messages import (
     ClientInfo,
@@ -115,6 +116,7 @@ class Harness:
         client: ClientInfo | None = None,
         retry_delays: Sequence[float] = NO_DELAYS,
         approvals: Approver | None = None,
+        tool_runs: ToolRunRecorder | None = None,
     ) -> Turn:
         """Build a turn in this session; retries do not wait unless asked to."""
         config = Config()
@@ -133,6 +135,7 @@ class Harness:
             tools=tools,
             retry_delays=retry_delays,
             approvals=approvals,
+            tool_runs=tool_runs,
         )
 
     async def run(
@@ -143,9 +146,19 @@ class Harness:
         max_steps: int | None = None,
         text: str = "hi",
         client: ClientInfo | None = None,
+        approvals: Approver | None = None,
+        tool_runs: ToolRunRecorder | None = None,
     ) -> Turn:
         """Build a turn and run it to the end."""
-        turn = self.turn(provider, tools, max_steps=max_steps, text=text, client=client)
+        turn = self.turn(
+            provider,
+            tools,
+            max_steps=max_steps,
+            text=text,
+            client=client,
+            approvals=approvals,
+            tool_runs=tool_runs,
+        )
         await turn.run()
         return turn
 

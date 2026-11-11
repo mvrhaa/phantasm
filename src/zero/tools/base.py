@@ -10,11 +10,12 @@ from pydantic import BaseModel, ValidationError
 from zero.approvals.manager import ApprovalAsk, Approver
 from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.protocol.messages import ContentPart, TextPart
+from zero.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
 from zero.providers.base import ToolCall, ToolSpec
 from zero.tools.permissions import PathGuard, decide
 
 MAX_OUTPUT_CHARS = 30_000
+PREVIEW_CHARS = 300
 CANCELLED = "Cancelled: the user stopped the turn."
 NEEDS_APPROVAL = "so this call needs the user's approval, and no one can be asked here."
 DENIED = "The user denied this call."
@@ -31,6 +32,21 @@ class ToolResult:
     summary: str = ""  # a few words for the UI: "exit 0", "+12 -3", "5 matches"
     denied: bool = False  # the user said no, so the tool did not run
     cancelled: bool = False  # the turn was cancelled before the call could finish
+
+
+def output_preview(result: ToolResult, limit: int = PREVIEW_CHARS) -> str:
+    """The start of a result for the UI: its text, or what kind of content it holds."""
+    text = " ".join(
+        " ".join(part.text.split()) for part in result.content if isinstance(part, TextPart)
+    ).strip()
+    if not text:
+        kinds = [
+            "[image]" if isinstance(part, ImagePart) else f"[file {part.name}]"
+            for part in result.content
+            if isinstance(part, ImagePart | FilePart)
+        ]
+        text = " ".join(kinds)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def text_result(text: str, *, summary: str = "") -> ToolResult:
@@ -175,6 +191,16 @@ class ToolRegistry:
     def get(self, name: str) -> Tool[Any] | None:
         """The tool with this name, or None."""
         return self._tools.get(name)
+
+    def label(self, call: ToolCall) -> str:
+        """The UI line of a call, from the tool's ``label``; the tool name if the input is bad."""
+        tool = self._tools.get(call.name)
+        if tool is None:
+            return call.name
+        try:
+            return tool.label(tool.input_model.model_validate(call.input))
+        except ValidationError:
+            return call.name
 
     def specs(self) -> list[ToolSpec]:
         """Describe every tool for the model, in the order they were registered."""

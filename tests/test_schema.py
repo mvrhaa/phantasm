@@ -2,6 +2,7 @@
 
 import sqlite3
 from collections.abc import AsyncIterator
+from contextlib import closing
 
 import pytest
 
@@ -41,10 +42,10 @@ def test_initial_migration_ships_with_the_package() -> None:
     assert (MIGRATIONS_DIR / "0001_init.sql").is_file()
 
 
-async def test_fresh_database_is_migrated_to_version_1() -> None:
+async def test_fresh_database_is_migrated_to_the_latest_version() -> None:
     async with Database(db_path()) as database:
-        assert await database.migrate() == [1]
-        assert await database.version() == 1
+        assert await database.migrate() == [1, 2]
+        assert await database.version() == 2
         assert await database.migrate() == []
 
 
@@ -60,6 +61,46 @@ async def test_tables_exist_after_migration(db: Database) -> None:
 
 async def test_messages_are_indexed_by_session_and_time(db: Database) -> None:
     assert "idx_messages_session" in await names(db, "index")
+
+
+async def test_tool_runs_are_indexed_by_turn(db: Database) -> None:
+    assert "idx_tool_runs_turn" in await names(db, "index")
+
+
+async def test_a_call_id_may_repeat_in_tool_runs(db: Database) -> None:
+    for run_id in ("r1", "r2"):
+        await db.conn.execute(
+            "INSERT INTO tool_runs (id, call_id, session_id, turn_id, tool, created_at) "
+            "VALUES (?, 'call-1', 's1', 't1', 'add', ?)",
+            (run_id, NOW),
+        )
+
+    assert await count(db, "tool_runs") == 2
+
+
+async def test_migration_2_keeps_existing_tool_runs() -> None:
+    async with Database(db_path()) as database:
+        await database.migrate()
+    # Roll the schema back to version 1 by hand and add a run in the old shape.
+    with closing(sqlite3.connect(db_path())) as raw:
+        raw.executescript(
+            "DROP TABLE tool_runs;"
+            "CREATE TABLE tool_runs (call_id TEXT PRIMARY KEY, session_id TEXT NOT NULL,"
+            " turn_id TEXT NOT NULL, tool TEXT NOT NULL, label TEXT, input_json TEXT,"
+            " status TEXT, summary TEXT, output_preview TEXT, duration_ms INTEGER,"
+            " created_at TEXT NOT NULL);"
+            "INSERT INTO tool_runs (call_id, session_id, turn_id, tool, label, created_at)"
+            f" VALUES ('old', 's1', 't1', 'read_file', '~/a.md', '{NOW}');"
+            "DELETE FROM schema_version WHERE version = 2;"
+        )
+
+    async with Database(db_path()) as database:
+        assert await database.migrate() == [2]
+        async with database.conn.execute("SELECT id, call_id, label FROM tool_runs") as cursor:
+            ((run_id, call_id, label),) = await cursor.fetchall()
+
+    assert (call_id, label) == ("old", "~/a.md")
+    assert len(run_id) == 32
 
 
 @pytest.mark.parametrize(
@@ -85,6 +126,7 @@ async def test_messages_are_indexed_by_session_and_time(db: Database) -> None:
         (
             "tool_runs",
             {
+                "id",
                 "call_id",
                 "session_id",
                 "turn_id",

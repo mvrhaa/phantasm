@@ -1,4 +1,4 @@
-"""Built-in file tools: ``read_file`` and ``list_dir``.
+"""Built-in file tools: ``read_file``, ``list_dir`` and ``send_file``.
 
 All file system work runs in a worker thread, and every path goes through the
 sandbox (``ctx.paths``) before it is touched.
@@ -7,12 +7,15 @@ sandbox (``ctx.paths``) before it is touched.
 import asyncio
 import base64
 import os
+import shutil
 import unicodedata
+import uuid
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from zero.protocol.messages import ImagePart
+from zero.paths import files_dir
+from zero.protocol.messages import FilePart, ImagePart, TextPart
 from zero.tools.base import (
     MAX_OUTPUT_CHARS,
     Preview,
@@ -22,7 +25,7 @@ from zero.tools.base import (
     error_result,
     text_result,
 )
-from zero.tools.permissions import PathDenied
+from zero.tools.permissions import PathDenied, PathGuard
 
 DEFAULT_READ_LINES = 2000
 MAX_LINE_CHARS = 2000
@@ -31,6 +34,7 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 SNIFF_BYTES = 8192
 MAX_LIST_DEPTH = 5
 MAX_LIST_ENTRIES = 500
+MAX_SEND_BYTES = 100 * 1024 * 1024
 
 PATH_HELP = "Absolute path, or a path that starts with ~"
 
@@ -268,3 +272,70 @@ class ListDir(Tool[ListDirInput]):
         if listing.full:
             lines.append(f"[… stopped after {MAX_LIST_ENTRIES} entries; list a subfolder]")
         return text_result("\n".join(lines), summary=f"{listing.entries} entries")
+
+
+# --- send_file ---------------------------------------------------------------
+
+
+class SendFileInput(BaseModel):
+    path: str = Field(description=PATH_HELP)
+
+
+def _source(raw: str, guard: PathGuard) -> Path | str:
+    """The file to send, or why it cannot be sent."""
+    try:
+        path = guard.check(raw)
+        if not path.exists():
+            return f"{raw} does not exist."
+        if not path.is_file():
+            return f"{raw} is not a regular file; only files can be sent."
+        size = path.stat().st_size
+    except PathDenied as exc:
+        return str(exc)
+    except OSError as exc:
+        return f"Cannot read {raw}: {exc.strerror or exc}."
+    if size > MAX_SEND_BYTES:
+        limit = human_size(MAX_SEND_BYTES)
+        return f"{raw} is {human_size(size)}; files over {limit} cannot be sent."
+    return path
+
+
+class SendFile(Tool[SendFileInput]):
+    """Gives the user a copy of a file, shown in the chat."""
+
+    name = "send_file"
+    description = (
+        "Send a file to the user: they get a copy they can open from the chat, for "
+        "example a report you have written. Files up to 100 MB."
+    )
+    input_model = SendFileInput
+    default_policy = "allow"
+
+    def label(self, params: SendFileInput) -> str:
+        return params.path
+
+    async def preview(self, params: SendFileInput, ctx: ToolContext) -> Preview:
+        source = await asyncio.to_thread(_source, params.path, ctx.paths)
+        return Preview(refusal=source) if isinstance(source, str) else Preview()
+
+    async def run(self, params: SendFileInput, ctx: ToolContext) -> ToolResult:
+        return await asyncio.to_thread(self._send, params, ctx)
+
+    def _send(self, params: SendFileInput, ctx: ToolContext) -> ToolResult:
+        source = _source(params.path, ctx.paths)
+        if isinstance(source, str):
+            return error_result(source)
+        folder = files_dir() / str(uuid.uuid4())
+        try:
+            folder.mkdir(parents=True)
+            copy = Path(shutil.copyfile(source, folder / source.name))
+        except OSError as exc:
+            return error_result(f"Cannot send {params.path}: {exc.strerror or exc}.")
+        size = human_size(copy.stat().st_size)
+        return ToolResult(
+            content=[
+                TextPart(text=f"Sent {params.path} to the user as {copy.name} ({size})."),
+                FilePart(name=copy.name, path=str(copy)),
+            ],
+            summary=f"{copy.name}, {size}",
+        )

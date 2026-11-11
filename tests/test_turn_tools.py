@@ -101,6 +101,7 @@ async def test_clients_see_the_tool_run_between_steps(harness: Harness) -> None:
         turn_id=turn.id,
         call_id="call-1",
         tool="add",
+        label="add",
         input={"a": 2, "b": 3},
     )
     assert (finished.call_id, finished.status) == ("call-1", "ok")  # type: ignore[union-attr]
