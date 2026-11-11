@@ -255,6 +255,7 @@ Zero → клиент:
 | `approval.request` | `approval_id`, `tool`, `label`, `input`, `reason` (зачем), `diff?` (для правок файлов) |
 | `approval.resolved` | `approval_id`, `decision`, `by_client_id` (чтобы другие клиенты убрали карточку) |
 | `expression` | `pose`, `mood` — можно слать посреди хода |
+| `file` | `call_id?`, `file: ContentPart file` — пользователю отдали файл (например, через `send_file`); клиент показывает его в чате |
 | `turn.finished` | `status: "ok"\|"error"\|"cancelled"\|"max_steps"`, `text` (весь текст хода: склейка всех `text.delta` без разделителей), `expression: {pose, mood}`, `usage: {input_tokens, output_tokens}`, `error?` |
 | `session.created` / `session.updated` / `session.deleted` | данные сессии |
 | `error` | `code`, `message`, `reply_to?` |
@@ -424,13 +425,13 @@ class ToolResult:
 | `search_files(pattern, path, glob?)` | allow | Регекс-поиск (через `rg`, если есть, иначе Python) |
 | `write_file(path, content)` | ask | Создать или перезаписать. В подтверждении показывается дифф. |
 | `edit_file(path, old, new)` | ask | Точная замена, `old` должен встречаться ровно 1 раз |
-| `run_command(command, cwd?, timeout_s=120)` | ask | `zsh -lc`, stdout+stderr, код выхода. Таймаут убивает процесс. |
-| `web_fetch(url)` | allow | Скачать страницу и извлечь текст. Только http(s), до 5 MB, таймаут 20 с. |
+| `run_command(command, cwd?, timeout_s=120)` | ask | `zsh -lc` в своей группе процессов, stdout+stderr, код выхода. Таймаут и отмена: SIGTERM группе, через 3 с SIGKILL. Фоновые задачи команды останавливаются, когда она заканчивается, поэтому серверы так не запускают. |
+| `web_fetch(url)` | allow | Скачать страницу и извлечь основной текст (trafilatura). Только http(s), до 5 MB, таймаут 20 с, до 5 редиректов. Адрес этого компьютера или локальной сети требует подтверждения (даже при bypass); редирект на такой адрес с другого хоста отклоняется. |
 | `memory_save(text, tags?)` | allow | Раздел 11 |
 | `memory_search(query)` | allow | Раздел 11 |
 | `memory_delete(id)` | ask | Раздел 11 |
 | `set_expression(pose, mood)` | allow | Раздел 10 |
-| `send_file(path)` | allow | Отдать файл пользователю: копия в `files/`, событие с `ContentPart file` |
+| `send_file(path)` | allow | Отдать файл пользователю: копия в `files/<id>/`, событие `file`. До 100 MB. |
 
 ### 9.3 Действия клиента
 - Каждое `action` из `hello` превращается в инструмент с тем же именем, описанием и схемой.
@@ -496,8 +497,9 @@ CREATE TABLE messages (
 );
 CREATE INDEX idx_messages_session ON messages(session_id, created_at);
 
-CREATE TABLE tool_runs (
-  call_id TEXT PRIMARY KEY,
+CREATE TABLE tool_runs (            -- версия 2: свой id, call_id может повторяться
+  id TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   turn_id TEXT NOT NULL,
   tool TEXT NOT NULL,
@@ -509,6 +511,7 @@ CREATE TABLE tool_runs (
   duration_ms INTEGER,
   created_at TEXT NOT NULL
 );
+CREATE INDEX idx_tool_runs_turn ON tool_runs(session_id, turn_id);
 
 CREATE TABLE memories (
   id TEXT PRIMARY KEY, text TEXT NOT NULL, tags TEXT,
@@ -521,6 +524,7 @@ CREATE TABLE approval_rules (
 );
 ```
 - Время хранится в ISO-8601 UTC. Id — UUID4 (или UUIDv7 для сортируемости).
+- Схема меняется только новыми файлами миграций. `0002_tool_runs_own_id.sql` дала `tool_runs` собственный `id`: `call_id` придумывает модель, и он может повторяться между ходами.
 - Заголовок сессии: после первого хода (с любым статусом) мозг делает короткий отдельный запрос к модели (5–7 слов) и шлёт `session.updated` уже после `turn.finished`. С FakeProvider запроса нет: берутся первые 6 слов сообщения. Они же служат запасным вариантом, если модель упала, не ответила за 15 с или вернула пустой ответ. Название, которое дал пользователь, автозаголовок не затирает, `updated_at` при этом не меняется.
 
 ---
