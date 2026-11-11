@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 from zero.approvals.manager import ApprovalAsk, Approver
 from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
+from zero.protocol.messages import ContentPart, Envelope, FilePart, ImagePart, TextPart
 from zero.providers.base import ToolCall, ToolSpec
 from zero.tools.permissions import PathGuard, decide
 
@@ -71,6 +71,12 @@ def cancelled_result() -> ToolResult:
     return ToolResult(content=[TextPart(text=CANCELLED)], is_error=True, cancelled=True)
 
 
+class EventPublisher(Protocol):
+    """Sends an event to every connected client."""
+
+    async def publish(self, event: Envelope) -> None: ...
+
+
 class ApprovalRules(Protocol):
     """Where the user's "always allow" answers are kept."""
 
@@ -101,6 +107,7 @@ class ToolContext:
     paths: PathGuard  # every path a tool touches goes through ``paths.check``
     approvals: Approver | None = None  # None when there is no one to ask
     approval_rules: ApprovalRules | None = None  # None: no saved rules apply
+    events: EventPublisher | None = None  # for tools that tell clients about a change
 
 
 class Tool[InputT: BaseModel](ABC):

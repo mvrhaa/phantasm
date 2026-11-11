@@ -43,10 +43,13 @@ def test_initial_migration_ships_with_the_package() -> None:
     assert (MIGRATIONS_DIR / "0001_init.sql").is_file()
 
 
+LATEST = max(int(path.name.split("_")[0]) for path in MIGRATIONS_DIR.glob("*.sql"))
+
+
 async def test_fresh_database_is_migrated_to_the_latest_version() -> None:
     async with Database(db_path()) as database:
-        assert await database.migrate() == [1, 2, 3]
-        assert await database.version() == 3
+        assert await database.migrate() == list(range(1, LATEST + 1))
+        assert await database.version() == LATEST
         assert await database.migrate() == []
 
 
@@ -63,6 +66,7 @@ async def test_tables_exist_after_migration(db: Database) -> None:
         "memories_fts_data",
         "memories_fts_docsize",
         "memories_fts_idx",
+        "todos",
     }
 
 

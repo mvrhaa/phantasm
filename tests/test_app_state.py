@@ -10,7 +10,7 @@ from zero.paths import db_path, token_path
 from zero.protocol.messages import TextPart
 from zero.server.app import create_app
 from zero.server.state import AppState, get_state
-from zero.store.db import MigrationError
+from zero.store.db import MIGRATIONS_DIR, MigrationError
 
 
 def test_startup_opens_a_migrated_database_in_zero_home() -> None:
@@ -22,7 +22,8 @@ def test_startup_opens_a_migrated_database_in_zero_home() -> None:
 
         assert db_path().is_file()
         assert state.db.path == db_path()
-        assert client.portal.call(state.db.version) == 3
+        latest = max(int(path.name.split("_")[0]) for path in MIGRATIONS_DIR.glob("*.sql"))
+        assert client.portal.call(state.db.version) == latest
         assert client.get("/health").status_code == 200
 
 

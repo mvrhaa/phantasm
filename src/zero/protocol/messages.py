@@ -253,6 +253,17 @@ class HistoryMessage(BaseModel):
     created_at: datetime
 
 
+TodoStatus = Literal["pending", "in_progress", "done"]
+
+
+class TodoItem(BaseModel):
+    """One item of a session's todo list."""
+
+    number: int
+    text: str
+    status: TodoStatus = "pending"
+
+
 class ToolRun(BaseModel):
     """A finished tool call as returned by ``history.ok``."""
 
@@ -370,6 +381,14 @@ class ApprovalResolved(TurnEvent):
     by_client_id: str
 
 
+class TodoUpdated(Envelope):
+    """The todo list of a session changed; carries the whole list."""
+
+    type: Literal["todo.updated"] = "todo.updated"
+    session_id: str
+    items: list[TodoItem] = Field(default_factory=list)
+
+
 class FileSent(TurnEvent):
     """A file was sent to the user, e.g. by ``send_file``; clients show it in the chat."""
 
@@ -449,6 +468,7 @@ ServerEvent = Annotated[
     | ApprovalRequest
     | ApprovalResolved
     | FileSent
+    | TodoUpdated
     | Expression
     | TurnFinished
     | SessionListOk

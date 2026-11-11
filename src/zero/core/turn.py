@@ -165,6 +165,7 @@ class Turn:
             paths=PathGuard.from_config(config.permissions),
             approvals=approvals,
             approval_rules=approval_rules,
+            events=events,
         )
         self._runner = ToolRunner(
             session_id=session_id,
