@@ -36,10 +36,16 @@ class SessionsRepo:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    async def create(self, title: str | None = None) -> Session:
-        """Create a session, optionally with a title, and return it."""
+    async def create(self, title: str | None = None, *, session_id: str | None = None) -> Session:
+        """Create a session, optionally with a title, and return it.
+
+        The id is a new UUID unless ``session_id`` names one, as the scheduler
+        does for the session of a schedule.
+        """
         now = clock.now()
-        session = Session(id=str(uuid.uuid4()), title=title, created_at=now, updated_at=now)
+        session = Session(
+            id=session_id or str(uuid.uuid4()), title=title, created_at=now, updated_at=now
+        )
         await self._db.conn.execute(
             "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
             (session.id, session.title, clock.to_iso(now), clock.to_iso(now)),

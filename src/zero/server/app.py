@@ -14,9 +14,11 @@ from zero.core.turn_manager import TurnManager
 from zero.paths import db_path
 from zero.providers.base import LLMProvider
 from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
+from zero.server.turns import start_scheduled_turn
 from zero.server.ws import router as ws_router
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
@@ -51,7 +53,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """Open and migrate the database on startup, close it on shutdown."""
+        """Open and migrate the database and start the scheduler; undo it all on shutdown."""
         db = Database(db_path())
         await db.connect()
         try:
@@ -59,7 +61,8 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             connections = ConnectionManager()
             events = EventBus(connections)
             memory = MemoryRepo(db)
-            app.state.zero = AppState(
+            schedules = SchedulesRepo(db)
+            app.state.zero = state = AppState(
                 config=config,
                 db=db,
                 sessions=SessionsRepo(db),
@@ -68,19 +71,24 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=events,
                 turns=TurnManager(),
-                tools=builtin_registry(memory, TodoRepo(db), SchedulesRepo(db)),
+                tools=builtin_registry(memory, TodoRepo(db), schedules),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
                 actions=ActionBroker(connections),
                 memory=memory,
+                schedules=schedules,
+                scheduler=SchedulerRunner(
+                    schedules, lambda schedule: start_scheduled_turn(state, schedule)
+                ),
                 provider=provider or _choose_provider(config),
             )
-            turns = app.state.zero.turns
+            state.scheduler.start()
             try:
                 yield
             finally:
-                await turns.shutdown()
+                await state.scheduler.stop()
+                await state.turns.shutdown()
         finally:
             app.state.zero = None
             await db.close()

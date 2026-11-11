@@ -7,12 +7,12 @@ from functools import partial
 from zero.core.attachments import AttachmentError, save_attachments
 from zero.core.events import ReplyTo
 from zero.core.titles import title_new_session
-from zero.core.turn import Turn
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
 from zero.server.state import AppState
+from zero.server.turns import make_turn
 from zero.tools.permissions import PathGuard
 
 logger = logging.getLogger(__name__)
@@ -94,24 +94,15 @@ async def handle_message_send(
             events=state.events,
         )
     state.turns.start(
-        Turn(
+        make_turn(
+            state,
+            state.provider,
             session_id=session.id,
             text=message.text,
             source=message.source,
             client=connection.hello,
-            config=state.config,
-            provider=state.provider,
-            sessions=state.sessions,
-            messages=state.messages,
-            events=state.events,
-            tools=state.tools,
-            approvals=state.approvals,
-            approval_rules=state.approval_rules,
-            tool_runs=state.tool_runs,
-            action_caller=state.actions,
-            memory=state.memory,
-            attachments=attachments,
             reply=ReplyTo(connection.id, message.id),
+            attachments=attachments,
         ),
         after=after,
     )

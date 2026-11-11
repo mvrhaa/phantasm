@@ -9,11 +9,13 @@ from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
+from zero.scheduler.runner import SchedulerRunner
 from zero.server.connections import ConnectionManager
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
+from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import ToolRegistry
@@ -38,6 +40,8 @@ class AppState:
     tool_runs: ToolRunsRepo
     actions: ActionBroker  # client actions waiting for an action.result
     memory: MemoryRepo
+    schedules: SchedulesRepo
+    scheduler: SchedulerRunner
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 
