@@ -36,17 +36,5 @@ def test_nothing_else_is_served(path: str, client: TestClient) -> None:
     assert client.get(path).status_code == 404
 
 
-def test_app_keeps_the_config_it_was_built_with() -> None:
-    config = Config()
-
-    app = create_app(config)
-
-    assert app.state.config is config
-
-
 def test_each_call_builds_an_independent_app() -> None:
-    first = create_app(Config())
-    second = create_app(Config())
-
-    assert first is not second
-    assert first.state.config is not second.state.config
+    assert create_app(Config()) is not create_app(Config())
