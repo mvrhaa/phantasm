@@ -56,6 +56,22 @@ def _environment(client: ClientInfo | None, source: str) -> str | None:
     return "\n".join(["# Environment", "", *lines])
 
 
+def _agent_role(name: str) -> str:
+    return "\n".join(
+        [
+            "# Your role",
+            "",
+            f"You are {name}, an agent: a copy of Zero that the main conversation started to "
+            "do one task on its own. The task is the first message; you see nothing else of "
+            "that conversation. Work on it with your tools until it is done. Nobody watches "
+            "you work, but the user may be asked to approve risky steps.",
+            "",
+            "When you are done, reply with a short report of what you did and found. That "
+            "reply is sent back to the conversation that started you.",
+        ]
+    )
+
+
 def _expression(character: Character) -> str:
     return "\n".join(
         [
@@ -123,6 +139,7 @@ def build_system_prompt(
     now: datetime,
     tz: tzinfo | None = None,
     summary: str | None = None,
+    agent_name: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
@@ -131,12 +148,14 @@ def build_system_prompt(
     long conversation, and the current time last because it always changes.
     Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
+    ``agent_name`` turns the prompt into an agent's: its role follows the environment.
     """
     character = client.character if client is not None else None
     blocks = [
         _base_rules(),
         _persona(character) if character else None,
         _environment(client, source),
+        _agent_role(agent_name) if agent_name else None,
         _expression(character) if character else None,
         _memories(memories) if memories else None,
         _summary(summary) if summary else None,

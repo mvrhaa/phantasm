@@ -214,6 +214,14 @@ class ToolRegistry:
             result._tools[tool.name] = tool
         return result
 
+    def without(self, prefix: str) -> "ToolRegistry":
+        """A new registry with every tool except those whose name starts with ``prefix``."""
+        registry = ToolRegistry()
+        for name, tool in self._tools.items():
+            if not name.startswith(prefix):
+                registry.register(tool)
+        return registry
+
     def get(self, name: str) -> Tool[Any] | None:
         """The tool with this name, or None."""
         return self._tools.get(name)

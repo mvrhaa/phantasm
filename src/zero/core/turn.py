@@ -16,6 +16,7 @@ from zero.core.expression import EXPRESSION_TOOL, ExpressionTool
 from zero.core.prompting import MemorySource, PromptBuilder
 from zero.core.tool_runner import ToolRunner, ToolRunRecorder
 from zero.protocol.messages import (
+    AgentRef,
     ClientInfo,
     ContentPart,
     FilePart,
@@ -97,6 +98,7 @@ class Turn:
     ``memory`` gives the facts about the user that go into the system prompt;
     ``summaries`` lets a long history be compacted into a summary.
     ``tool_runs`` keeps a record of the tool calls for the history.
+    ``agent`` is set when the turn is an agent's work: its prompt gets the agent's role.
     """
 
     def __init__(
@@ -118,6 +120,7 @@ class Turn:
         action_caller: ActionCaller | None = None,
         memory: MemorySource | None = None,
         summaries: SummariesRepo | None = None,
+        agent: AgentRef | None = None,
         attachments: Sequence[FilePart] = (),
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
@@ -126,6 +129,8 @@ class Turn:
         self.session_id = session_id
         self.cancel = CancelToken()
         self.done = False  # set once everything is saved, just before turn.finished
+        self.finished: TurnFinished | None = None  # the turn.finished it announced
+        self.agent = agent
         self._text = text
         self._source: Source = source
         self._client = client
@@ -153,6 +158,7 @@ class Turn:
             events=events,
             memory=memory,
             summaries=summaries,
+            agent_name=agent.name if agent is not None else None,
         )
         self._attachments = list(attachments)
         self._retry_delays = tuple(retry_delays)
@@ -223,17 +229,16 @@ class Turn:
             )
         await self._sessions.touch(self.session_id)
         self.done = True
-        await self._events.publish(
-            TurnFinished(
-                session_id=self.session_id,
-                turn_id=self.id,
-                status=status,
-                text=progress.text,
-                expression=self._expression.final if self._expression is not None else None,
-                usage=progress.usage,
-                error=error,
-            )
+        self.finished = TurnFinished(
+            session_id=self.session_id,
+            turn_id=self.id,
+            status=status,
+            text=progress.text,
+            expression=self._expression.final if self._expression is not None else None,
+            usage=progress.usage,
+            error=error,
         )
+        await self._events.publish(self.finished)
 
     async def _steps(self, progress: _Progress) -> bool:
         """Call the model step by step until it answers without asking for tools.

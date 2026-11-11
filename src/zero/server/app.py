@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from zero import APP_NAME, __version__
+from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
@@ -18,9 +19,10 @@ from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
-from zero.server.turns import start_scheduled_turn
+from zero.server.turns import start_agent_turn, start_scheduled_turn
 from zero.server.ws import CLOSE_GOING_AWAY
 from zero.server.ws import router as ws_router
+from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.memory import MemoryRepo
@@ -83,16 +85,22 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             events = EventBus(connections)
             memory = MemoryRepo(db)
             schedules = SchedulesRepo(db)
+            sessions = SessionsRepo(db)
+            agents = AgentsRepo(db)
+            agent_runner = AgentRunner(
+                agents, sessions, events, lambda agent, text: start_agent_turn(state, agent, text)
+            )
+            await agent_runner.recover()
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
-                sessions=SessionsRepo(db),
+                sessions=sessions,
                 messages=MessagesRepo(db),
                 token=get_or_create_token(),
                 connections=connections,
                 events=events,
                 turns=TurnManager(),
-                tools=builtin_registry(memory, TodoRepo(db), schedules),
+                tools=builtin_registry(memory, TodoRepo(db), schedules, agent_runner),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
@@ -100,6 +108,8 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 memory=memory,
                 schedules=schedules,
                 summaries=SummariesRepo(db),
+                agents=agents,
+                agent_runner=agent_runner,
                 scheduler=SchedulerRunner(
                     schedules, lambda schedule: start_scheduled_turn(state, schedule)
                 ),

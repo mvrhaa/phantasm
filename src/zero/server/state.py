@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI
 
+from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
@@ -11,6 +12,7 @@ from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.connections import ConnectionManager
+from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.memory import MemoryRepo
@@ -43,6 +45,8 @@ class AppState:
     memory: MemoryRepo
     schedules: SchedulesRepo
     summaries: SummariesRepo
+    agents: AgentsRepo
+    agent_runner: AgentRunner
     scheduler: SchedulerRunner
     provider: LLMProvider | None  # None when the config names an unusable provider
     stopping: bool = False  # set when the service starts to shut down

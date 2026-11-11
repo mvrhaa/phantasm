@@ -450,6 +450,32 @@ class SessionCompacted(Envelope):
     until_message_id: str  # the last message the summary covers
 
 
+class AgentRef(BaseModel):
+    """Which agent something belongs to."""
+
+    id: str
+    name: str
+
+
+class AgentInfo(AgentRef):
+    """What clients are told about an agent."""
+
+    parent_session_id: str
+    session_id: str | None = None  # None once the agent's session is deleted
+    task: str
+    status: AgentStatus
+    report: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentUpdated(Envelope):
+    """An agent was started or its status changed; carries the whole agent."""
+
+    type: Literal["agent.updated"] = "agent.updated"
+    agent: AgentInfo
+
+
 class SessionDeleted(Envelope):
     """A session was deleted."""
 
@@ -486,6 +512,7 @@ ServerEvent = Annotated[
     | SessionUpdated
     | SessionDeleted
     | SessionCompacted
+    | AgentUpdated
     | HistoryOk,
     Field(discriminator="type"),
 ]

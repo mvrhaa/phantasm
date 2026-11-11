@@ -1,15 +1,18 @@
-"""Building turns from the application state, for messages and for schedules."""
+"""Building turns from the application state, for messages, schedules and agents."""
 
 import logging
 from collections.abc import Sequence
 
 from zero.core.events import ReplyTo
 from zero.core.turn import Turn
-from zero.protocol.messages import ClientInfo, FilePart, SessionCreated, SessionInfo
+from zero.protocol.messages import AgentRef, ClientInfo, FilePart, SessionCreated, SessionInfo
 from zero.providers.base import LLMProvider
 from zero.server.state import AppState
+from zero.store.agents import Agent
 from zero.store.messages import Source
 from zero.store.schedules import Schedule
+from zero.tools.base import ToolRegistry
+from zero.tools.builtin.agents import AGENT_TOOL_PREFIX
 
 TITLE_CHARS = 60
 
@@ -26,8 +29,13 @@ def make_turn(
     client: ClientInfo | None = None,
     reply: ReplyTo | None = None,
     attachments: Sequence[FilePart] = (),
+    agent: AgentRef | None = None,
+    tools: ToolRegistry | None = None,
 ) -> Turn:
-    """A turn wired to everything the application has: tools, approvals, memory and so on."""
+    """A turn wired to everything the application has: tools, approvals, memory and so on.
+
+    ``tools`` replaces the shared registry, ``agent`` marks an agent's turn.
+    """
     return Turn(
         session_id=session_id,
         text=text,
@@ -38,13 +46,14 @@ def make_turn(
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,
-        tools=state.tools,
+        tools=tools if tools is not None else state.tools,
         approvals=state.approvals,
         approval_rules=state.approval_rules,
         tool_runs=state.tool_runs,
         action_caller=state.actions,
         memory=state.memory,
         summaries=state.summaries,
+        agent=agent,
         attachments=attachments,
         reply=reply,
     )
@@ -75,3 +84,28 @@ async def start_scheduled_turn(state: AppState, schedule: Schedule) -> None:
             state, state.provider, session_id=session.id, text=schedule.task, source="scheduler"
         )
     )
+
+
+async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
+    """Run ``text`` as a turn in the agent's session, with every tool but the agent ones.
+
+    The agent runner hears how the turn ended once ``turn.finished`` is out.
+    """
+    if state.provider is None or agent.session_id is None:
+        logger.warning("Agent %s cannot work: no provider or no session", agent.id)
+        await state.agent_runner.finished(agent.id, None)
+        return
+    turn = make_turn(
+        state,
+        state.provider,
+        session_id=agent.session_id,
+        text=text,
+        source="agent",
+        agent=AgentRef(id=agent.id, name=agent.name),
+        tools=state.tools.without(AGENT_TOOL_PREFIX),
+    )
+
+    async def report() -> None:
+        await state.agent_runner.finished(agent.id, turn.finished)
+
+    state.turns.start(turn, after=report)

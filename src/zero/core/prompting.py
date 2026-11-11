@@ -47,6 +47,7 @@ class PromptBuilder:
         events: EventBus,
         memory: MemorySource | None = None,
         summaries: SummariesRepo | None = None,
+        agent_name: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -57,6 +58,7 @@ class PromptBuilder:
         self._events = events
         self._memory = memory
         self._summaries = summaries
+        self._agent_name = agent_name
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -82,6 +84,7 @@ class PromptBuilder:
             [memory.text for memory in memories],
             now=clock.now(),
             summary=summary,
+            agent_name=self._agent_name,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),
