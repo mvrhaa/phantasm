@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -24,7 +25,20 @@ _LEVELS = {
     "CRITICAL": logging.CRITICAL,
 }
 
+_TOKEN_IN_URL = re.compile(r"(token=)[^&\s\"']+", re.IGNORECASE)
+
 logger = logging.getLogger(__name__)
+
+
+class RedactTokenFilter(logging.Filter):
+    """Hide the access token when a URL with ``?token=`` gets logged."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "token=" in message.lower():
+            record.msg = _TOKEN_IN_URL.sub(r"\1***", message)
+            record.args = None
+        return True
 
 
 def log_file_path() -> Path:
@@ -74,6 +88,7 @@ def setup_logging() -> Path:
     root = logging.getLogger()
     for handler in (file_handler, console_handler):
         handler.setFormatter(_formatter())
+        handler.addFilter(RedactTokenFilter())
         root.addHandler(handler)
     root.setLevel(level)
 

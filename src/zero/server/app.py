@@ -10,6 +10,7 @@ from zero.config import Config
 from zero.paths import db_path
 from zero.server.auth import get_or_create_token
 from zero.server.state import AppState
+from zero.server.ws import router as ws_router
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
@@ -55,4 +56,5 @@ def create_app(config: Config) -> FastAPI:
         """Report that this is a running Zero instance. Needs no authorization."""
         return {"app": APP_ID, "version": __version__, "status": "ok"}
 
+    app.include_router(ws_router)
     return app
