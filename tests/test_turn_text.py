@@ -186,6 +186,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "write_file",
         "edit_file",
         "run_command",
+        "web_fetch",
         "set_expression",
     ]
     assert system.role == "system"
