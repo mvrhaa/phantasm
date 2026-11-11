@@ -110,6 +110,7 @@ def test_builtin_tools_are_registered_and_allowed() -> None:
         "list_dir",
         "search_files",
         "write_file",
+        "edit_file",
     ]
     assert {registry.get(name).default_policy for name in ("read_file", "list_dir")} == {"allow"}  # type: ignore[union-attr]
     assert builtin.files.ReadFile().label(ReadFileInput(path="~/a.md")) == "~/a.md"

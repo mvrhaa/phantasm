@@ -1,4 +1,4 @@
-"""Built-in tools that change files: ``write_file``.
+"""Built-in tools that change files: ``write_file`` and ``edit_file``.
 
 A change is shown to the user as a unified diff before it is made, and files
 are replaced atomically, so a failed write never leaves half a file behind.
@@ -158,3 +158,99 @@ class WriteFile(Tool[WriteFileInput]):
             return error_result(f"Cannot write {shown}: {exc.strerror or exc}.")
         verb = "Wrote" if target.exists else "Created"
         return text_result(f"{verb} {shown} ({summary}).", summary=summary)
+
+
+# --- edit_file ---------------------------------------------------------------
+
+
+class EditFileInput(BaseModel):
+    path: str = Field(description=PATH_HELP)
+    old: str = Field(
+        min_length=1,
+        description="Exact text to replace; it must appear in the file exactly once",
+    )
+    new: str = Field(description="Text to put in its place")
+
+
+def _occurrences(text: str, part: str) -> int:
+    """How many times ``part`` appears in ``text``, overlapping matches included."""
+    count = 0
+    start = text.find(part)
+    while start != -1:
+        count += 1
+        start = text.find(part, start + 1)
+    return count
+
+
+def plan_edit(params: EditFileInput, guard: PathGuard) -> tuple[Target, str] | str:
+    """The file as it is and as it will be after the edit, or an error for the model.
+
+    If the file uses Windows line endings (CRLF) and ``old`` does not match as
+    it is, ``old`` and ``new`` are tried with CRLF line endings: read_file shows
+    lines without the carriage return, so the model usually sends plain LF.
+    """
+    shown = params.path
+    target = load_target(shown, guard)
+    if isinstance(target, str):
+        return target
+    if not target.exists:
+        return f"{shown} does not exist; use write_file to create it."
+    if target.old is None:
+        return f"{shown} is a binary file and cannot be edited."
+    if params.old == params.new:
+        return "old and new are the same, so there is nothing to change."
+
+    old, new = params.old, params.new
+    count = _occurrences(target.old, old)
+    if count == 0 and "\r\n" in target.old and "\n" in old:
+        old, new = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
+        count = _occurrences(target.old, old)
+    if count == 0:
+        return (
+            f"old was not found in {shown}. Copy it exactly as it is in the file, "
+            "without the line numbers read_file shows."
+        )
+    if count > 1:
+        return (
+            f"old appears {count} times in {shown}; include more of the surrounding "
+            "lines so that it matches exactly once."
+        )
+    return target, target.old.replace(old, new, 1)
+
+
+class EditFile(Tool[EditFileInput]):
+    """Replaces one exact piece of text in a file."""
+
+    name = "edit_file"
+    description = (
+        "Change part of a file: replace the exact text old with new. old must appear in "
+        "the file exactly once; include enough surrounding lines to make it unique. "
+        "The user usually sees the change as a diff and approves it first."
+    )
+    input_model = EditFileInput
+    default_policy = "ask"
+
+    def label(self, params: EditFileInput) -> str:
+        return params.path
+
+    async def preview(self, params: EditFileInput, ctx: ToolContext) -> Preview:
+        plan = await asyncio.to_thread(plan_edit, params, ctx.paths)
+        if isinstance(plan, str):
+            return Preview(refusal=plan)
+        target, edited = plan
+        return Preview(diff=truncate_text(make_diff(params.path, target, edited), MAX_OUTPUT_CHARS))
+
+    async def run(self, params: EditFileInput, ctx: ToolContext) -> ToolResult:
+        return await asyncio.to_thread(self._edit, params, ctx)
+
+    def _edit(self, params: EditFileInput, ctx: ToolContext) -> ToolResult:
+        plan = plan_edit(params, ctx.paths)  # again: the file may have changed meanwhile
+        if isinstance(plan, str):
+            return error_result(plan)
+        target, edited = plan
+        summary = diff_summary(make_diff(params.path, target, edited))
+        try:
+            write_atomically(target.path, edited)
+        except OSError as exc:
+            return error_result(f"Cannot write {params.path}: {exc.strerror or exc}.")
+        return text_result(f"Edited {params.path} ({summary}).", summary=summary)

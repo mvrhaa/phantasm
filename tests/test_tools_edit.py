@@ -1,4 +1,4 @@
-"""Tests for the built-in tools that change files: write_file."""
+"""Tests for the built-in tools that change files: write_file and edit_file."""
 
 import os
 import stat
@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.turns import FakeApprover, text_of
-from zero.approvals.manager import Decision
+from zero.approvals.manager import Answer, ApprovalAsk, Decision
 from zero.config import Config
 from zero.core.cancellation import CancelToken
 from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
@@ -269,6 +269,156 @@ async def test_read_file_set_to_ask_also_refuses_outside_paths_without_asking(ho
 
     assert "outside the folders tools may use" in text_of(result)
     assert approver.asked == []
+
+
+# --- edit_file ---------------------------------------------------------------
+
+
+async def edit(path: str, old: str, new: str, approver: FakeApprover | None = None) -> ToolResult:
+    config = Config()
+    ctx = ToolContext(
+        session_id="s1",
+        turn_id="t1",
+        client_id="c1",
+        cancel=CancelToken(),
+        config=config,
+        paths=PathGuard.from_config(config.permissions),
+        approvals=approver if approver is not None else FakeApprover("allow"),
+    )
+    call = ToolCall(id="e", name="edit_file", input={"path": path, "old": old, "new": new})
+    return await builtin_registry().execute(call, ctx)
+
+
+@pytest.fixture
+def app_py(home: Path) -> Path:
+    path = home / "app.py"
+    path.write_text("def main():\n    print('hi')\n\n\ndef helper():\n    print('hi')\n")
+    return path
+
+
+async def test_edit_replaces_the_one_match(app_py: Path) -> None:
+    result = await edit(
+        "~/app.py", "def main():\n    print('hi')", "def main():\n    print('hello')"
+    )
+
+    assert app_py.read_text() == (
+        "def main():\n    print('hello')\n\n\ndef helper():\n    print('hi')\n"
+    )
+    assert (text_of(result), result.summary) == ("Edited ~/app.py (+1 -1).", "+1 -1")
+
+
+async def test_edit_shows_the_diff_for_approval(app_py: Path) -> None:
+    approver = FakeApprover("allow")
+
+    await edit("~/app.py", "def helper():", "def assist():", approver)
+
+    (ask,) = approver.asked
+    assert ask.tool == "edit_file"
+    assert ask.diff is not None
+    assert "-def helper():\n+def assist():" in ask.diff
+    assert ask.diff.startswith("--- ~/app.py\n+++ ~/app.py\n")
+
+
+async def test_edit_can_add_and_remove_lines(app_py: Path) -> None:
+    result = await edit("~/app.py", "\n\ndef helper():\n    print('hi')\n", "\n")
+
+    assert app_py.read_text() == "def main():\n    print('hi')\n\n"
+    assert result.summary == "+0 -3"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("print('hi')", "print('yo')", "old appears 2 times in ~/app.py"),
+        ("print('bye')", "x", "old was not found in ~/app.py. Copy it exactly"),
+        ("     1\tdef main():", "x", "old was not found in ~/app.py"),
+        ("def main():", "def main():", "old and new are the same"),
+    ],
+    ids=["twice", "missing", "with line numbers", "no change"],
+)
+async def test_edit_that_cannot_work_is_refused_without_asking(
+    app_py: Path, old: str, new: str, message: str
+) -> None:
+    before = app_py.read_text()
+    approver = FakeApprover("allow")
+
+    result = await edit("~/app.py", old, new, approver)
+
+    assert result.is_error
+    assert text_of(result).startswith(message)
+    assert approver.asked == []
+    assert app_py.read_text() == before
+
+
+async def test_overlapping_matches_count(home: Path) -> None:
+    (home / "a.txt").write_text("aaa")
+
+    result = await edit("~/a.txt", "aa", "b")
+
+    assert text_of(result).startswith("old appears 2 times")
+
+
+async def test_missing_file_points_to_write_file(home: Path) -> None:
+    result = await edit("~/nope.txt", "a", "b")
+
+    assert text_of(result) == "~/nope.txt does not exist; use write_file to create it."
+
+
+async def test_binary_file_cannot_be_edited(home: Path) -> None:
+    (home / "x.bin").write_bytes(b"ab\x00cd")
+
+    assert (
+        text_of(await edit("~/x.bin", "ab", "xy"))
+        == "~/x.bin is a binary file and cannot be edited."
+    )
+
+
+async def test_empty_old_is_invalid_input(app_py: Path) -> None:
+    result = await edit("~/app.py", "", "x")
+
+    assert "old: String should have at least 1 character" in text_of(result)
+
+
+async def test_protected_file_is_refused_without_asking(home: Path) -> None:
+    (home / ".ssh" / "config").write_text("Host x\n")
+    approver = FakeApprover("allow")
+
+    result = await edit("~/.ssh/config", "Host x", "Host y", approver)
+
+    assert text_of(result) == "~/.ssh/config is in a protected location."
+    assert approver.asked == []
+
+
+async def test_windows_line_endings_still_match_and_are_kept(home: Path) -> None:
+    path = home / "win.txt"
+    path.write_bytes(b"one\r\ntwo\r\nthree\r\n")
+
+    result = await edit("~/win.txt", "one\ntwo", "one\n2")
+
+    assert path.read_bytes() == b"one\r\n2\r\nthree\r\n"
+    assert result.summary == "+1 -1"
+
+
+async def test_denied_edit_changes_nothing(app_py: Path) -> None:
+    before = app_py.read_text()
+
+    result = await edit("~/app.py", "def helper():", "def assist():", FakeApprover("deny"))
+
+    assert result.denied
+    assert app_py.read_text() == before
+
+
+async def test_edit_checks_the_file_again_after_approval(app_py: Path) -> None:
+    class ChangesTheFileWhileAsking(FakeApprover):
+        async def request(self, ask: ApprovalAsk, cancel: CancelToken) -> Answer:
+            app_py.write_text("someone else rewrote this file\n")
+            return await super().request(ask, cancel)
+
+    result = await edit("~/app.py", "def helper():", "def assist():", ChangesTheFileWhileAsking())
+
+    assert result.is_error
+    assert text_of(result).startswith("old was not found in ~/app.py")
+    assert app_py.read_text() == "someone else rewrote this file\n"
 
 
 # --- Over the WebSocket ------------------------------------------------------
