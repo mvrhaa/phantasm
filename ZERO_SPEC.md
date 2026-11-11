@@ -64,6 +64,7 @@ zero/
   src/zero/
     __init__.py              # __version__, APP_NAME
     __main__.py              # `python -m zero` → запуск сервера
+    cli.py                   # команда `zero`: serve, token, doctor, config path
     config.py                # загрузка/сохранение конфига, пути
     paths.py                 # пути macOS
     logging_setup.py
@@ -78,6 +79,8 @@ zero/
     core/
       turn.py                # agent loop (один «ход»)
       context.py             # сборка промпта: system + память + история
+      prompting.py           # промпт хода: память, история, саммари (этап 6)
+      compaction.py          # сжатие старой истории в саммари (этап 6)
       expression.py          # позы/настроения
       cancellation.py
     providers/
@@ -105,7 +108,8 @@ zero/
       messages.py
       memory.py
       approvals.py           # сохранённые «always allow»
-    scheduler/               # этап 6
+      todo.py, schedules.py, summaries.py   # этап 6
+    scheduler/               # этап 6: rules.py (разбор «когда»), runner.py (фоновый запуск)
     agents/                  # этап 7
   tests/
     conftest.py
@@ -167,8 +171,9 @@ zero/
 - `python -m zero` (или `zero serve`) поднимает uvicorn на `127.0.0.1:<port>`.
 - Если порт занят другим экземпляром Zero (проверка через `GET /health`), процесс завершается с кодом 0 и сообщением «уже запущен».
 - При первом запуске генерируется `token` (32 байта, `secrets.token_urlsafe`) с правами `600`.
-- `scripts/install_launchagent.py` ставит `~/Library/LaunchAgents/<bundle-id>.zero.plist` (`RunAtLoad`, `KeepAlive`). Есть флаг `--uninstall`.
-- Корректное завершение по SIGTERM: текущие ходы отменяются, ожидающие подтверждения отклоняются, БД закрывается.
+- Команда `zero`: `serve` (то же, что `python -m zero`), `token` (показать токен), `doctor` (папки, конфиг, версия схемы БД, права токена, порт, провайдер, `rg`; ничего не создаёт и не меняет, код выхода 1 при проблемах), `config path`.
+- `scripts/install_launchagent.py` ставит `~/Library/LaunchAgents/local.zero.brain.plist` и загружает его через `launchctl bootstrap gui/<uid>`: `RunAtLoad`, `KeepAlive: {SuccessfulExit: false}` (перезапуск только после падения, штатный выход «уже запущен» не зацикливается), `PATH` из окружения установки, вывод в `~/Library/Logs/Zero`. Флаги `--uninstall` и `--print`.
+- Корректное завершение по SIGTERM/SIGINT (до того, как uvicorn рвёт соединения): новые `message.send` получают `error internal`, новые подключения закрываются с 1001, планировщик останавливается, все ходы отменяются и получают 5 с, чтобы закончиться штатно (потом обрываются). Ожидающие подтверждения отклоняются: клиенты получают `approval.resolved` с `decision: "deny"` и `by_client_id: "zero"`; ожидание `action.result` прекращается. Затем клиенты закрываются с кодом 1001, БД закрывается.
 
 ### HTTP-эндпоинты
 | Метод | Путь | Назначение |
@@ -253,11 +258,13 @@ Zero → клиент:
 | `tool.finished` | `call_id`, `status: "ok"\|"error"\|"denied"\|"cancelled"`, `summary` (`exit 1`, `+79 lines`, `3 matches`), `output_preview`, `duration_ms` |
 | `action.call` | `call_id`, `action`, `input` — только клиенту, который должен исполнить |
 | `approval.request` | `approval_id`, `tool`, `label`, `input`, `reason` (зачем), `diff?` (для правок файлов) |
-| `approval.resolved` | `approval_id`, `decision`, `by_client_id` (чтобы другие клиенты убрали карточку) |
+| `approval.resolved` | `approval_id`, `decision`, `by_client_id` (чтобы другие клиенты убрали карточку). Если ход закончился раньше ответа (отмена, остановка сервиса), приходит `decision: "deny"`, `by_client_id: "zero"`. |
 | `expression` | `pose`, `mood` — можно слать посреди хода |
 | `file` | `call_id?`, `file: ContentPart file` — пользователю отдали файл (например, через `send_file`); клиент показывает его в чате |
 | `turn.finished` | `status: "ok"\|"error"\|"cancelled"\|"max_steps"`, `text` (весь текст хода: склейка всех `text.delta` без разделителей), `expression: {pose, mood}`, `usage: {input_tokens, output_tokens}`, `error?` |
 | `session.created` / `session.updated` / `session.deleted` | данные сессии |
+| `todo.updated` | `session_id`, `items: [{number, text, status}]` — весь список после изменения (этап 6) |
+| `session.compacted` | `session_id`, `summary`, `until_message_id` — начало истории сжато в саммари (этап 6) |
 | `error` | `code`, `message`, `reply_to?` |
 
 ### 6.5 ContentPart
@@ -319,7 +326,7 @@ on message.send:
 - В промпт уходят последние сообщения в пределах `history_token_budget`. Токены считает `provider.count_tokens()` или эвристика `len(text) / 3.5`.
 - Изображения из старых ходов в промпт не идут, их заменяет `[image omitted]`. Исключение — текущий ход.
 - Обрезка идёт по границам ходов: пара assistant `tool_use` + `tool_result` никогда не разрывается.
-- (Этап 6+) Когда история не влезает, старая часть сжимается в саммари, которое кладётся в БД как системная заметка сессии.
+- (Этап 6) Когда история не влезает, окно сужается ещё на 1500 токенов (место под саммари), а всё, что до окна, сжимается в саммари сессии (`session_summaries`: текст и `until_message_id`). Саммари накопительное: в него добавляются только сообщения, выпавшие после прошлого раза. Пишет его модель (отдельный запрос, до 800 токенов, таймаут 60 с). С FakeProvider и при ошибке модели вместо этого берутся строки «User: …» по 200 символов. Длина саммари ограничена 4000 символов, при переполнении остаётся конец. Саммари идёт в системный промпт блоком `# Earlier in this conversation`, клиенты получают `session.compacted`.
 
 ### 7.4 Отмена
 - У каждого хода есть `CancelToken`. `turn.cancel` его выставляет.
@@ -432,6 +439,10 @@ class ToolResult:
 | `memory_delete(id)` | ask | Раздел 11 |
 | `set_expression(pose, mood)` | allow | Раздел 10 |
 | `send_file(path)` | allow | Отдать файл пользователю: копия в `files/<id>/`, событие `file`. До 100 MB. |
+| `todo_add(text)`, `todo_update(number, status)`, `todo_list()` | allow | Список дел сессии, пункты нумеруются 1, 2, 3…; статусы `pending`/`in_progress`/`done`. После изменения — `todo.updated`. |
+| `schedule_create(task, when, timezone?)` | allow | `when`: `in 2m`, `at 2026-11-12T15:30`, `every 30m` (не чаще раза в минуту), `daily at 09:00`, `every mon,wed at 09:00`, `every weekdays at 08:30`. Пояс по умолчанию — пояс компьютера; недельные правила держат местное время при переходе на летнее. |
+| `schedule_list()` | allow | Расписания с ближайшим запуском |
+| `schedule_delete(id)` | ask | Удалить расписание |
 
 ### 9.3 Действия клиента
 - Каждое `action` из `hello` превращается в инструмент с тем же именем, описанием и схемой.
@@ -527,6 +538,13 @@ CREATE VIRTUAL TABLE memories_fts USING fts5(text, tags, content='memories', con
 CREATE TABLE approval_rules (
   tool TEXT PRIMARY KEY, decision TEXT NOT NULL, created_at TEXT NOT NULL
 );
+
+-- этап 6: 0004_todo, 0005_schedules, 0006_summaries
+CREATE TABLE todos (id, session_id, number, text, status, created_at, updated_at,
+  UNIQUE (session_id, number));
+CREATE TABLE schedules (id, task, rule_json, rule_text, timezone, next_run_at, last_run_at,
+  enabled, created_at);            -- next_run_at NULL у отработавшего разового
+CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, updated_at);
 ```
 - Время хранится в ISO-8601 UTC. Id — UUID4 (или UUIDv7 для сортируемости).
 - Схема меняется только новыми файлами миграций. `0002_tool_runs_own_id.sql` дала `tool_runs` собственный `id`: `call_id` придумывает модель, и он может повторяться между ходами.
@@ -576,8 +594,10 @@ CREATE TABLE approval_rules (
 
 ### Этап 6 — расписания, todo, длинный контекст
 - `todo_*`, `schedule_*` (once / cron-like), планировщик запускает ход в выделенной сессии с `source: "scheduler"` и шлёт события.
+- Планировщик проверяет расписания раз в 30 с. Наступившее расписание сначала получает новый `next_run` (разовое выключается), потом запускается ход в сессии `scheduled-<id>` (создаётся при первом запуске, `session.created` всем). Пока прошлый запуск идёт, новый пропускается.
 - Сжатие старой истории в саммари.
-- LaunchAgent-скрипт.
+- LaunchAgent-скрипт, команда `zero`, корректное завершение.
+- Номера миграций сдвинуты на 1 относительно роадмапа: `0003` занята памятью.
 
 ### Этап 7 — агенты
 - `agent_start(task)`, `agent_message`, `agent_status`, `agent_stop`. Агент — это отдельная сессия с тем же набором инструментов, собственным контекстом (только задача) и своим ходом в фоне. Его подтверждения идут пользователю с пометкой имени агента. Вопросы агента идут родительской модели.
