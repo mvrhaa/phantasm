@@ -20,6 +20,9 @@ class FakeSocket:
             raise WebSocketDisconnect(1006)
         self.sent.append(data)
 
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        self.closed = True
+
 
 def connect(manager: ConnectionManager, client_id: str | None = None, closed: bool = False):
     socket = FakeSocket(closed)

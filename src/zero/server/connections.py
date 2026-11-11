@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class TextSocket(Protocol):
-    """The part of a WebSocket a connection needs: sending text frames."""
+    """The part of a WebSocket a connection needs: sending text and closing."""
 
     async def send_text(self, data: str) -> None: ...
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None: ...
 
 
 class Connection:
@@ -24,6 +26,7 @@ class Connection:
         self.id = str(uuid.uuid4())
         self.websocket = websocket
         self.hello: ClientInfo | None = None
+        self.closed = False
 
     @property
     def client_id(self) -> str | None:
@@ -38,6 +41,14 @@ class Connection:
             logger.debug("Dropped %s for closed connection %s", event.type, self.id)
             return False
         return True
+
+    async def close(self, code: int, reason: str) -> None:
+        """Close the socket from the server side; the read loop then stops."""
+        self.closed = True
+        try:
+            await self.websocket.close(code=code, reason=reason)
+        except (WebSocketDisconnect, RuntimeError):
+            logger.debug("Connection %s was already closed", self.id)
 
 
 class ConnectionManager:

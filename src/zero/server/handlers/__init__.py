@@ -8,8 +8,9 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from zero.protocol.errors import ErrorCode
-from zero.protocol.messages import ClientMessage, Envelope, Error, Ping, Pong
+from zero.protocol.messages import ClientMessage, Envelope, Error, Hello, Ping, Pong
 from zero.server.connections import Connection
+from zero.server.handlers.hello import handle_hello
 from zero.server.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ async def handle_ping(connection: Connection, message: Ping, state: AppState) ->
 
 
 HANDLERS: dict[type[Envelope], Handler] = {
+    Hello: handle_hello,
     Ping: handle_ping,
 }
 
@@ -63,6 +65,16 @@ async def dispatch(connection: Connection, raw: str, state: AppState) -> None:
     except ValidationError as exc:
         code, text = _describe(exc)
         await connection.send(Error(code=code, message=text, reply_to=_message_id(raw)))
+        return
+
+    if connection.hello is None and not isinstance(message, Hello | Ping):
+        await connection.send(
+            Error(
+                code=ErrorCode.INVALID_MESSAGE,
+                message="send hello before anything else",
+                reply_to=message.id,
+            )
+        )
         return
 
     handler = HANDLERS.get(type(message))

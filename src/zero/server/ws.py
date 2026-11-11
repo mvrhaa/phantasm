@@ -69,6 +69,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
                 continue
             await dispatch(connection, text, state)
+            if connection.closed:
+                break
     except WebSocketDisconnect:
         pass
     finally:

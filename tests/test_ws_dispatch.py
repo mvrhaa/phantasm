@@ -112,6 +112,8 @@ def test_failing_handler_gives_internal_error_and_keeps_the_connection(
 
 
 def test_message_without_a_handler_is_answered_with_an_error(ws: WebSocketTestSession) -> None:
+    ws.send_json({"type": "hello", "protocol": 1, "client": {"app": "test", "client_id": "c-1"}})
+    assert ws.receive_json()["type"] == "hello.ok"
     ws.send_json({"type": "turn.cancel", "id": "m1", "turn_id": "t1"})
 
     error = ws.receive_json()
