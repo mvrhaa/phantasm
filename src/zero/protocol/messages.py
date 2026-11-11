@@ -254,6 +254,7 @@ class HistoryMessage(BaseModel):
 
 
 TodoStatus = Literal["pending", "in_progress", "done"]
+AgentStatus = Literal["working", "asking", "waiting_user", "done", "failed", "stopped"]
 
 
 class TodoItem(BaseModel):
