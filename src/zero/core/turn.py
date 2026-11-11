@@ -44,6 +44,12 @@ from zero.tools.base import (
     ToolResult,
     error_result,
 )
+from zero.tools.client_actions import (
+    COMPUTER_PREFIX,
+    ActionCaller,
+    ClientActionTool,
+    action_tools,
+)
 from zero.tools.permissions import PathGuard
 
 HISTORY_FETCH_LIMIT = 500
@@ -85,6 +91,8 @@ class Turn:
     ``retry_delays`` are the pauses before each retry of a failed model call.
     ``approvals`` asks the user about tool calls that need it; without it
     such calls are refused. ``approval_rules`` holds the "always allow" answers.
+    The actions the client declared in ``hello`` join ``tools`` for this turn;
+    ``action_caller`` reaches that client when the model calls one.
     ``tool_runs`` keeps a record of the tool calls for the history.
     """
 
@@ -104,6 +112,7 @@ class Turn:
         approvals: Approver | None = None,
         approval_rules: ApprovalRules | None = None,
         tool_runs: ToolRunRecorder | None = None,
+        action_caller: ActionCaller | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -119,7 +128,14 @@ class Turn:
         self._sessions = sessions
         self._messages = messages
         self._events = events
-        self._tools = tools if tools is not None else ToolRegistry()
+        actions = (
+            action_tools(client.actions, reply.connection_id, action_caller)
+            if client is not None and reply is not None
+            else []
+        )
+        base = tools if tools is not None else ToolRegistry()
+        self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
+        self._used_computer = False  # a computer_* action raises the step limit
         self._reply = reply
         self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
@@ -206,7 +222,8 @@ class Turn:
         A step that has already written its answer and only sets the expression
         also ends the turn: calling the model again would just cost time.
 
-        A turn makes at most ``max_steps`` model calls. If the model still
+        A turn makes at most ``max_steps`` model calls, or ``max_steps_computer``
+        once it has used a ``computer_*`` client action. If the model still
         wants tools when only one call is left, that call goes without tools so
         the model has to sum up. Returns True when the limit was reached.
         """
@@ -214,9 +231,10 @@ class Turn:
         specs = self._tools.specs()
         if self._expression is not None:
             specs.append(self._expression.spec)
-        max_steps = max(self._config.agent.max_steps, 1)
 
-        for _ in range(max_steps - 1):
+        step = 1
+        while step < self._step_limit():
+            step += 1
             calls = await self._call_model(prompt, specs, progress)
             if not calls:
                 return False
@@ -233,6 +251,10 @@ class Turn:
                 len(ignored),
             )
         return True
+
+    def _step_limit(self) -> int:
+        agent = self._config.agent
+        return max(agent.max_steps_computer if self._used_computer else agent.max_steps, 1)
 
     async def _call_model(
         self, prompt: list[Message], tools: list[ToolSpec], progress: _Progress
@@ -294,6 +316,10 @@ class Turn:
             if self.cancel.cancelled:
                 results.append(error_result(NOT_RUN))
             else:
+                if call.name.startswith(COMPUTER_PREFIX) and isinstance(
+                    self._tools.get(call.name), ClientActionTool
+                ):
+                    self._used_computer = True
                 results.append(await self._runner.run(call))
 
         assistant = Message(

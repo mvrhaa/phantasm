@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
@@ -113,6 +114,7 @@ class Tool[InputT: BaseModel](ABC):
     description: str
     input_model: type[InputT]
     default_policy: Policy = "ask"
+    config_tightens_only = False  # True: the config may make the policy stricter, never looser
 
     def label(self, params: InputT) -> str:
         """A short line for the UI, such as ``$ ls -la`` or ``~/notes.md``."""
@@ -188,6 +190,22 @@ class ToolRegistry:
             raise ValueError(f"tool {tool.name!r} is already registered")
         self._tools[tool.name] = tool
 
+    def extended(self, tools: Iterable[Tool[Any]], reserved: Iterable[str] = ()) -> "ToolRegistry":
+        """A new registry with this one's tools and then ``tools``.
+
+        A tool whose name is already taken, here or in ``reserved``, is left
+        out with a warning: an extra tool never replaces one already there.
+        """
+        result = ToolRegistry()
+        result._tools = dict(self._tools)
+        taken = set(reserved)
+        for tool in tools:
+            if tool.name in result._tools or tool.name in taken:
+                logger.warning("Tool %r is already taken; the new one is left out", tool.name)
+                continue
+            result._tools[tool.name] = tool
+        return result
+
     def get(self, name: str) -> Tool[Any] | None:
         """The tool with this name, or None."""
         return self._tools.get(name)
@@ -236,6 +254,7 @@ class ToolRegistry:
                 ctx.config.permissions,
                 await rules.always_allowed() if rules is not None else (),
                 needs_approval=reason is not None,
+                config_tightens_only=tool.config_tightens_only,
             )
             if policy == "deny":
                 return error_result(f"{tool.name} is turned off in the settings.")

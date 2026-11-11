@@ -92,6 +92,14 @@ class PathGuard:
         return resolved
 
 
+POLICY_RANK: dict[Policy, int] = {"allow": 0, "ask": 1, "deny": 2}
+
+
+def stricter(first: Policy, second: Policy) -> Policy:
+    """The stricter of two policies: ``allow < ask < deny``."""
+    return first if POLICY_RANK[first] >= POLICY_RANK[second] else second
+
+
 def decide(
     tool_name: str,
     default_policy: Policy,
@@ -99,11 +107,14 @@ def decide(
     saved_rules: Collection[str] = (),
     *,
     needs_approval: bool = False,
+    config_tightens_only: bool = False,
 ) -> Policy:
     """Whether a call may run (allow), must wait for the user (ask) or may not run (deny).
 
     The tool's own policy is the one in ``permissions.tool_policies`` or, if
-    the config does not name the tool, ``default_policy``. Rules apply in order:
+    the config does not name the tool, ``default_policy``. With
+    ``config_tightens_only`` (actions a client declared) the config can only
+    make it stricter, never looser. Rules apply in order:
 
     1. a tool whose policy is ``deny`` is denied, whatever else is said;
     2. a call the tool itself wants approved (``needs_approval``) is asked;
@@ -114,7 +125,13 @@ def decide(
     So neither a saved rule nor bypass ever lifts a deny or skips an approval
     the tool demands for a risky call, such as reading a file with secrets.
     """
-    policy = permissions.tool_policies.get(tool_name, default_policy)
+    configured = permissions.tool_policies.get(tool_name)
+    if configured is None:
+        policy = default_policy
+    elif config_tightens_only:
+        policy = stricter(default_policy, configured)
+    else:
+        policy = configured
     if policy == "deny":
         return "deny"
     if needs_approval:
