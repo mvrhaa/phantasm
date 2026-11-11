@@ -18,6 +18,7 @@ from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
 from zero.server.ws import router as ws_router
+from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
@@ -63,6 +64,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 turns=TurnManager(),
                 tools=builtin_registry(),
                 approvals=ApprovalManager(events),
+                approval_rules=ApprovalRulesRepo(db),
                 provider=provider or _choose_provider(config),
             )
             turns = app.state.zero.turns

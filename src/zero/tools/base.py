@@ -3,7 +3,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -54,6 +54,14 @@ def cancelled_result() -> ToolResult:
     return ToolResult(content=[TextPart(text=CANCELLED)], is_error=True, cancelled=True)
 
 
+class ApprovalRules(Protocol):
+    """Where the user's "always allow" answers are kept."""
+
+    async def always_allowed(self) -> set[str]: ...
+
+    async def allow_always(self, tool: str) -> object: ...
+
+
 @dataclass(frozen=True)
 class ToolContext:
     """What a running tool may use besides its input."""
@@ -65,6 +73,7 @@ class ToolContext:
     config: Config
     paths: PathGuard  # every path a tool touches goes through ``paths.check``
     approvals: Approver | None = None  # None when there is no one to ask
+    approval_rules: ApprovalRules | None = None  # None: no saved rules apply
 
 
 class Tool[InputT: BaseModel](ABC):
@@ -132,6 +141,16 @@ def _describe(exc: ValidationError) -> str:
     return "; ".join(parts)
 
 
+async def _remember(tool: str, rules: ApprovalRules | None) -> None:
+    """Save an "always allow" answer. The call itself runs even if saving fails."""
+    if rules is None:
+        return
+    try:
+        await rules.allow_always(tool)
+    except Exception:
+        logger.exception("Could not save the always-allow rule for %s", tool)
+
+
 class ToolRegistry:
     """The tools the model may call, found by name."""
 
@@ -172,10 +191,12 @@ class ToolRegistry:
             )
         try:
             reason = await tool.approval_reason(params, ctx)
+            rules = ctx.approval_rules
             policy = decide(
                 tool.name,
                 tool.default_policy,
                 ctx.config.permissions,
+                await rules.always_allowed() if rules is not None else (),
                 needs_approval=reason is not None,
             )
             if policy == "deny":
@@ -195,6 +216,8 @@ class ToolRegistry:
                 answer = await ctx.approvals.request(ask, ctx.cancel)
                 if answer.decision == "deny":
                     return denied_result(answer.note)
+                if answer.decision == "always":
+                    await _remember(tool.name, rules)
             result = await tool.run(params, ctx)
         except TurnCancelled:
             return cancelled_result()

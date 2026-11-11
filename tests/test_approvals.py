@@ -9,7 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.turns import Audience, FuncTool, Harness, RecordingClient, registry, text_of, until
+from tests.turns import (
+    Audience,
+    FakeApprover,
+    FuncTool,
+    Harness,
+    RecordingClient,
+    registry,
+    text_of,
+    until,
+)
 from zero.approvals.manager import Answer, ApprovalAsk, ApprovalManager, Decision
 from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
@@ -178,20 +187,6 @@ async def test_approvals_are_independent() -> None:
 
 
 # --- ToolRegistry.execute asks -----------------------------------------------
-
-
-class FakeApprover:
-    """Answers every approval at once with ``decision`` and remembers what was asked."""
-
-    def __init__(self, decision: Decision = "allow", note: str | None = None) -> None:
-        self.decision: Decision = decision
-        self.note = note
-        self.asked: list[ApprovalAsk] = []
-
-    async def request(self, ask: ApprovalAsk, cancel: CancelToken) -> Answer:
-        cancel.raise_if_cancelled()
-        self.asked.append(ask)
-        return Answer(self.decision, "c-1", self.note)
 
 
 class Counter:

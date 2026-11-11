@@ -7,8 +7,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from zero.approvals.manager import Approver
+from zero.approvals.manager import Answer, ApprovalAsk, Approver, Decision
 from zero.config import Config
+from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.turn import Turn
 from zero.protocol.messages import (
@@ -52,6 +53,20 @@ class FuncTool(Tool[Any]):
 
     async def run(self, params: Any, ctx: ToolContext) -> ToolResult:
         return text_result(await self._fn(params, ctx))
+
+
+class FakeApprover:
+    """Answers every approval at once with ``decision`` and remembers what was asked."""
+
+    def __init__(self, decision: Decision = "allow", note: str | None = None) -> None:
+        self.decision: Decision = decision
+        self.note = note
+        self.asked: list[ApprovalAsk] = []
+
+    async def request(self, ask: ApprovalAsk, cancel: CancelToken) -> Answer:
+        cancel.raise_if_cancelled()
+        self.asked.append(ask)
+        return Answer(self.decision, "c-1", self.note)
 
 
 def registry(*tools: Tool[Any]) -> ToolRegistry:

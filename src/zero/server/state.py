@@ -10,6 +10,7 @@ from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.server.connections import ConnectionManager
+from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
@@ -30,6 +31,7 @@ class AppState:
     turns: TurnManager
     tools: ToolRegistry  # built-in tools, shared by every turn
     approvals: ApprovalManager
+    approval_rules: ApprovalRulesRepo
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 

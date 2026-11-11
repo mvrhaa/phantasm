@@ -39,7 +39,14 @@ from zero.providers.base import (
 )
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
-from zero.tools.base import ToolContext, ToolRegistry, ToolResult, error_result, text_result
+from zero.tools.base import (
+    ApprovalRules,
+    ToolContext,
+    ToolRegistry,
+    ToolResult,
+    error_result,
+    text_result,
+)
 from zero.tools.permissions import PathGuard
 
 HISTORY_FETCH_LIMIT = 500
@@ -88,7 +95,7 @@ class Turn:
     so the sender's ``turn.started`` can point back at that request.
     ``retry_delays`` are the pauses before each retry of a failed model call.
     ``approvals`` asks the user about tool calls that need it; without it
-    such calls are refused.
+    such calls are refused. ``approval_rules`` holds the "always allow" answers.
     """
 
     def __init__(
@@ -105,6 +112,7 @@ class Turn:
         events: EventBus,
         tools: ToolRegistry | None = None,
         approvals: Approver | None = None,
+        approval_rules: ApprovalRules | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -133,6 +141,7 @@ class Turn:
             config=config,
             paths=PathGuard.from_config(config.permissions),
             approvals=approvals,
+            approval_rules=approval_rules,
         )
 
     async def run(self) -> None:
