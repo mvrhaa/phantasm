@@ -6,9 +6,57 @@ import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from zero.protocol.errors import PROTOCOL_VERSION, ErrorCode
-from zero.protocol.messages import ContentPart, Envelope, FilePart, ImagePart, TextPart
+from zero.protocol.messages import (
+    ActionDecl,
+    ActionResult,
+    ApprovalRespond,
+    Attachment,
+    ClientMessage,
+    ContentPart,
+    Envelope,
+    FilePart,
+    Hello,
+    HistoryGet,
+    ImagePart,
+    MessageSend,
+    Ping,
+    SessionCreate,
+    SessionDelete,
+    SessionList,
+    SessionRename,
+    TextPart,
+    TurnCancel,
+)
 
 content_part = TypeAdapter(ContentPart)
+client_message = TypeAdapter(ClientMessage)
+
+SPEC_HELLO = {
+    "type": "hello",
+    "id": "7f9c",
+    "protocol": 1,
+    "client": {
+        "app": "desktop",
+        "client_id": "c-1",
+        "display_name": "Desktop on MacBook",
+        "character": {
+            "name": "Zero",
+            "persona": "Markdown persona text",
+            "poses": ["idle", "sit", "wave"],
+            "moods": ["neutral", "happy", "sad", "angry", "surprised"],
+        },
+        "environment": "macOS desktop app; replies show in a chat window that renders Markdown",
+        "actions": [
+            {
+                "name": "screenshot",
+                "description": "Capture the user's screen",
+                "input_schema": {"type": "object", "properties": {"display": {"type": "integer"}}},
+                "policy": "allow",
+                "timeout_s": 15,
+            }
+        ],
+    },
+}
 
 
 def test_text_part_is_parsed() -> None:
@@ -139,3 +187,270 @@ def test_error_code_is_a_plain_string_in_json() -> None:
 
 def test_protocol_version_is_1() -> None:
     assert PROTOCOL_VERSION == 1
+
+
+def test_hello_example_from_the_spec_is_parsed() -> None:
+    message = client_message.validate_python(SPEC_HELLO)
+
+    assert isinstance(message, Hello)
+    assert message.id == "7f9c"
+    assert message.protocol == 1
+    assert message.client.app == "desktop"
+    assert message.client.client_id == "c-1"
+    assert message.client.character is not None
+    assert message.client.character.poses == ["idle", "sit", "wave"]
+    assert message.client.character.moods[0] == "neutral"
+    assert message.client.actions == [
+        ActionDecl(
+            name="screenshot",
+            description="Capture the user's screen",
+            input_schema={"type": "object", "properties": {"display": {"type": "integer"}}},
+            policy="allow",
+            timeout_s=15,
+        )
+    ]
+
+
+def test_minimal_hello_gets_defaults() -> None:
+    message = client_message.validate_python(
+        {"type": "hello", "protocol": 1, "client": {"app": "cli", "client_id": "c-1"}}
+    )
+
+    assert isinstance(message, Hello)
+    assert message.client.display_name is None
+    assert message.client.character is None
+    assert message.client.environment == ""
+    assert message.client.actions == []
+
+
+def test_action_declaration_defaults_to_asking_the_user() -> None:
+    action = ActionDecl(name="open_url", description="Open a URL")
+
+    assert action.policy == "ask"
+    assert action.timeout_s == 15
+    assert action.input_schema == {}
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        (
+            {"type": "message.send", "text": "hi", "source": "desktop"},
+            MessageSend(text="hi", source="desktop"),
+        ),
+        (
+            {"type": "message.send", "session_id": "s1", "text": "hi", "source": "phone"},
+            MessageSend(session_id="s1", text="hi", source="phone"),
+        ),
+        ({"type": "turn.cancel", "turn_id": "t1"}, TurnCancel(turn_id="t1")),
+        (
+            {"type": "approval.respond", "approval_id": "a1", "decision": "always", "note": "ok"},
+            ApprovalRespond(approval_id="a1", decision="always", note="ok"),
+        ),
+        (
+            {
+                "type": "action.result",
+                "call_id": "c1",
+                "ok": True,
+                "content": [{"type": "image", "mime": "image/png", "data_b64": "AAAA"}],
+            },
+            ActionResult(
+                call_id="c1", ok=True, content=[ImagePart(mime="image/png", data_b64="AAAA")]
+            ),
+        ),
+        (
+            {"type": "action.result", "call_id": "c1", "ok": False, "error": "no display"},
+            ActionResult(call_id="c1", ok=False, error="no display"),
+        ),
+        ({"type": "session.list"}, SessionList()),
+        ({"type": "session.create"}, SessionCreate()),
+        ({"type": "session.create", "title": "Plans"}, SessionCreate(title="Plans")),
+        (
+            {"type": "session.rename", "session_id": "s1", "title": "New"},
+            SessionRename(session_id="s1", title="New"),
+        ),
+        ({"type": "session.delete", "session_id": "s1"}, SessionDelete(session_id="s1")),
+        ({"type": "history.get", "session_id": "s1"}, HistoryGet(session_id="s1")),
+        ({"type": "ping", "id": "p1"}, Ping(id="p1")),
+    ],
+    ids=lambda value: value.get("type") if isinstance(value, dict) else None,
+)
+def test_client_message_is_parsed_into_its_model(data: dict[str, Any], expected: Envelope) -> None:
+    message = client_message.validate_python(data)
+
+    assert type(message) is type(expected)
+    assert message == expected
+
+
+def test_history_get_defaults_match_the_spec() -> None:
+    message = HistoryGet(session_id="s1")
+
+    assert message.before is None
+    assert message.limit == 50
+    assert message.include_tools is True
+
+
+def test_message_send_defaults() -> None:
+    message = MessageSend(text="hi", source="desktop")
+
+    assert message.session_id is None
+    assert message.attachments == []
+
+
+def test_client_message_types_match_the_spec_table() -> None:
+    types = {
+        client_message.validate_python(data).type
+        for data in (
+            SPEC_HELLO,
+            {"type": "message.send", "text": "hi", "source": "desktop"},
+            {"type": "turn.cancel", "turn_id": "t1"},
+            {"type": "approval.respond", "approval_id": "a1", "decision": "allow"},
+            {"type": "action.result", "call_id": "c1", "ok": True},
+            {"type": "session.list"},
+            {"type": "session.create"},
+            {"type": "session.rename", "session_id": "s1", "title": "New"},
+            {"type": "session.delete", "session_id": "s1"},
+            {"type": "history.get", "session_id": "s1"},
+            {"type": "ping"},
+        )
+    }
+
+    assert types == {
+        "hello",
+        "message.send",
+        "turn.cancel",
+        "approval.respond",
+        "action.result",
+        "session.list",
+        "session.create",
+        "session.rename",
+        "session.delete",
+        "history.get",
+        "ping",
+    }
+
+
+def test_unknown_message_type_is_rejected() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        client_message.validate_python({"type": "session.explode"})
+
+    assert excinfo.value.errors()[0]["type"] == "union_tag_invalid"
+
+
+def test_message_without_type_is_rejected() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        client_message.validate_python({"text": "hi"})
+
+    assert excinfo.value.errors()[0]["type"] == "union_tag_not_found"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"type": "hello", "client": {"app": "cli", "client_id": "c-1"}},
+        {"type": "hello", "protocol": 1},
+        {"type": "hello", "protocol": 1, "client": {"app": "cli", "client_id": ""}},
+        {"type": "message.send", "source": "desktop"},
+        {"type": "message.send", "text": "hi"},
+        {"type": "message.send", "text": "hi", "source": "scheduler"},
+        {"type": "turn.cancel"},
+        {"type": "approval.respond", "approval_id": "a1", "decision": "maybe"},
+        {"type": "action.result", "call_id": "c1"},
+        {"type": "session.rename", "session_id": "s1"},
+        {"type": "session.delete"},
+        {"type": "history.get"},
+        {"type": "history.get", "session_id": "s1", "limit": 0},
+        {"type": "history.get", "session_id": "s1", "limit": 201},
+    ],
+    ids=[
+        "hello-without-protocol",
+        "hello-without-client",
+        "hello-empty-client-id",
+        "send-without-text",
+        "send-without-source",
+        "send-unknown-source",
+        "cancel-without-turn",
+        "approval-unknown-decision",
+        "result-without-ok",
+        "rename-without-title",
+        "delete-without-session",
+        "history-without-session",
+        "history-limit-too-small",
+        "history-limit-too-big",
+    ],
+)
+def test_invalid_client_message_is_rejected(data: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        client_message.validate_python(data)
+
+
+@pytest.mark.parametrize(
+    "character",
+    [
+        {"name": "Zero", "poses": [], "moods": ["neutral"]},
+        {"name": "Zero", "poses": ["idle"], "moods": []},
+        {"poses": ["idle"], "moods": ["neutral"]},
+    ],
+    ids=["no-poses", "no-moods", "no-name"],
+)
+def test_character_needs_a_name_poses_and_moods(character: dict[str, Any]) -> None:
+    hello = {
+        "type": "hello",
+        "protocol": 1,
+        "client": {"app": "cli", "client_id": "c-1", "character": character},
+    }
+
+    with pytest.raises(ValidationError):
+        client_message.validate_python(hello)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        {"name": "", "description": "empty name"},
+        {"name": "screenshot", "description": "bad policy", "policy": "sometimes"},
+        {"name": "screenshot", "description": "bad timeout", "timeout_s": 0},
+    ],
+    ids=["empty-name", "unknown-policy", "zero-timeout"],
+)
+def test_invalid_action_declaration_is_rejected(action: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        ActionDecl.model_validate(action)
+
+
+def test_attachment_takes_inline_data_or_a_path() -> None:
+    inline = Attachment(name="a.png", mime="image/png", data_b64="AAAA")
+    by_path = Attachment(name="a.png", mime="image/png", path="/tmp/a.png")
+
+    assert inline.path is None
+    assert by_path.data_b64 is None
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{}, {"data_b64": "AAAA", "path": "/tmp/a.png"}],
+    ids=["neither", "both"],
+)
+def test_attachment_needs_exactly_one_source(extra: dict[str, str]) -> None:
+    with pytest.raises(ValidationError, match="exactly one"):
+        Attachment.model_validate({"name": "a.png", "mime": "image/png", **extra})
+
+
+def test_message_send_carries_attachments() -> None:
+    message = client_message.validate_python(
+        {
+            "type": "message.send",
+            "text": "look",
+            "source": "desktop",
+            "attachments": [{"name": "a.png", "mime": "image/png", "data_b64": "AAAA"}],
+        }
+    )
+
+    assert isinstance(message, MessageSend)
+    assert message.attachments == [Attachment(name="a.png", mime="image/png", data_b64="AAAA")]
+
+
+def test_unknown_fields_are_ignored() -> None:
+    message = client_message.validate_python({"type": "ping", "sent_at": "now"})
+
+    assert message == Ping()
