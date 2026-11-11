@@ -183,6 +183,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "read_file",
         "list_dir",
         "search_files",
+        "write_file",
         "set_expression",
     ]
     assert system.role == "system"

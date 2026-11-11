@@ -15,6 +15,7 @@ from zero.tools.base import (
     CANCELLED,
     MAX_OUTPUT_CHARS,
     NEEDS_APPROVAL,
+    Preview,
     Tool,
     ToolContext,
     ToolRegistry,
@@ -257,8 +258,8 @@ class Careful(Greet):
 
     name = "careful"
 
-    async def approval_reason(self, params: GreetInput, ctx: ToolContext) -> str | None:
-        return "Eve is a stranger" if params.name == "Eve" else None
+    async def preview(self, params: GreetInput, ctx: ToolContext) -> Preview:
+        return Preview(approval_reason="Eve is a stranger" if params.name == "Eve" else None)
 
 
 async def test_ordinary_call_needs_no_approval() -> None:
@@ -284,7 +285,7 @@ async def test_failure_while_deciding_on_approval_is_an_error() -> None:
     class Confused(Greet):
         name = "confused"
 
-        async def approval_reason(self, params: GreetInput, ctx: ToolContext) -> str | None:
+        async def preview(self, params: GreetInput, ctx: ToolContext) -> Preview:
             raise RuntimeError("lost")
 
     result = await execute(registry_with(Confused()), "confused", {"name": "Ann"})

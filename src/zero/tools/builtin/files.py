@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from zero.protocol.messages import ImagePart
 from zero.tools.base import (
     MAX_OUTPUT_CHARS,
+    Preview,
     Tool,
     ToolContext,
     ToolResult,
@@ -131,16 +132,19 @@ class ReadFile(Tool[ReadFileInput]):
     def label(self, params: ReadFileInput) -> str:
         return params.path
 
-    async def approval_reason(self, params: ReadFileInput, ctx: ToolContext) -> str | None:
-        return await asyncio.to_thread(self._secret_reason, params, ctx)
+    async def preview(self, params: ReadFileInput, ctx: ToolContext) -> Preview:
+        return await asyncio.to_thread(self._preview, params, ctx)
 
-    def _secret_reason(self, params: ReadFileInput, ctx: ToolContext) -> str | None:
+    def _preview(self, params: ReadFileInput, ctx: ToolContext) -> Preview:
+        """Refuse paths outside the sandbox; ask before reading files that may hold secrets."""
         try:
             resolved = ctx.paths.check(params.path)
-        except PathDenied:
-            return None  # run() refuses it with the sandbox's own reason
+        except PathDenied as exc:
+            return Preview(refusal=str(exc))
         names = [Path(params.path).name, resolved.name]
-        return f"{params.path} may hold secrets" if any(map(looks_secret, names)) else None
+        if any(map(looks_secret, names)):
+            return Preview(approval_reason=f"{params.path} may hold secrets")
+        return Preview()
 
     async def run(self, params: ReadFileInput, ctx: ToolContext) -> ToolResult:
         return await asyncio.to_thread(self._read, params, ctx)

@@ -28,7 +28,7 @@ from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
-from zero.tools.base import CANCELLED, DENIED, ToolContext, ToolResult
+from zero.tools.base import CANCELLED, DENIED, Preview, ToolContext, ToolResult
 from zero.tools.permissions import PathGuard
 
 ASK = ApprovalAsk(
@@ -205,8 +205,8 @@ def asking_tool(counter: Counter, reason: str | None = None) -> FuncTool:
         def label(self, params: Any) -> str:
             return "work on things"
 
-        async def approval_reason(self, params: Any, ctx: ToolContext) -> str | None:
-            return reason
+        async def preview(self, params: Any, ctx: ToolContext) -> Preview:
+            return Preview(approval_reason=reason)
 
     return Asking("work", work)
 

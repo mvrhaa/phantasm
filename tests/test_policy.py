@@ -9,7 +9,7 @@ from tests.turns import FuncTool, text_of
 from zero.config import Config, PermissionsConfig, Policy
 from zero.core.cancellation import CancelToken
 from zero.providers.base import ToolCall
-from zero.tools.base import NEEDS_APPROVAL, ToolContext, ToolRegistry, ToolResult
+from zero.tools.base import NEEDS_APPROVAL, Preview, ToolContext, ToolRegistry, ToolResult
 from zero.tools.permissions import PathGuard, decide
 
 POLICIES: list[Policy] = ["allow", "ask", "deny"]
@@ -139,8 +139,8 @@ def tool_with(policy: Policy, recorder: Recorder, reason: str | None = None) -> 
         return "done"
 
     class Policed(FuncTool):
-        async def approval_reason(self, params: Any, ctx: ToolContext) -> str | None:
-            return reason
+        async def preview(self, params: Any, ctx: ToolContext) -> Preview:
+            return Preview(approval_reason=reason)
 
     tool = Policed("work", work)
     tool.default_policy = policy

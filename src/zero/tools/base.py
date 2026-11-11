@@ -63,6 +63,15 @@ class ApprovalRules(Protocol):
 
 
 @dataclass(frozen=True)
+class Preview:
+    """What a tool says about a call before it runs; see ``Tool.preview``."""
+
+    refusal: str | None = None  # the call cannot run; the model gets this and no one is asked
+    approval_reason: str | None = None  # ask the user even if bypass or a saved rule says allow
+    diff: str | None = None  # shown in the approval card, for changes to files
+
+
+@dataclass(frozen=True)
 class ToolContext:
     """What a running tool may use besides its input."""
 
@@ -93,14 +102,14 @@ class Tool[InputT: BaseModel](ABC):
         """A short line for the UI, such as ``$ ls -la`` or ``~/notes.md``."""
         return self.name
 
-    async def approval_reason(self, params: InputT, ctx: ToolContext) -> str | None:
-        """Why this particular call needs the user's approval whatever the rules say.
+    async def preview(self, params: InputT, ctx: ToolContext) -> Preview:
+        """Look at a call before the registry decides whether it may run.
 
-        None for an ordinary call. A tool returns a reason for calls riskier
-        than it usually is, such as reading a file that may hold secrets; even
-        ``bypass_approvals`` does not skip such a call.
+        The default says nothing. A tool can refuse a call that cannot work
+        (no one is asked then), demand the user's approval for a call riskier
+        than it usually is, and give a diff to show in the approval card.
         """
-        return None
+        return Preview()
 
     def spec(self) -> ToolSpec:
         """The tool as the model sees it; the schema comes from ``input_model``."""
@@ -175,7 +184,7 @@ class ToolRegistry:
         """Validate the input, check the call is permitted, run it and cut the output to size.
 
         Whether the call may run is decided by ``decide`` from the tool's
-        policy, the config and the tool's own ``approval_reason``. Nothing
+        policy, the config and the tool's own ``preview`` of the call. Nothing
         escapes: an unknown tool, invalid input, a call that is not permitted or
         a failing tool gives an error result that the model can read and react to.
         """
@@ -190,7 +199,10 @@ class ToolRegistry:
                 f"Invalid input for {call.name!r}: {_describe(exc)}. Fix it and call again."
             )
         try:
-            reason = await tool.approval_reason(params, ctx)
+            preview = await tool.preview(params, ctx)
+            if preview.refusal is not None:
+                return error_result(preview.refusal)
+            reason = preview.approval_reason
             rules = ctx.approval_rules
             policy = decide(
                 tool.name,
@@ -212,6 +224,7 @@ class ToolRegistry:
                     label=tool.label(params),
                     input=call.input,
                     reason=why,
+                    diff=preview.diff,
                 )
                 answer = await ctx.approvals.request(ask, ctx.cancel)
                 if answer.decision == "deny":

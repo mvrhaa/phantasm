@@ -105,7 +105,12 @@ def test_looks_secret(name: str, secret: bool) -> None:
 def test_builtin_tools_are_registered_and_allowed() -> None:
     registry = builtin_registry()
 
-    assert [spec.name for spec in registry.specs()] == ["read_file", "list_dir", "search_files"]
+    assert [spec.name for spec in registry.specs()] == [
+        "read_file",
+        "list_dir",
+        "search_files",
+        "write_file",
+    ]
     assert {registry.get(name).default_policy for name in ("read_file", "list_dir")} == {"allow"}  # type: ignore[union-attr]
     assert builtin.files.ReadFile().label(ReadFileInput(path="~/a.md")) == "~/a.md"
     assert builtin.files.ListDir().label(ListDirInput(path="~/src")) == "~/src"

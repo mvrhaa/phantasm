@@ -18,7 +18,7 @@ from zero.server.app import create_app
 from zero.server.state import get_state
 from zero.store.approvals import ApprovalRule, ApprovalRulesRepo
 from zero.store.db import Database
-from zero.tools.base import NEEDS_APPROVAL, ToolContext, ToolResult
+from zero.tools.base import NEEDS_APPROVAL, Preview, ToolContext, ToolResult
 from zero.tools.permissions import PathGuard
 
 
@@ -84,8 +84,8 @@ def work_tool(counter: Counter, *, policy: Policy = "ask", reason: str | None = 
         return "done"
 
     class Work(FuncTool):
-        async def approval_reason(self, params: Any, ctx: ToolContext) -> str | None:
-            return reason
+        async def preview(self, params: Any, ctx: ToolContext) -> Preview:
+            return Preview(approval_reason=reason)
 
     tool = Work("work", work)
     tool.default_policy = policy
