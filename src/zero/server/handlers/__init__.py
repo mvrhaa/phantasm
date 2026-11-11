@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import (
+    ActionResult,
     ApprovalRespond,
     ClientMessage,
     Envelope,
@@ -25,6 +26,7 @@ from zero.protocol.messages import (
     TurnCancel,
 )
 from zero.server.connections import Connection
+from zero.server.handlers.actions import handle_action_result
 from zero.server.handlers.approvals import handle_approval_respond
 from zero.server.handlers.hello import handle_hello
 from zero.server.handlers.messages import handle_message_send, handle_turn_cancel
@@ -55,6 +57,7 @@ HANDLERS: dict[type[Envelope], Handler] = {
     MessageSend: handle_message_send,
     TurnCancel: handle_turn_cancel,
     ApprovalRespond: handle_approval_respond,
+    ActionResult: handle_action_result,
     SessionList: handle_session_list,
     SessionCreate: handle_session_create,
     SessionRename: handle_session_rename,

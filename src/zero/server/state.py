@@ -16,6 +16,7 @@ from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import ToolRegistry
+from zero.tools.client_actions import ActionBroker
 
 
 @dataclass
@@ -34,6 +35,7 @@ class AppState:
     approvals: ApprovalManager
     approval_rules: ApprovalRulesRepo
     tool_runs: ToolRunsRepo
+    actions: ActionBroker  # client actions waiting for an action.result
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 

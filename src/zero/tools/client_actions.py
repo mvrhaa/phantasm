@@ -5,16 +5,24 @@ from the client; its policy can only be made stricter by the config. Running
 one means asking the client that declared it, through an ``ActionCaller``.
 """
 
+import asyncio
+import logging
+import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from zero.protocol.messages import ActionDecl
+from zero.core.cancellation import TurnCancelled
+from zero.protocol.errors import ErrorCode
+from zero.protocol.messages import ActionCall, ActionDecl, ActionResult, Envelope, TextPart
 from zero.providers.base import ToolSpec
 from zero.tools.base import Tool, ToolContext, ToolResult, error_result
 
 COMPUTER_PREFIX = "computer_"  # actions that drive the screen; turns using them may take more steps
+
+logger = logging.getLogger(__name__)
 
 
 class ActionInput(BaseModel):
@@ -64,3 +72,120 @@ def action_tools(
     for action in actions:
         tools.setdefault(action.name, ClientActionTool(action, connection_id, caller))
     return list(tools.values())
+
+
+# --- Calling the client ------------------------------------------------------
+
+
+class ActionTarget(Protocol):
+    """A connected client that can be sent an ``action.call``."""
+
+    async def send(self, event: Envelope) -> bool: ...
+
+
+class Connections(Protocol):
+    """Finds a live connection by its id."""
+
+    def get(self, connection_id: str) -> ActionTarget | None: ...
+
+
+class _ClientGone(Exception):
+    """The connection closed while its action was running."""
+
+
+@dataclass
+class _Pending:
+    connection_id: str
+    future: asyncio.Future[ActionResult]
+
+
+class ActionBroker:
+    """Sends actions to clients and waits for their answers.
+
+    An ``action.call`` goes only to the connection that declared the action.
+    The wait ends with that connection's ``action.result`` for the same call
+    id, after the action's ``timeout_s``, when the connection closes, or when
+    the turn is cancelled. Every failure comes back to the model as an error.
+    """
+
+    def __init__(self, connections: Connections) -> None:
+        self._connections = connections
+        self._pending: dict[str, _Pending] = {}
+
+    @property
+    def waiting(self) -> int:
+        """How many actions are waiting for an answer."""
+        return len(self._pending)
+
+    async def call(
+        self, connection_id: str, action: ActionDecl, params: dict[str, Any], ctx: ToolContext
+    ) -> ToolResult:
+        """Run ``action`` on the client and return what it answered."""
+        gone = error_result(
+            f"{action.name} could not run: the client that offers it has disconnected "
+            f"({ErrorCode.CLIENT_GONE})."
+        )
+        target = self._connections.get(connection_id)
+        if target is None:
+            return gone
+        call_id = str(uuid.uuid4())
+        future: asyncio.Future[ActionResult] = asyncio.get_running_loop().create_future()
+        self._pending[call_id] = _Pending(connection_id, future)
+        cancelled = asyncio.ensure_future(ctx.cancel.wait())
+        try:
+            sent = await target.send(
+                ActionCall(
+                    session_id=ctx.session_id,
+                    turn_id=ctx.turn_id,
+                    call_id=call_id,
+                    action=action.name,
+                    input=params,
+                )
+            )
+            if not sent:
+                return gone
+            await asyncio.wait(
+                {future, cancelled}, timeout=action.timeout_s, return_when=asyncio.FIRST_COMPLETED
+            )
+            if ctx.cancel.cancelled:
+                raise TurnCancelled()
+            if not future.done():
+                return error_result(
+                    f"{action.name} did not answer within {action.timeout_s:g} s "
+                    f"({ErrorCode.ACTION_TIMEOUT})."
+                )
+            try:
+                answer = future.result()
+            except _ClientGone:
+                return gone
+            return _to_result(action.name, answer)
+        finally:
+            cancelled.cancel()
+            self._pending.pop(call_id, None)
+            if future.done() and not future.cancelled():
+                future.exception()  # mark a client_gone nobody waited for as seen
+
+    def resolve(self, connection_id: str, answer: ActionResult) -> bool:
+        """Deliver an ``action.result``. False if no action of that connection waits for it."""
+        pending = self._pending.get(answer.call_id)
+        if pending is None or pending.connection_id != connection_id or pending.future.done():
+            logger.debug("Ignored action.result for %s", answer.call_id)
+            return False
+        pending.future.set_result(answer)
+        return True
+
+    def connection_closed(self, connection_id: str) -> None:
+        """End every action still waiting on a connection that has gone away."""
+        for pending in self._pending.values():
+            if pending.connection_id == connection_id and not pending.future.done():
+                pending.future.set_exception(_ClientGone())
+
+
+def _to_result(name: str, answer: ActionResult) -> ToolResult:
+    if not answer.ok:
+        reason = answer.error or "no reason given"
+        return ToolResult(
+            content=[TextPart(text=f"{name} failed on the client: {reason}"), *answer.content],
+            is_error=True,
+        )
+    return ToolResult(content=answer.content or [TextPart(text=f"{name} done.")])

@@ -1,14 +1,14 @@
 """Tests for the WebSocket read loop and message dispatch."""
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
 from zero.config import Config
-from zero.protocol.messages import Ping
+from zero.protocol.messages import ClientMessage, Ping
 from zero.server import handlers
 from zero.server.app import create_app
 from zero.server.state import get_state
@@ -111,14 +111,22 @@ def test_failing_handler_gives_internal_error_and_keeps_the_connection(
     assert ping(ws)["type"] == "pong"
 
 
-def test_message_without_a_handler_is_answered_with_an_error(ws: WebSocketTestSession) -> None:
-    ws.send_json({"type": "hello", "protocol": 1, "client": {"app": "test", "client_id": "c-1"}})
-    assert ws.receive_json()["type"] == "hello.ok"
-    ws.send_json({"type": "action.result", "id": "m1", "call_id": "c1", "ok": True})
+def test_message_without_a_handler_is_answered_with_an_error(
+    ws: WebSocketTestSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every message type has a handler now, so one is taken away for the test.
+    monkeypatch.delitem(handlers.HANDLERS, Ping)
+    ws.send_json({"type": "ping", "id": "m1"})
 
     error = ws.receive_json()
     assert (error["type"], error["reply_to"]) == ("error", "m1")
-    assert "action.result" in error["message"]
+    assert error["message"] == "ping is not supported yet"
+
+
+def test_every_client_message_has_a_handler() -> None:
+    message_types = set(get_args(get_args(ClientMessage)[0]))
+
+    assert message_types == set(handlers.HANDLERS)
 
 
 def test_connection_is_registered_while_open(client: TestClient) -> None:

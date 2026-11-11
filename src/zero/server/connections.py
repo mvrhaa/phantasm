@@ -62,6 +62,10 @@ class ConnectionManager:
         """All live connections, in the order they were added."""
         return list(self._connections.values())
 
+    def get(self, connection_id: str) -> Connection | None:
+        """The live connection with this id, or None."""
+        return self._connections.get(connection_id)
+
     def add(self, connection: Connection) -> None:
         """Register a connection."""
         self._connections[connection.id] = connection

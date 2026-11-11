@@ -75,3 +75,4 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         pass
     finally:
         state.connections.remove(connection)
+        state.actions.connection_closed(connection.id)
