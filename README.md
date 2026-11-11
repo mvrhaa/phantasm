@@ -24,3 +24,28 @@ uv run python scripts/ws_client.py                    # ручной клиен�
 uv run pytest -q                                      # тесты
 uv run ruff check . && uv run ruff format --check .   # линт и формат
 ```
+
+## Команда `zero`
+
+После `uv sync` доступна команда `zero`:
+
+```bash
+uv run zero serve          # запуск сервиса (то же, что python -m zero)
+uv run zero token          # показать токен для клиентов
+uv run zero doctor         # проверить папки, конфиг, БД, токен, порт и провайдер
+uv run zero config path    # где лежит config.json
+```
+
+## Автозапуск (LaunchAgent)
+
+Чтобы Зеро запускался сам после входа в систему:
+
+```bash
+uv run python scripts/install_launchagent.py              # поставить (или переставить) и запустить
+uv run python scripts/install_launchagent.py --print      # только показать plist
+uv run python scripts/install_launchagent.py --uninstall  # остановить и убрать
+```
+
+Агент запускает Python этого проекта с `-m zero`. launchd перезапускает его только после падения:
+штатный выход (например, если Зеро уже работает) перезапуска не вызывает. Вывод агента и лог Зеро
+лежат в `~/Library/Logs/Zero`. Проверка после перезагрузки: `curl 127.0.0.1:47400/health`.
