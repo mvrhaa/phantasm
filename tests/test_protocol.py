@@ -1,5 +1,6 @@
 """Tests for the protocol models."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -7,29 +8,53 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from zero.protocol.errors import PROTOCOL_VERSION, ErrorCode
 from zero.protocol.messages import (
+    ActionCall,
     ActionDecl,
     ActionResult,
+    ApprovalRequest,
+    ApprovalResolved,
     ApprovalRespond,
     Attachment,
     ClientMessage,
     ContentPart,
     Envelope,
+    Error,
+    Expression,
+    ExpressionState,
     FilePart,
     Hello,
+    HelloOk,
     HistoryGet,
+    HistoryMessage,
+    HistoryOk,
     ImagePart,
     MessageSend,
     Ping,
+    Pong,
+    ServerEvent,
     SessionCreate,
+    SessionCreated,
     SessionDelete,
+    SessionDeleted,
+    SessionInfo,
     SessionList,
+    SessionListOk,
     SessionRename,
+    SessionUpdated,
+    TextDelta,
     TextPart,
+    ToolFinished,
+    ToolRun,
+    ToolStarted,
     TurnCancel,
+    TurnFinished,
+    TurnStarted,
+    Usage,
 )
 
 content_part = TypeAdapter(ContentPart)
 client_message = TypeAdapter(ClientMessage)
+server_event = TypeAdapter(ServerEvent)
 
 SPEC_HELLO = {
     "type": "hello",
@@ -454,3 +479,225 @@ def test_unknown_fields_are_ignored() -> None:
     message = client_message.validate_python({"type": "ping", "sent_at": "now"})
 
     assert message == Ping()
+
+
+WHEN = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+TURN = {"session_id": "s1", "turn_id": "t1"}
+SESSION = SessionInfo(id="s1", title="Plans", updated_at=WHEN)
+
+SERVER_EVENTS: list[Envelope] = [
+    HelloOk(reply_to="h1", zero_version="0.0.1", protocol=1, sessions=[SESSION]),
+    Pong(reply_to="p1"),
+    Error(code=ErrorCode.TURN_BUSY, message="a turn is already running", reply_to="m1"),
+    TurnStarted(**TURN, source="desktop"),
+    TextDelta(**TURN, delta="Hel"),
+    ToolStarted(
+        **TURN, call_id="c1", tool="run_command", label="$ ls -la", input={"command": "ls"}
+    ),
+    ToolFinished(
+        **TURN, call_id="c1", status="ok", summary="exit 0", output_preview="a.txt", duration_ms=12
+    ),
+    ActionCall(**TURN, call_id="c2", action="screenshot", input={"display": 1}),
+    ApprovalRequest(
+        **TURN,
+        approval_id="a1",
+        tool="write_file",
+        label="~/notes.md",
+        input={"path": "~/notes.md", "content": "hi"},
+        reason="save the notes",
+        diff="+hi",
+    ),
+    ApprovalResolved(**TURN, approval_id="a1", decision="always", by_client_id="c-1"),
+    Expression(**TURN, pose="wave", mood="happy"),
+    TurnFinished(
+        **TURN,
+        status="ok",
+        text="Hello",
+        expression=ExpressionState(pose="idle", mood="neutral"),
+        usage=Usage(input_tokens=10, output_tokens=3),
+    ),
+    SessionListOk(reply_to="l1", sessions=[SESSION]),
+    SessionCreated(session=SESSION),
+    SessionUpdated(session=SESSION),
+    SessionDeleted(session_id="s1"),
+    HistoryOk(
+        reply_to="g1",
+        session_id="s1",
+        messages=[
+            HistoryMessage(
+                id="m1",
+                turn_id="t1",
+                role="user",
+                content=[TextPart(text="hi")],
+                status="ok",
+                source="desktop",
+                created_at=WHEN,
+            )
+        ],
+        tool_runs=[
+            ToolRun(
+                call_id="c1",
+                turn_id="t1",
+                tool="run_command",
+                label="$ ls",
+                input={"command": "ls"},
+                status="ok",
+                summary="exit 0",
+                output_preview="a.txt",
+                duration_ms=12,
+                created_at=WHEN,
+            )
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("event", SERVER_EVENTS, ids=lambda event: event.type)
+def test_server_event_survives_a_json_round_trip(event: Envelope) -> None:
+    restored = server_event.validate_json(event.model_dump_json())
+
+    assert type(restored) is type(event)
+    assert restored == event
+
+
+@pytest.mark.parametrize("event", SERVER_EVENTS, ids=lambda event: event.type)
+def test_server_event_survives_a_round_trip_without_null_fields(event: Envelope) -> None:
+    dumped = event.model_dump_json(exclude_none=True)
+
+    assert "null" not in dumped
+    assert server_event.validate_json(dumped) == event
+
+
+def test_server_event_types_match_the_spec() -> None:
+    assert sorted(event.type for event in SERVER_EVENTS) == sorted(
+        [
+            "hello.ok",
+            "pong",
+            "error",
+            "turn.started",
+            "text.delta",
+            "tool.started",
+            "tool.finished",
+            "action.call",
+            "approval.request",
+            "approval.resolved",
+            "expression",
+            "turn.finished",
+            "session.list.ok",
+            "session.created",
+            "session.updated",
+            "session.deleted",
+            "history.ok",
+        ]
+    )
+
+
+def test_hello_ok_example_from_the_spec_is_parsed() -> None:
+    event = server_event.validate_python(
+        {
+            "type": "hello.ok",
+            "reply_to": "7f9c",
+            "zero_version": "0.1.0",
+            "protocol": 1,
+            "sessions": [{"id": "s1", "title": "Plans", "updated_at": "2026-01-01T12:00:00Z"}],
+        }
+    )
+
+    assert isinstance(event, HelloOk)
+    assert event.reply_to == "7f9c"
+    assert event.sessions == [SESSION]
+
+
+def test_timestamps_are_sent_as_iso_8601_utc() -> None:
+    dumped = SessionCreated(session=SESSION).model_dump_json()
+
+    assert '"updated_at":"2026-01-01T12:00:00Z"' in dumped
+
+
+def test_tool_started_is_visible_unless_marked_hidden() -> None:
+    visible = ToolStarted(**TURN, call_id="c1", tool="read_file")
+    hidden = ToolStarted(**TURN, call_id="c2", tool="set_expression", hidden=True)
+
+    assert visible.hidden is False
+    assert hidden.hidden is True
+    assert '"hidden":true' in hidden.model_dump_json()
+
+
+def test_turn_finished_defaults() -> None:
+    event = TurnFinished(**TURN, status="cancelled")
+
+    assert event.text == ""
+    assert event.expression is None
+    assert event.usage == Usage(input_tokens=0, output_tokens=0)
+    assert event.error is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"type": "turn.started", "source": "desktop"},
+        {"type": "text.delta", "delta": "x"},
+        {"type": "tool.started", "call_id": "c1", "tool": "read_file"},
+        {"type": "tool.finished", "call_id": "c1", "status": "ok"},
+        {"type": "action.call", "call_id": "c1", "action": "screenshot"},
+        {"type": "approval.request", "approval_id": "a1", "tool": "write_file"},
+        {
+            "type": "approval.resolved",
+            "approval_id": "a1",
+            "decision": "allow",
+            "by_client_id": "c",
+        },
+        {"type": "expression", "pose": "idle", "mood": "neutral"},
+        {"type": "turn.finished", "status": "ok"},
+    ],
+    ids=lambda data: data["type"],
+)
+def test_turn_events_require_session_and_turn(data: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        server_event.validate_python(data)
+
+    assert server_event.validate_python({**data, **TURN}).type == data["type"]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"type": "tool.finished", **TURN, "call_id": "c1", "status": "exploded"},
+        {"type": "turn.finished", **TURN, "status": "done"},
+        {"type": "turn.started", **TURN, "source": "toaster"},
+        {
+            "type": "approval.resolved",
+            **TURN,
+            "approval_id": "a1",
+            "decision": "maybe",
+            "by_client_id": "c-1",
+        },
+        {"type": "error", "code": "made_up", "message": "x"},
+        {"type": "session.created"},
+        {"type": "session.deleted"},
+        {"type": "history.ok"},
+        {"type": "hello.ok", "protocol": 1},
+        {"type": "ping"},
+    ],
+    ids=[
+        "tool-status",
+        "turn-status",
+        "turn-source",
+        "approval-decision",
+        "error-code",
+        "created-without-session",
+        "deleted-without-id",
+        "history-without-session",
+        "hello-ok-without-version",
+        "client-type",
+    ],
+)
+def test_invalid_server_event_is_rejected(data: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        server_event.validate_python(data)
+
+
+def test_client_and_server_message_types_do_not_overlap() -> None:
+    for event in SERVER_EVENTS:
+        with pytest.raises(ValidationError):
+            client_message.validate_json(event.model_dump_json())

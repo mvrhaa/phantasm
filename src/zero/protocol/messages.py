@@ -1,14 +1,17 @@
 """Pydantic models of the protocol messages.
 
 Every message is a JSON object with a ``type`` field. This module holds the
-shared envelope, the content parts and the messages a client sends to Zero.
+shared envelope, the content parts, the messages a client sends to Zero
+(``ClientMessage``) and the events Zero sends back (``ServerEvent``).
 """
 
+from datetime import datetime
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
 from zero.config import Policy
+from zero.protocol.errors import ErrorCode
 
 
 class Envelope(BaseModel):
@@ -210,3 +213,239 @@ ClientMessage = Annotated[
     Field(discriminator="type"),
 ]
 """Any message a client may send. An unknown ``type`` fails validation."""
+
+
+# --- Zero -> client: shared pieces -------------------------------------------
+
+
+class SessionInfo(BaseModel):
+    """What clients are told about a session."""
+
+    id: str
+    title: str | None = None
+    updated_at: datetime
+
+
+class ExpressionState(BaseModel):
+    """A pose and a mood of the character."""
+
+    pose: str
+    mood: str
+
+
+class Usage(BaseModel):
+    """Tokens spent by a turn."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class HistoryMessage(BaseModel):
+    """A stored message as returned by ``history.ok``."""
+
+    id: str
+    turn_id: str | None = None
+    role: Literal["user", "assistant", "tool"]
+    content: list[ContentPart]
+    status: Literal["ok", "cancelled", "error"] | None = None
+    source: Literal["desktop", "phone", "scheduler", "agent"] | None = None
+    created_at: datetime
+
+
+class ToolRun(BaseModel):
+    """A finished tool call as returned by ``history.ok``."""
+
+    call_id: str
+    turn_id: str
+    tool: str
+    label: str = ""
+    input: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["ok", "error", "denied", "cancelled"]
+    summary: str = ""
+    output_preview: str = ""
+    duration_ms: int = 0
+    created_at: datetime
+
+
+class TurnEvent(Envelope):
+    """Base of the events of a turn: all of them name the session and the turn."""
+
+    session_id: str
+    turn_id: str
+
+
+# --- Zero -> client: handshake and service -----------------------------------
+
+
+class HelloOk(Envelope):
+    """Answer to ``hello``."""
+
+    type: Literal["hello.ok"] = "hello.ok"
+    zero_version: str
+    protocol: int
+    sessions: list[SessionInfo] = Field(default_factory=list)
+
+
+class Pong(Envelope):
+    """Answer to ``ping``."""
+
+    type: Literal["pong"] = "pong"
+
+
+class Error(Envelope):
+    """Something went wrong; ``reply_to`` is set when a message caused it."""
+
+    type: Literal["error"] = "error"
+    code: ErrorCode
+    message: str
+
+
+# --- Zero -> client: turn events ---------------------------------------------
+
+
+class TurnStarted(TurnEvent):
+    """A turn began."""
+
+    type: Literal["turn.started"] = "turn.started"
+    source: Literal["desktop", "phone", "scheduler", "agent"]
+
+
+class TextDelta(TurnEvent):
+    """The next chunk of the model's answer."""
+
+    type: Literal["text.delta"] = "text.delta"
+    delta: str
+
+
+class ToolStarted(TurnEvent):
+    """A tool call began. ``hidden`` tools are not shown as a separate line."""
+
+    type: Literal["tool.started"] = "tool.started"
+    call_id: str
+    tool: str
+    label: str = ""
+    input: dict[str, Any] = Field(default_factory=dict)
+    hidden: bool = False
+
+
+class ToolFinished(TurnEvent):
+    """A tool call ended."""
+
+    type: Literal["tool.finished"] = "tool.finished"
+    call_id: str
+    status: Literal["ok", "error", "denied", "cancelled"]
+    summary: str = ""
+    output_preview: str = ""
+    duration_ms: int = 0
+
+
+class ActionCall(TurnEvent):
+    """Ask one client to perform an action it declared in ``hello``."""
+
+    type: Literal["action.call"] = "action.call"
+    call_id: str
+    action: str
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApprovalRequest(TurnEvent):
+    """Ask the user to allow or deny a tool call."""
+
+    type: Literal["approval.request"] = "approval.request"
+    approval_id: str
+    tool: str
+    label: str = ""
+    input: dict[str, Any] = Field(default_factory=dict)
+    reason: str = ""
+    diff: str | None = None
+
+
+class ApprovalResolved(TurnEvent):
+    """An approval was answered, so other clients can drop its card."""
+
+    type: Literal["approval.resolved"] = "approval.resolved"
+    approval_id: str
+    decision: Literal["allow", "deny", "always"]
+    by_client_id: str
+
+
+class Expression(TurnEvent):
+    """The character changed its pose and mood."""
+
+    type: Literal["expression"] = "expression"
+    pose: str
+    mood: str
+
+
+class TurnFinished(TurnEvent):
+    """A turn ended; carries the full final text."""
+
+    type: Literal["turn.finished"] = "turn.finished"
+    status: Literal["ok", "error", "cancelled", "max_steps"]
+    text: str = ""
+    expression: ExpressionState | None = None
+    usage: Usage = Field(default_factory=Usage)
+    error: str | None = None
+
+
+# --- Zero -> client: sessions and history ------------------------------------
+
+
+class SessionListOk(Envelope):
+    """Answer to ``session.list``."""
+
+    type: Literal["session.list.ok"] = "session.list.ok"
+    sessions: list[SessionInfo] = Field(default_factory=list)
+
+
+class SessionCreated(Envelope):
+    """A session was created."""
+
+    type: Literal["session.created"] = "session.created"
+    session: SessionInfo
+
+
+class SessionUpdated(Envelope):
+    """A session changed, for example it was renamed."""
+
+    type: Literal["session.updated"] = "session.updated"
+    session: SessionInfo
+
+
+class SessionDeleted(Envelope):
+    """A session was deleted."""
+
+    type: Literal["session.deleted"] = "session.deleted"
+    session_id: str
+
+
+class HistoryOk(Envelope):
+    """Answer to ``history.get``: messages in ascending order plus tool runs."""
+
+    type: Literal["history.ok"] = "history.ok"
+    session_id: str
+    messages: list[HistoryMessage] = Field(default_factory=list)
+    tool_runs: list[ToolRun] = Field(default_factory=list)
+
+
+ServerEvent = Annotated[
+    HelloOk
+    | Pong
+    | Error
+    | TurnStarted
+    | TextDelta
+    | ToolStarted
+    | ToolFinished
+    | ActionCall
+    | ApprovalRequest
+    | ApprovalResolved
+    | Expression
+    | TurnFinished
+    | SessionListOk
+    | SessionCreated
+    | SessionUpdated
+    | SessionDeleted
+    | HistoryOk,
+    Field(discriminator="type"),
+]
+"""Any message Zero may send to a client."""
