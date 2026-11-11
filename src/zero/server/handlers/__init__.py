@@ -8,9 +8,28 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from zero.protocol.errors import ErrorCode
-from zero.protocol.messages import ClientMessage, Envelope, Error, Hello, Ping, Pong
+from zero.protocol.messages import (
+    ClientMessage,
+    Envelope,
+    Error,
+    Hello,
+    HistoryGet,
+    Ping,
+    Pong,
+    SessionCreate,
+    SessionDelete,
+    SessionList,
+    SessionRename,
+)
 from zero.server.connections import Connection
 from zero.server.handlers.hello import handle_hello
+from zero.server.handlers.sessions import (
+    handle_history_get,
+    handle_session_create,
+    handle_session_delete,
+    handle_session_list,
+    handle_session_rename,
+)
 from zero.server.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -28,6 +47,11 @@ async def handle_ping(connection: Connection, message: Ping, state: AppState) ->
 HANDLERS: dict[type[Envelope], Handler] = {
     Hello: handle_hello,
     Ping: handle_ping,
+    SessionList: handle_session_list,
+    SessionCreate: handle_session_create,
+    SessionRename: handle_session_rename,
+    SessionDelete: handle_session_delete,
+    HistoryGet: handle_history_get,
 }
 
 

@@ -70,10 +70,14 @@ class ConnectionManager:
         """Forget a connection. Does nothing if it is not registered."""
         self._connections.pop(connection.id, None)
 
-    async def broadcast(self, event: Envelope) -> None:
-        """Send an event to every connection; a dead socket does not stop the rest."""
+    async def broadcast(self, event: Envelope, exclude: Connection | None = None) -> None:
+        """Send an event to every connection except ``exclude``.
+
+        A dead socket does not stop the rest.
+        """
         for connection in self.connections:
-            await connection.send(event)
+            if connection is not exclude:
+                await connection.send(event)
 
     async def send_to(self, client_id: str, event: Envelope) -> bool:
         """Send an event to the connections of one client. False if none received it."""

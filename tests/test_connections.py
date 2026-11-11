@@ -112,3 +112,14 @@ async def test_send_to_unknown_or_dead_client_returns_false() -> None:
 
     assert await manager.send_to("c-1", Pong()) is False
     assert await manager.send_to("nobody", Pong()) is False
+
+
+async def test_broadcast_can_skip_one_connection() -> None:
+    manager = ConnectionManager()
+    sender, sender_socket = connect(manager)
+    _, other = connect(manager)
+
+    await manager.broadcast(Pong(), exclude=sender)
+
+    assert sender_socket.sent == []
+    assert other.sent == ['{"type":"pong"}']
