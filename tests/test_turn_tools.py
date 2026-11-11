@@ -1,114 +1,22 @@
 """Tests of the tool-call cycle of a turn."""
 
-from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.turns import Harness, roles, text_of
 from zero.config import Config
-from zero.core.events import EventBus
-from zero.core.turn import StubToolRegistry, Turn
-from zero.paths import db_path
-from zero.protocol.messages import Envelope, TextPart, ToolFinished, ToolStarted, TurnFinished
-from zero.providers.base import Message, TextDelta, ToolCall, ToolCallEvent, UsageEvent
+from zero.core.stub_tools import StubToolRegistry
+from zero.protocol.messages import TextPart, ToolStarted
+from zero.providers.base import TextDelta, ToolCall, ToolCallEvent, UsageEvent
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
-from zero.store.db import Database
-from zero.store.messages import MessagesRepo, StoredMessage
-from zero.store.sessions import SessionsRepo
-
-
-@dataclass
-class Client:
-    """Stands in for a connected client and keeps everything it receives."""
-
-    id: str = "c-1"
-    received: list[Envelope] = field(default_factory=list)
-
-    async def send(self, event: Envelope) -> bool:
-        self.received.append(event)
-        return True
-
-
-@dataclass
-class Audience:
-    connections: list[Client]
-
-
-@dataclass
-class Harness:
-    """A session in a real database and a client that watches its turns."""
-
-    sessions: SessionsRepo
-    messages: MessagesRepo
-    session_id: str
-    client: Client = field(default_factory=Client)
-
-    async def run(
-        self,
-        provider: FakeProvider,
-        tools: StubToolRegistry | None = None,
-        *,
-        max_steps: int | None = None,
-        text: str = "hi",
-    ) -> Turn:
-        config = Config()
-        if max_steps is not None:
-            config.agent.max_steps = max_steps
-        turn = Turn(
-            session_id=self.session_id,
-            text=text,
-            source="desktop",
-            client=None,
-            config=config,
-            provider=provider,
-            sessions=self.sessions,
-            messages=self.messages,
-            events=EventBus(Audience([self.client])),
-            tools=tools,
-        )
-        await turn.run()
-        return turn
-
-    @property
-    def types(self) -> list[str]:
-        return [event.type for event in self.client.received]
-
-    @property
-    def finished(self) -> TurnFinished:
-        last = self.client.received[-1]
-        assert isinstance(last, TurnFinished)
-        return last
-
-    def tool_events(self) -> list[ToolStarted | ToolFinished]:
-        return [e for e in self.client.received if isinstance(e, ToolStarted | ToolFinished)]
-
-    async def stored(self) -> list[StoredMessage]:
-        return await self.messages.list(self.session_id, limit=100)
-
-
-@pytest.fixture
-async def harness() -> AsyncIterator[Harness]:
-    async with Database(db_path()) as db:
-        await db.migrate()
-        sessions = SessionsRepo(db)
-        session = await sessions.create()
-        yield Harness(sessions, MessagesRepo(db), session.id)
 
 
 def call(name: str = "add", call_id: str = "call-1", **tool_input: Any) -> ToolCallEvent:
     return ToolCallEvent(call=ToolCall(id=call_id, name=name, input=tool_input))
-
-
-def text_of(message: Any) -> str:
-    return "".join(part.text for part in message.content if isinstance(part, TextPart))
-
-
-def roles(messages: Sequence[Message | StoredMessage]) -> str:
-    return " ".join(message.role for message in messages)
 
 
 def calculator(log: list[dict[str, Any]] | None = None) -> StubToolRegistry:
@@ -313,8 +221,7 @@ async def test_text_of_every_step_reaches_the_client_and_the_history(harness: Ha
 
     await harness.run(provider, calculator())
 
-    deltas = [e.delta for e in harness.client.received if e.type == "text.delta"]  # type: ignore[attr-defined]
-    assert deltas == ["Let me count. ", "It is 5."]
+    assert harness.deltas == ["Let me count. ", "It is 5."]
     assert harness.finished.text == "Let me count. It is 5."
     assert text_of(provider.calls[1].messages[-2]) == "Let me count. "
     _, assistant, _, answer = await harness.stored()

@@ -1,17 +1,19 @@
 """The agent loop: one turn from a user message to the final answer."""
 
 import asyncio
+import contextlib
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 from zero import clock
 from zero.config import Config
-from zero.core.cancellation import CancelToken
+from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
+from zero.core.stub_tools import StubToolRegistry, StubToolResult, error_result
 from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
@@ -37,76 +39,12 @@ from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
 
 HISTORY_FETCH_LIMIT = 500
+RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
+NOT_RUN = "Not run: the user cancelled the turn."
+
+TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
 
 logger = logging.getLogger(__name__)
-
-
-# --- Temporary tools -----------------------------------------------------------
-
-StubToolFn = Callable[[dict[str, Any]], Awaitable[str]]
-"""A stub tool: takes the call's input and returns text for the model."""
-
-
-@dataclass
-class StubToolResult:
-    """What a tool call gave back to the model."""
-
-    content: list[ContentPart]
-    is_error: bool = False
-
-
-def _error(text: str) -> StubToolResult:
-    return StubToolResult(content=[TextPart(text=text)], is_error=True)
-
-
-class StubToolRegistry:
-    """A temporary tool registry for the agent loop; commit 35 replaces it.
-
-    Failures never escape ``execute``: an unknown tool or an exception in a
-    tool becomes an error result, so the model can read it and try again.
-    """
-
-    def __init__(self) -> None:
-        self._tools: dict[str, tuple[ToolSpec, StubToolFn]] = {}
-
-    def register(
-        self,
-        name: str,
-        fn: StubToolFn,
-        *,
-        description: str = "",
-        input_schema: dict[str, Any] | None = None,
-    ) -> None:
-        """Add a tool. Raises ``ValueError`` if the name is already taken."""
-        if name in self._tools:
-            raise ValueError(f"tool {name!r} is already registered")
-        spec = ToolSpec(
-            name=name,
-            description=description,
-            input_schema=input_schema or {"type": "object", "properties": {}},
-        )
-        self._tools[name] = (spec, fn)
-
-    def specs(self) -> list[ToolSpec]:
-        """Describe every tool for the model."""
-        return [spec for spec, _ in self._tools.values()]
-
-    async def execute(self, call: ToolCall) -> StubToolResult:
-        """Run a call and return its result; errors come back as results too."""
-        entry = self._tools.get(call.name)
-        if entry is None:
-            available = ", ".join(self._tools) or "none"
-            return _error(f"Unknown tool {call.name!r}. Available tools: {available}.")
-        _, fn = entry
-        try:
-            output = await fn(call.input)
-        except Exception as exc:
-            logger.warning("Tool %s failed: %s", call.name, type(exc).__name__)
-            return _error(f"Tool {call.name!r} failed: {str(exc) or type(exc).__name__}")
-        return StubToolResult(content=[TextPart(text=output)])
-
-
-# --- Turn ----------------------------------------------------------------------
 
 
 @dataclass
@@ -128,6 +66,7 @@ class Turn:
     The turn knows nothing about WebSockets: it reports progress by publishing
     protocol events on the bus. ``reply`` names the request that started it,
     so the sender's ``turn.started`` can point back at that request.
+    ``retry_delays`` are the pauses before each retry of a failed model call.
     """
 
     def __init__(
@@ -144,10 +83,12 @@ class Turn:
         events: EventBus,
         tools: StubToolRegistry | None = None,
         reply: ReplyTo | None = None,
+        retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
         self.cancel = CancelToken()
+        self.done = False  # set once everything is saved, just before turn.finished
         self._text = text
         self._source: Source = source
         self._client = client
@@ -158,6 +99,7 @@ class Turn:
         self._events = events
         self._tools = tools if tools is not None else StubToolRegistry()
         self._reply = reply
+        self._retry_delays = tuple(retry_delays)
 
     async def run(self) -> None:
         """Run the turn to the end. Never raises: failures end the turn with an error."""
@@ -175,29 +117,31 @@ class Turn:
         )
 
         progress = _Progress()
-        hit_limit = False
+        status: TurnStatus = "ok"
         error: str | None = None
         try:
-            hit_limit = await self._steps(progress)
+            if await self._steps(progress):
+                status = "max_steps"
+        except TurnCancelled:
+            logger.info("Turn %s cancelled", self.id)
+            status = "cancelled"
         except ProviderError as exc:
             logger.warning("Turn %s failed: provider error (retryable=%s)", self.id, exc.retryable)
-            error = exc.message
+            status, error = "error", exc.message
         except Exception:
             logger.exception("Turn %s failed", self.id)
-            error = "internal error"
+            status, error = "error", "internal error"
 
-        status: Literal["ok", "error", "max_steps"] = (
-            "error" if error is not None else "max_steps" if hit_limit else "ok"
-        )
         await self._messages.append(
             self.session_id,
             "assistant",
             _text_content(progress.step_text),
             turn_id=self.id,
-            status="error" if error is not None else "ok",
+            status="ok" if status == "max_steps" else status,
             source=self._source,
         )
         await self._sessions.touch(self.session_id)
+        self.done = True
         await self._events.publish(
             TurnFinished(
                 session_id=self.session_id,
@@ -221,12 +165,12 @@ class Turn:
         max_steps = max(self._config.agent.max_steps, 1)
 
         for _ in range(max_steps - 1):
-            calls = await self._stream_step(prompt, specs, progress)
+            calls = await self._call_model(prompt, specs, progress)
             if not calls:
                 return False
             await self._run_tools(prompt, calls, progress)
 
-        ignored = await self._stream_step(prompt, [], progress)
+        ignored = await self._call_model(prompt, [], progress)
         if ignored:
             logger.warning(
                 "Turn %s: model asked for %d tools on the last step; ignored",
@@ -235,10 +179,31 @@ class Turn:
             )
         return True
 
+    async def _call_model(
+        self, prompt: list[Message], tools: list[ToolSpec], progress: _Progress
+    ) -> list[ToolCall]:
+        """Stream one answer, retrying a retryable failure that came before any text.
+
+        Text already sent to clients cannot be taken back, so a failure in the
+        middle of an answer ends the turn instead of streaming the answer twice.
+        """
+        for delay in self._retry_delays:
+            try:
+                return await self._stream_step(prompt, tools, progress)
+            except ProviderError as exc:
+                if not exc.retryable or progress.step_text:
+                    raise
+                logger.warning(
+                    "Turn %s: retryable provider error, trying again in %.1f s", self.id, delay
+                )
+                await self._pause(delay)
+        return await self._stream_step(prompt, tools, progress)
+
     async def _stream_step(
         self, prompt: list[Message], tools: list[ToolSpec], progress: _Progress
     ) -> list[ToolCall]:
         """Stream one answer of the model, publishing its text; return its tool calls."""
+        self.cancel.raise_if_cancelled()
         calls: list[ToolCall] = []
         stream = self._provider.stream(
             prompt, tools, self._config.provider.model, cancel=self.cancel
@@ -255,6 +220,8 @@ class Turn:
             elif isinstance(event, UsageEvent):
                 progress.usage.input_tokens += event.input_tokens
                 progress.usage.output_tokens += event.output_tokens
+        # A provider may end its stream quietly on cancellation instead of raising.
+        self.cancel.raise_if_cancelled()
         return calls
 
     async def _run_tools(
@@ -264,10 +231,15 @@ class Turn:
 
         The assistant message and its tool results are saved only after every
         call is done, so the history never holds a call without its result.
+        Once the turn is cancelled, the calls that have not started are not run:
+        they get a result saying so, and the turn stops after the step is saved.
         """
-        results = []
+        results: list[StubToolResult] = []
         for call in calls:
-            results.append(await self._run_tool(call))
+            if self.cancel.cancelled:
+                results.append(error_result(NOT_RUN))
+            else:
+                results.append(await self._run_tool(call))
 
         assistant = Message(
             role="assistant", content=_text_content(progress.step_text), tool_calls=calls
@@ -303,6 +275,7 @@ class Turn:
                     is_error=result.is_error,
                 )
             )
+        self.cancel.raise_if_cancelled()
 
     async def _run_tool(self, call: ToolCall) -> StubToolResult:
         """Run one call, telling clients when it starts and how it ends."""
@@ -326,6 +299,12 @@ class Turn:
         )
         return result
 
+    async def _pause(self, seconds: float) -> None:
+        """Sleep, but stop with ``TurnCancelled`` as soon as the turn is cancelled."""
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self.cancel.wait(), timeout=seconds)
+        self.cancel.raise_if_cancelled()
+
     async def _build_prompt(self) -> list[Message]:
         """System prompt followed by the history that fits the token budget."""
         system = build_system_prompt(self._client, self._source, now=clock.now())
@@ -345,6 +324,19 @@ class TurnManager:
     def active(self) -> list[Turn]:
         """Turns that are still running."""
         return list(self._turns.values())
+
+    def get(self, turn_id: str) -> Turn | None:
+        """The running turn with this id, or None."""
+        return self._turns.get(turn_id)
+
+    def busy(self, session_id: str) -> bool:
+        """True while a turn of this session is unfinished.
+
+        A turn counts as finished once it has saved everything, just before it
+        announces ``turn.finished``, so a client may send the next message as
+        soon as it sees that event.
+        """
+        return any(t.session_id == session_id and not t.done for t in self._turns.values())
 
     def start(self, turn: Turn) -> None:
         """Start a turn in the background and forget it once it is done."""
