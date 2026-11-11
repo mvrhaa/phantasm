@@ -9,6 +9,7 @@ from zero import APP_NAME, __version__
 from zero.config import Config
 from zero.paths import db_path
 from zero.server.auth import get_or_create_token
+from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
 from zero.server.ws import router as ws_router
 from zero.store.db import Database
@@ -34,6 +35,7 @@ def create_app(config: Config) -> FastAPI:
                 sessions=SessionsRepo(db),
                 messages=MessagesRepo(db),
                 token=get_or_create_token(),
+                connections=ConnectionManager(),
             )
             yield
         finally:

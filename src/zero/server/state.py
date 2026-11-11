@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 from zero.config import Config
+from zero.server.connections import ConnectionManager
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
@@ -19,6 +20,7 @@ class AppState:
     sessions: SessionsRepo
     messages: MessagesRepo
     token: str
+    connections: ConnectionManager
 
 
 def get_state(app: FastAPI) -> AppState:

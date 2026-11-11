@@ -1,10 +1,14 @@
-"""The WebSocket endpoint: authorization and the connection lifetime."""
+"""The WebSocket endpoint: authorization, the read loop and the connection lifetime."""
 
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from zero.protocol.errors import ErrorCode
+from zero.protocol.messages import Error
 from zero.server.auth import verify
+from zero.server.connections import Connection
+from zero.server.handlers import dispatch
 from zero.server.state import get_state
 
 CLOSE_UNAUTHORIZED = 4401
@@ -51,8 +55,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=CLOSE_UNAUTHORIZED, reason="unauthorized")
         return
 
+    connection = Connection(websocket)
+    state.connections.add(connection)
     try:
         while True:
-            await websocket.receive_text()
+            frame = await websocket.receive()
+            if frame["type"] == "websocket.disconnect":
+                break
+            text = frame.get("text")
+            if text is None:
+                await connection.send(
+                    Error(code=ErrorCode.INVALID_MESSAGE, message="binary frames are not supported")
+                )
+                continue
+            await dispatch(connection, text, state)
     except WebSocketDisconnect:
         pass
+    finally:
+        state.connections.remove(connection)
