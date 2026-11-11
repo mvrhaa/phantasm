@@ -86,6 +86,7 @@ class Preview:
     refusal: str | None = None  # the call cannot run; the model gets this and no one is asked
     approval_reason: str | None = None  # ask the user even if bypass or a saved rule says allow
     diff: str | None = None  # shown in the approval card, for changes to files
+    label: str | None = None  # a better line for the approval card than ``Tool.label`` gives
 
 
 @dataclass(frozen=True)
@@ -266,7 +267,7 @@ class ToolRegistry:
                     session_id=ctx.session_id,
                     turn_id=ctx.turn_id,
                     tool=tool.name,
-                    label=tool.label(params),
+                    label=preview.label or tool.label(params),
                     input=call.input,
                     reason=why,
                     diff=preview.diff,

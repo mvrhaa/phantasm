@@ -188,6 +188,9 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "run_command",
         "web_fetch",
         "send_file",
+        "memory_save",
+        "memory_search",
+        "memory_delete",
         "set_expression",
     ]
     assert system.role == "system"

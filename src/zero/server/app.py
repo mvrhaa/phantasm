@@ -20,6 +20,7 @@ from zero.server.state import AppState
 from zero.server.ws import router as ws_router
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
+from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.tool_runs import ToolRunsRepo
@@ -55,6 +56,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             await db.migrate()
             connections = ConnectionManager()
             events = EventBus(connections)
+            memory = MemoryRepo(db)
             app.state.zero = AppState(
                 config=config,
                 db=db,
@@ -64,11 +66,12 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=events,
                 turns=TurnManager(),
-                tools=builtin_registry(),
+                tools=builtin_registry(memory),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
                 actions=ActionBroker(connections),
+                memory=memory,
                 provider=provider or _choose_provider(config),
             )
             turns = app.state.zero.turns
