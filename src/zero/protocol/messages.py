@@ -45,11 +45,12 @@ class ImagePart(BaseModel):
 
 
 class FilePart(BaseModel):
-    """A file referred to by its name and path."""
+    """A file referred to by its name and path; ``mime`` tells an image from other files."""
 
     type: Literal["file"] = "file"
     name: str
     path: str
+    mime: str | None = None
 
 
 ContentPart = Annotated[TextPart | ImagePart | FilePart, Field(discriminator="type")]

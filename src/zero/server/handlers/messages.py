@@ -1,8 +1,10 @@
 """Handlers of ``message.send`` and ``turn.cancel``: starting and stopping turns."""
 
+import asyncio
 import logging
 from functools import partial
 
+from zero.core.attachments import AttachmentError, save_attachments
 from zero.core.events import ReplyTo
 from zero.core.titles import title_new_session
 from zero.core.turn import Turn
@@ -11,6 +13,7 @@ from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCance
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
 from zero.server.state import AppState
+from zero.tools.permissions import PathGuard
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,8 @@ async def handle_message_send(
     sender's ``turn.started`` carries ``reply_to``. A session runs one turn at
     a time: a message into a busy session is answered with ``turn_busy``.
     An untitled session gets a title from this message once the turn is over.
+    Attachments are saved to ``files/`` first; a bad one is answered with
+    ``invalid_message`` and nothing starts.
     """
     if state.provider is None:
         await connection.send(
@@ -35,10 +40,8 @@ async def handle_message_send(
         )
         return
 
-    if message.session_id is None:
-        session = await state.sessions.create()
-        await state.events.publish(SessionCreated(session=session_info(session)))
-    else:
+    found = None
+    if message.session_id is not None:
         found = await state.sessions.get(message.session_id)
         if found is None:
             await connection.send(
@@ -49,6 +52,23 @@ async def handle_message_send(
                 )
             )
             return
+
+    try:
+        attachments = await asyncio.to_thread(
+            save_attachments,
+            message.attachments,
+            PathGuard.from_config(state.config.permissions),
+        )
+    except AttachmentError as exc:
+        await connection.send(
+            Error(code=ErrorCode.INVALID_MESSAGE, message=str(exc), reply_to=message.id)
+        )
+        return
+
+    if found is None:
+        session = await state.sessions.create()
+        await state.events.publish(SessionCreated(session=session_info(session)))
+    else:
         session = found
 
     # No await between this check and start(), so two messages cannot both pass it.
@@ -90,6 +110,7 @@ async def handle_message_send(
             tool_runs=state.tool_runs,
             action_caller=state.actions,
             memory=state.memory,
+            attachments=attachments,
             reply=ReplyTo(connection.id, message.id),
         ),
         after=after,

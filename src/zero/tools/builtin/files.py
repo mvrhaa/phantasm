@@ -63,7 +63,7 @@ def looks_secret(name: str) -> bool:
     return name.startswith((".env", "id_")) or name.endswith(".pem")
 
 
-def _image_mime(head: bytes) -> str | None:
+def image_mime(head: bytes) -> str | None:
     for signature, mime in _IMAGE_SIGNATURES:
         if head.startswith(signature):
             return mime
@@ -165,7 +165,7 @@ class ReadFile(Tool[ReadFileInput]):
                 return error_result(f"{shown} is not a regular file.")
             with path.open("rb") as file:
                 head = file.read(SNIFF_BYTES)
-            mime = _image_mime(head)
+            mime = image_mime(head)
             if mime is not None:
                 return _read_image(path, shown, mime)
             if b"\x00" in head:

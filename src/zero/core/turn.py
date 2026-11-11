@@ -11,6 +11,7 @@ from typing import Literal, Protocol
 from zero import clock
 from zero.approvals.manager import Approver
 from zero.config import Config
+from zero.core.attachments import prepare_for_model
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
@@ -19,6 +20,7 @@ from zero.core.tool_runner import ToolRunner, ToolRunRecorder
 from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
+    FilePart,
     TextPart,
     TurnFinished,
     TurnStarted,
@@ -124,6 +126,7 @@ class Turn:
         tool_runs: ToolRunRecorder | None = None,
         action_caller: ActionCaller | None = None,
         memory: MemorySource | None = None,
+        attachments: Sequence[FilePart] = (),
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -149,6 +152,7 @@ class Turn:
         self._used_computer = False  # a computer_* action raises the step limit
         self._reply = reply
         self._memory = memory
+        self._attachments = list(attachments)
         self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
         self._expression = ExpressionTool(character) if character is not None else None
@@ -177,7 +181,7 @@ class Turn:
         await self._messages.append(
             self.session_id,
             "user",
-            [TextPart(text=self._text)],
+            [TextPart(text=self._text), *self._attachments],
             turn_id=self.id,
             status="ok",
             source=self._source,
@@ -385,4 +389,6 @@ class Turn:
         )
         stored = await self._messages.list(self.session_id, limit=HISTORY_FETCH_LIMIT)
         history = build_history(stored, self._config.agent.history_token_budget)
-        return [Message(role="system", content=[TextPart(text=system)]), *history]
+        can_see = self._provider.supports_images(self._config.provider.model)
+        prompt = [Message(role="system", content=[TextPart(text=system)]), *history]
+        return await prepare_for_model(prompt, can_see)
