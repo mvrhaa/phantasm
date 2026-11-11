@@ -1,0 +1,436 @@
+"""Tests of the tool-call cycle of a turn."""
+
+from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from zero.config import Config
+from zero.core.events import EventBus
+from zero.core.turn import StubToolRegistry, Turn
+from zero.paths import db_path
+from zero.protocol.messages import Envelope, TextPart, ToolFinished, ToolStarted, TurnFinished
+from zero.providers.base import Message, TextDelta, ToolCall, ToolCallEvent, UsageEvent
+from zero.providers.fake import FakeProvider
+from zero.server.app import create_app
+from zero.server.state import get_state
+from zero.store.db import Database
+from zero.store.messages import MessagesRepo, StoredMessage
+from zero.store.sessions import SessionsRepo
+
+
+@dataclass
+class Client:
+    """Stands in for a connected client and keeps everything it receives."""
+
+    id: str = "c-1"
+    received: list[Envelope] = field(default_factory=list)
+
+    async def send(self, event: Envelope) -> bool:
+        self.received.append(event)
+        return True
+
+
+@dataclass
+class Audience:
+    connections: list[Client]
+
+
+@dataclass
+class Harness:
+    """A session in a real database and a client that watches its turns."""
+
+    sessions: SessionsRepo
+    messages: MessagesRepo
+    session_id: str
+    client: Client = field(default_factory=Client)
+
+    async def run(
+        self,
+        provider: FakeProvider,
+        tools: StubToolRegistry | None = None,
+        *,
+        max_steps: int | None = None,
+        text: str = "hi",
+    ) -> Turn:
+        config = Config()
+        if max_steps is not None:
+            config.agent.max_steps = max_steps
+        turn = Turn(
+            session_id=self.session_id,
+            text=text,
+            source="desktop",
+            client=None,
+            config=config,
+            provider=provider,
+            sessions=self.sessions,
+            messages=self.messages,
+            events=EventBus(Audience([self.client])),
+            tools=tools,
+        )
+        await turn.run()
+        return turn
+
+    @property
+    def types(self) -> list[str]:
+        return [event.type for event in self.client.received]
+
+    @property
+    def finished(self) -> TurnFinished:
+        last = self.client.received[-1]
+        assert isinstance(last, TurnFinished)
+        return last
+
+    def tool_events(self) -> list[ToolStarted | ToolFinished]:
+        return [e for e in self.client.received if isinstance(e, ToolStarted | ToolFinished)]
+
+    async def stored(self) -> list[StoredMessage]:
+        return await self.messages.list(self.session_id, limit=100)
+
+
+@pytest.fixture
+async def harness() -> AsyncIterator[Harness]:
+    async with Database(db_path()) as db:
+        await db.migrate()
+        sessions = SessionsRepo(db)
+        session = await sessions.create()
+        yield Harness(sessions, MessagesRepo(db), session.id)
+
+
+def call(name: str = "add", call_id: str = "call-1", **tool_input: Any) -> ToolCallEvent:
+    return ToolCallEvent(call=ToolCall(id=call_id, name=name, input=tool_input))
+
+
+def text_of(message: Any) -> str:
+    return "".join(part.text for part in message.content if isinstance(part, TextPart))
+
+
+def roles(messages: Sequence[Message | StoredMessage]) -> str:
+    return " ".join(message.role for message in messages)
+
+
+def calculator(log: list[dict[str, Any]] | None = None) -> StubToolRegistry:
+    """A registry with one tool, ``add``; every input it gets is appended to ``log``."""
+
+    async def add(args: dict[str, Any]) -> str:
+        if log is not None:
+            log.append(args)
+        return str(args["a"] + args["b"])
+
+    tools = StubToolRegistry()
+    tools.register(
+        "add",
+        add,
+        description="Add two numbers",
+        input_schema={
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    )
+    return tools
+
+
+# --- StubToolRegistry --------------------------------------------------------
+
+
+def test_registry_describes_its_tools() -> None:
+    (spec,) = calculator().specs()
+
+    assert (spec.name, spec.description) == ("add", "Add two numbers")
+    assert spec.input_schema["required"] == ["a", "b"]
+
+
+def test_registry_gives_a_tool_an_empty_object_schema_by_default() -> None:
+    async def noop(args: dict[str, Any]) -> str:
+        return ""
+
+    tools = StubToolRegistry()
+    tools.register("noop", noop)
+
+    assert tools.specs()[0].input_schema == {"type": "object", "properties": {}}
+
+
+def test_registry_refuses_a_second_tool_with_the_same_name() -> None:
+    async def other_add(args: dict[str, Any]) -> str:
+        return "0"
+
+    tools = calculator()
+
+    with pytest.raises(ValueError, match="already registered"):
+        tools.register("add", other_add)
+
+
+async def test_registry_runs_a_tool() -> None:
+    result = await calculator().execute(ToolCall(id="c", name="add", input={"a": 1, "b": 2}))
+
+    assert (result.content, result.is_error) == ([TextPart(text="3")], False)
+
+
+async def test_registry_reports_an_unknown_tool_as_an_error() -> None:
+    result = await calculator().execute(ToolCall(id="c", name="fly"))
+
+    assert result.is_error
+    assert text_of(result) == "Unknown tool 'fly'. Available tools: add."
+
+
+async def test_registry_with_no_tools_says_so() -> None:
+    result = await StubToolRegistry().execute(ToolCall(id="c", name="fly"))
+
+    assert text_of(result) == "Unknown tool 'fly'. Available tools: none."
+
+
+async def test_registry_names_the_exception_when_it_has_no_message() -> None:
+    async def broken(args: dict[str, Any]) -> str:
+        raise RuntimeError()
+
+    tools = StubToolRegistry()
+    tools.register("broken", broken)
+
+    result = await tools.execute(ToolCall(id="c", name="broken"))
+
+    assert result.is_error
+    assert text_of(result) == "Tool 'broken' failed: RuntimeError"
+
+
+# --- Tool-call cycle ---------------------------------------------------------
+
+
+async def test_tool_call_and_answer_take_two_provider_calls(harness: Harness) -> None:
+    provider = FakeProvider([[call(a=2, b=3)], [TextDelta(text="5")]])
+
+    await harness.run(provider, calculator())
+
+    first, second = provider.calls
+    assert [tool.name for tool in first.tools] == ["add"]
+    assert [tool.name for tool in second.tools] == ["add"]
+    assistant, result = second.messages[-2:]
+    assert assistant.role == "assistant"
+    assert assistant.tool_calls == [ToolCall(id="call-1", name="add", input={"a": 2, "b": 3})]
+    assert (result.role, result.tool_call_id, result.is_error) == ("tool", "call-1", False)
+    assert result.content == [TextPart(text="5")]
+    assert (harness.finished.status, harness.finished.text) == ("ok", "5")
+
+
+async def test_tool_steps_are_stored_with_the_turn(harness: Harness) -> None:
+    provider = FakeProvider([[call(a=2, b=3)], [TextDelta(text="5")]])
+
+    turn = await harness.run(provider, calculator())
+
+    stored = await harness.stored()
+    assert roles(stored) == "user assistant tool assistant"
+    user, assistant, tool, answer = stored
+    assert assistant.tool_calls == [{"id": "call-1", "name": "add", "input": {"a": 2, "b": 3}}]
+    assert assistant.content == []
+    assert (tool.tool_call_id, tool.is_error, text_of(tool)) == ("call-1", False, "5")
+    assert (answer.tool_calls, text_of(answer)) == ([], "5")
+    assert all(m.turn_id == turn.id for m in (user, assistant, tool, answer))
+    assert all((m.status, m.source) == ("ok", "desktop") for m in (assistant, tool, answer))
+
+
+async def test_clients_see_the_tool_run_between_steps(harness: Harness) -> None:
+    provider = FakeProvider([[call(a=2, b=3)], [TextDelta(text="5")]])
+
+    turn = await harness.run(provider, calculator())
+
+    assert harness.types == [
+        "turn.started",
+        "tool.started",
+        "tool.finished",
+        "text.delta",
+        "turn.finished",
+    ]
+    started, finished = harness.tool_events()
+    assert started == ToolStarted(
+        session_id=harness.session_id,
+        turn_id=turn.id,
+        call_id="call-1",
+        tool="add",
+        input={"a": 2, "b": 3},
+    )
+    assert (finished.call_id, finished.status) == ("call-1", "ok")  # type: ignore[union-attr]
+
+
+async def test_unknown_tool_is_an_error_for_the_model_not_for_the_turn(harness: Harness) -> None:
+    provider = FakeProvider([[call(name="fly")], [TextDelta(text="I cannot fly.")]])
+
+    await harness.run(provider, calculator())
+
+    result = provider.calls[1].messages[-1]
+    assert (result.role, result.is_error) == ("tool", True)
+    assert text_of(result) == "Unknown tool 'fly'. Available tools: add."
+    assert harness.tool_events()[1].status == "error"  # type: ignore[union-attr]
+    assert (harness.finished.status, harness.finished.text) == ("ok", "I cannot fly.")
+    stored_result = (await harness.stored())[2]
+    assert (stored_result.role, stored_result.is_error) == ("tool", True)
+
+
+async def test_failing_tool_does_not_break_the_turn(harness: Harness) -> None:
+    async def broken(args: dict[str, Any]) -> str:
+        raise RuntimeError("disk is full")
+
+    tools = StubToolRegistry()
+    tools.register("save", broken)
+    provider = FakeProvider([[call(name="save")], [TextDelta(text="Could not save.")]])
+
+    await harness.run(provider, tools)
+
+    result = provider.calls[1].messages[-1]
+    assert result.is_error
+    assert text_of(result) == "Tool 'save' failed: disk is full"
+    assert harness.finished.status == "ok"
+
+
+async def test_calls_of_one_step_run_in_order_and_share_one_message(harness: Harness) -> None:
+    log: list[dict[str, Any]] = []
+    provider = FakeProvider(
+        [
+            [call(call_id="c1", a=1, b=1), call(call_id="c2", a=2, b=2)],
+            [TextDelta(text="2 and 4")],
+        ]
+    )
+
+    await harness.run(provider, calculator(log))
+
+    assert log == [{"a": 1, "b": 1}, {"a": 2, "b": 2}]
+    assistant, first, second = provider.calls[1].messages[-3:]
+    assert [c.id for c in assistant.tool_calls] == ["c1", "c2"]
+    assert [(first.tool_call_id, text_of(first)), (second.tool_call_id, text_of(second))] == [
+        ("c1", "2"),
+        ("c2", "4"),
+    ]
+    stored = await harness.stored()
+    assert roles(stored) == "user assistant tool tool assistant"
+    assert [e.call_id for e in harness.tool_events()] == ["c1", "c1", "c2", "c2"]
+
+
+async def test_text_of_every_step_reaches_the_client_and_the_history(harness: Harness) -> None:
+    provider = FakeProvider(
+        [[TextDelta(text="Let me count. "), call(a=2, b=3)], [TextDelta(text="It is 5.")]]
+    )
+
+    await harness.run(provider, calculator())
+
+    deltas = [e.delta for e in harness.client.received if e.type == "text.delta"]  # type: ignore[attr-defined]
+    assert deltas == ["Let me count. ", "It is 5."]
+    assert harness.finished.text == "Let me count. It is 5."
+    assert text_of(provider.calls[1].messages[-2]) == "Let me count. "
+    _, assistant, _, answer = await harness.stored()
+    assert (text_of(assistant), len(assistant.tool_calls)) == ("Let me count. ", 1)
+    assert text_of(answer) == "It is 5."
+
+
+async def test_usage_adds_up_over_the_steps(harness: Harness) -> None:
+    provider = FakeProvider(
+        [
+            [call(a=1, b=1), UsageEvent(input_tokens=10, output_tokens=3)],
+            [TextDelta(text="2"), UsageEvent(input_tokens=15, output_tokens=1)],
+        ]
+    )
+
+    await harness.run(provider, calculator())
+
+    assert harness.finished.usage.model_dump() == {"input_tokens": 25, "output_tokens": 4}
+
+
+async def test_next_turn_sends_the_earlier_tool_exchange(harness: Harness) -> None:
+    provider = FakeProvider(
+        [[call(a=2, b=3)], [TextDelta(text="5")], [TextDelta(text="You are welcome.")]]
+    )
+
+    await harness.run(provider, calculator(), text="add 2 and 3")
+    await harness.run(provider, calculator(), text="thanks")
+
+    messages = provider.calls[2].messages
+    assert roles(messages) == "system user assistant tool assistant user"
+    assert messages[2].tool_calls == [ToolCall(id="call-1", name="add", input={"a": 2, "b": 3})]
+    assert messages[3].tool_call_id == "call-1"
+
+
+# --- Step limit --------------------------------------------------------------
+
+
+async def test_last_allowed_step_goes_without_tools(harness: Harness) -> None:
+    log: list[dict[str, Any]] = []
+    provider = FakeProvider(
+        [
+            [call(call_id="c1", a=1, b=1)],
+            [call(call_id="c2", a=2, b=2)],
+            [TextDelta(text="Out of steps."), call(call_id="c3", a=3, b=3)],
+        ]
+    )
+
+    await harness.run(provider, calculator(log), max_steps=3)
+
+    assert [[tool.name for tool in c.tools] for c in provider.calls] == [["add"], ["add"], []]
+    assert log == [{"a": 1, "b": 1}, {"a": 2, "b": 2}]
+    finished = harness.finished
+    assert (finished.status, finished.text, finished.error) == ("max_steps", "Out of steps.", None)
+    stored = await harness.stored()
+    assert roles(stored) == "user assistant tool assistant tool assistant"
+    assert (stored[-1].tool_calls, text_of(stored[-1]), stored[-1].status) == (
+        [],
+        "Out of steps.",
+        "ok",
+    )
+
+
+async def test_turn_that_ends_before_the_limit_is_ok(harness: Harness) -> None:
+    provider = FakeProvider([[call(a=1, b=1)], [TextDelta(text="2")]])
+
+    await harness.run(provider, calculator(), max_steps=3)
+
+    assert len(provider.calls) == 2
+    assert provider.calls[1].tools != []
+    assert harness.finished.status == "ok"
+
+
+async def test_provider_failure_after_a_tool_step_keeps_calls_paired(harness: Harness) -> None:
+    provider = FakeProvider([[TextDelta(text="Checking. "), call(a=1, b=1)]])  # no step 2
+
+    await harness.run(provider, calculator())
+
+    assert harness.finished.status == "error"
+    assert harness.finished.text == "Checking. "
+    stored = await harness.stored()
+    assert [(m.role, m.status) for m in stored] == [
+        ("user", "ok"),
+        ("assistant", "ok"),
+        ("tool", "ok"),
+        ("assistant", "error"),
+    ]
+    assert (stored[1].tool_calls[0]["id"], stored[2].tool_call_id) == ("call-1", "call-1")
+    assert stored[-1].content == []
+
+
+# --- Over the WebSocket ------------------------------------------------------
+
+
+def test_tool_call_over_websocket() -> None:
+    provider = FakeProvider([[call(name="fly")], [TextDelta(text="No wings.")]])
+    with TestClient(create_app(Config(), provider)) as client:
+        state = get_state(client.app)  # type: ignore[arg-type]
+        with client.websocket_connect(f"/ws?token={state.token}") as ws:
+            ws.send_json({"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"}})
+            assert ws.receive_json()["type"] == "hello.ok"
+            ws.send_json({"type": "message.send", "id": "m1", "text": "fly", "source": "desktop"})
+            events = []
+            while not events or events[-1]["type"] != "turn.finished":
+                events.append(ws.receive_json())
+
+            ws.send_json({"type": "history.get", "session_id": events[0]["session"]["id"]})
+            stored = ws.receive_json()["messages"]
+
+    assert [e["type"] for e in events] == [
+        "session.created",
+        "turn.started",
+        "tool.started",
+        "tool.finished",
+        "text.delta",
+        "turn.finished",
+    ]
+    assert (events[2]["tool"], events[3]["status"]) == ("fly", "error")
+    assert (events[-1]["status"], events[-1]["text"]) == ("ok", "No wings.")
+    assert [m["role"] for m in stored] == ["user", "assistant", "tool", "assistant"]
