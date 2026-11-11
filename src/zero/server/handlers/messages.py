@@ -1,8 +1,9 @@
 """Handler of ``message.send``: starts a turn."""
 
+from zero.core.events import ReplyTo
 from zero.core.turn import Turn
 from zero.protocol.errors import ErrorCode
-from zero.protocol.messages import Envelope, Error, MessageSend, SessionCreated, TurnStarted
+from zero.protocol.messages import Error, MessageSend, SessionCreated
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
 from zero.server.state import AppState
@@ -28,7 +29,7 @@ async def handle_message_send(
 
     if message.session_id is None:
         session = await state.sessions.create()
-        await state.connections.broadcast(SessionCreated(session=session_info(session)))
+        await state.events.publish(SessionCreated(session=session_info(session)))
     else:
         found = await state.sessions.get(message.session_id)
         if found is None:
@@ -42,13 +43,6 @@ async def handle_message_send(
             return
         session = found
 
-    async def emit(event: Envelope) -> None:
-        if isinstance(event, TurnStarted):
-            await connection.send(event.model_copy(update={"reply_to": message.id}))
-            await state.connections.broadcast(event, exclude=connection)
-        else:
-            await state.connections.broadcast(event)
-
     state.turns.start(
         Turn(
             session_id=session.id,
@@ -59,6 +53,7 @@ async def handle_message_send(
             provider=state.provider,
             sessions=state.sessions,
             messages=state.messages,
-            emit=emit,
+            events=state.events,
+            reply=ReplyTo(connection.id, message.id),
         )
     )

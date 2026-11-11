@@ -3,16 +3,15 @@
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from zero import clock
 from zero.config import Config
 from zero.core.cancellation import CancelToken
 from zero.core.context import build_history, build_system_prompt
+from zero.core.events import EventBus, ReplyTo
 from zero.protocol.messages import (
     ClientInfo,
-    Envelope,
     TextPart,
     TurnFinished,
     TurnStarted,
@@ -27,14 +26,13 @@ HISTORY_FETCH_LIMIT = 500
 
 logger = logging.getLogger(__name__)
 
-Emit = Callable[[Envelope], Awaitable[None]]
-
 
 class Turn:
     """One user message and everything the model does in response to it.
 
-    The turn knows nothing about WebSockets: it reports progress by calling
-    ``emit`` with protocol events.
+    The turn knows nothing about WebSockets: it reports progress by publishing
+    protocol events on the bus. ``reply`` names the request that started it,
+    so the sender's ``turn.started`` can point back at that request.
     """
 
     def __init__(
@@ -48,7 +46,8 @@ class Turn:
         provider: LLMProvider,
         sessions: SessionsRepo,
         messages: MessagesRepo,
-        emit: Emit,
+        events: EventBus,
+        reply: ReplyTo | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -60,7 +59,8 @@ class Turn:
         self._provider = provider
         self._sessions = sessions
         self._messages = messages
-        self._emit = emit
+        self._events = events
+        self._reply = reply
 
     async def run(self) -> None:
         """Run the turn to the end. Never raises: failures end the turn with an error."""
@@ -72,8 +72,9 @@ class Turn:
             status="ok",
             source=self._source,
         )
-        await self._emit(
-            TurnStarted(session_id=self.session_id, turn_id=self.id, source=self._source)
+        await self._events.publish(
+            TurnStarted(session_id=self.session_id, turn_id=self.id, source=self._source),
+            reply=self._reply,
         )
 
         text = ""
@@ -87,7 +88,7 @@ class Turn:
             async for event in stream:
                 if isinstance(event, TextDelta):
                     text += event.text
-                    await self._emit(
+                    await self._events.publish(
                         TextDeltaEvent(
                             session_id=self.session_id, turn_id=self.id, delta=event.text
                         )
@@ -112,7 +113,7 @@ class Turn:
             source=self._source,
         )
         await self._sessions.touch(self.session_id)
-        await self._emit(
+        await self._events.publish(
             TurnFinished(
                 session_id=self.session_id,
                 turn_id=self.id,

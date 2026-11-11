@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 from zero.config import Config
+from zero.core.events import EventBus
 from zero.core.turn import TurnManager
 from zero.providers.base import LLMProvider
 from zero.server.connections import ConnectionManager
@@ -23,6 +24,7 @@ class AppState:
     messages: MessagesRepo
     token: str
     connections: ConnectionManager
+    events: EventBus
     turns: TurnManager
     provider: LLMProvider | None  # None when the config names an unusable provider
 

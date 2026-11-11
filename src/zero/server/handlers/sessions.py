@@ -1,5 +1,6 @@
 """Handlers of session management and history requests."""
 
+from zero.core.events import ReplyTo
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import (
     Envelope,
@@ -25,8 +26,7 @@ async def _announce(
     connection: Connection, state: AppState, event: Envelope, reply_to: str | None
 ) -> None:
     """Tell every client about a change; only the requester's copy has ``reply_to``."""
-    await connection.send(event.model_copy(update={"reply_to": reply_to}))
-    await state.connections.broadcast(event, exclude=connection)
+    await state.events.publish(event, reply=ReplyTo(connection.id, reply_to))
 
 
 async def _not_found(connection: Connection, session_id: str, reply_to: str | None) -> None:

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from zero import APP_NAME, __version__
 from zero.config import Config
+from zero.core.events import EventBus
 from zero.core.turn import TurnManager
 from zero.paths import db_path
 from zero.providers.base import LLMProvider
@@ -47,13 +48,15 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
         await db.connect()
         try:
             await db.migrate()
+            connections = ConnectionManager()
             app.state.zero = AppState(
                 config=config,
                 db=db,
                 sessions=SessionsRepo(db),
                 messages=MessagesRepo(db),
                 token=get_or_create_token(),
-                connections=ConnectionManager(),
+                connections=connections,
+                events=EventBus(connections),
                 turns=TurnManager(),
                 provider=provider or _choose_provider(config),
             )
