@@ -19,4 +19,6 @@
 ```bash
 uv sync                                               # окружение и зависимости
 uv run python -c "import zero; print(zero.APP_NAME)"  # проверка, что пакет импортируется
+uv run pytest -q                                      # тесты
+uv run ruff check . && uv run ruff format --check .   # линт и формат
 ```
