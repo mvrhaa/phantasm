@@ -2,105 +2,47 @@
 
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
-from tests.turns import Harness, roles, text_of
+from tests.turns import FuncTool, Harness, registry, roles, text_of
 from zero.config import Config
-from zero.core.stub_tools import StubToolRegistry
-from zero.protocol.messages import TextPart, ToolStarted
+from zero.protocol.messages import ClientInfo, TextPart, ToolStarted
 from zero.providers.base import TextDelta, ToolCall, ToolCallEvent, UsageEvent
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
+from zero.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
+
+
+class AddInput(BaseModel):
+    a: int
+    b: int
+
+
+class Add(Tool[AddInput]):
+    """Adds two numbers; every input it gets is appended to ``log``."""
+
+    name = "add"
+    description = "Add two numbers"
+    input_model = AddInput
+
+    def __init__(self, log: list[dict[str, Any]] | None = None) -> None:
+        self.log = log
+
+    async def run(self, params: AddInput, ctx: ToolContext) -> ToolResult:
+        if self.log is not None:
+            self.log.append(params.model_dump())
+        return text_result(str(params.a + params.b))
 
 
 def call(name: str = "add", call_id: str = "call-1", **tool_input: Any) -> ToolCallEvent:
     return ToolCallEvent(call=ToolCall(id=call_id, name=name, input=tool_input))
 
 
-def calculator(log: list[dict[str, Any]] | None = None) -> StubToolRegistry:
-    """A registry with one tool, ``add``; every input it gets is appended to ``log``."""
-
-    async def add(args: dict[str, Any]) -> str:
-        if log is not None:
-            log.append(args)
-        return str(args["a"] + args["b"])
-
-    tools = StubToolRegistry()
-    tools.register(
-        "add",
-        add,
-        description="Add two numbers",
-        input_schema={
-            "type": "object",
-            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
-            "required": ["a", "b"],
-        },
-    )
-    return tools
-
-
-# --- StubToolRegistry --------------------------------------------------------
-
-
-def test_registry_describes_its_tools() -> None:
-    (spec,) = calculator().specs()
-
-    assert (spec.name, spec.description) == ("add", "Add two numbers")
-    assert spec.input_schema["required"] == ["a", "b"]
-
-
-def test_registry_gives_a_tool_an_empty_object_schema_by_default() -> None:
-    async def noop(args: dict[str, Any]) -> str:
-        return ""
-
-    tools = StubToolRegistry()
-    tools.register("noop", noop)
-
-    assert tools.specs()[0].input_schema == {"type": "object", "properties": {}}
-
-
-def test_registry_refuses_a_second_tool_with_the_same_name() -> None:
-    async def other_add(args: dict[str, Any]) -> str:
-        return "0"
-
-    tools = calculator()
-
-    with pytest.raises(ValueError, match="already registered"):
-        tools.register("add", other_add)
-
-
-async def test_registry_runs_a_tool() -> None:
-    result = await calculator().execute(ToolCall(id="c", name="add", input={"a": 1, "b": 2}))
-
-    assert (result.content, result.is_error) == ([TextPart(text="3")], False)
-
-
-async def test_registry_reports_an_unknown_tool_as_an_error() -> None:
-    result = await calculator().execute(ToolCall(id="c", name="fly"))
-
-    assert result.is_error
-    assert text_of(result) == "Unknown tool 'fly'. Available tools: add."
-
-
-async def test_registry_with_no_tools_says_so() -> None:
-    result = await StubToolRegistry().execute(ToolCall(id="c", name="fly"))
-
-    assert text_of(result) == "Unknown tool 'fly'. Available tools: none."
-
-
-async def test_registry_names_the_exception_when_it_has_no_message() -> None:
-    async def broken(args: dict[str, Any]) -> str:
-        raise RuntimeError()
-
-    tools = StubToolRegistry()
-    tools.register("broken", broken)
-
-    result = await tools.execute(ToolCall(id="c", name="broken"))
-
-    assert result.is_error
-    assert text_of(result) == "Tool 'broken' failed: RuntimeError"
+def calculator(log: list[dict[str, Any]] | None = None) -> ToolRegistry:
+    """A registry with one tool, ``add``."""
+    return registry(Add(log))
 
 
 # --- Tool-call cycle ---------------------------------------------------------
@@ -176,19 +118,50 @@ async def test_unknown_tool_is_an_error_for_the_model_not_for_the_turn(harness: 
 
 
 async def test_failing_tool_does_not_break_the_turn(harness: Harness) -> None:
-    async def broken(args: dict[str, Any]) -> str:
+    async def broken(params: Any, ctx: ToolContext) -> str:
         raise RuntimeError("disk is full")
 
-    tools = StubToolRegistry()
-    tools.register("save", broken)
     provider = FakeProvider([[call(name="save")], [TextDelta(text="Could not save.")]])
 
-    await harness.run(provider, tools)
+    await harness.run(provider, registry(FuncTool("save", broken)))
 
     result = provider.calls[1].messages[-1]
     assert result.is_error
     assert text_of(result) == "Tool 'save' failed: disk is full"
     assert harness.finished.status == "ok"
+
+
+async def test_invalid_input_goes_back_to_the_model(harness: Harness) -> None:
+    log: list[dict[str, Any]] = []
+    provider = FakeProvider(
+        [[call(a=2)], [call(call_id="call-2", a=2, b=3)], [TextDelta(text="5")]]
+    )
+
+    await harness.run(provider, calculator(log))
+
+    result = provider.calls[1].messages[-1]
+    assert result.is_error
+    assert text_of(result) == "Invalid input for 'add': b: Field required. Fix it and call again."
+    assert log == [{"a": 2, "b": 3}]
+    assert harness.finished.text == "5"
+
+
+async def test_tools_get_the_context_of_their_turn(harness: Harness) -> None:
+    contexts: list[ToolContext] = []
+
+    async def remember(params: Any, ctx: ToolContext) -> str:
+        contexts.append(ctx)
+        return "ok"
+
+    provider = FakeProvider([[call(name="remember")], [TextDelta(text="done")]])
+    client = ClientInfo(app="desktop", client_id="c-42")
+
+    turn = await harness.run(provider, registry(FuncTool("remember", remember)), client=client)
+
+    (ctx,) = contexts
+    assert (ctx.session_id, ctx.turn_id, ctx.client_id) == (harness.session_id, turn.id, "c-42")
+    assert ctx.cancel is turn.cancel
+    assert ctx.config.agent.max_steps == 40
 
 
 async def test_calls_of_one_step_run_in_order_and_share_one_message(harness: Harness) -> None:

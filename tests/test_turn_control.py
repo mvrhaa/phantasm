@@ -9,16 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.turns import Harness, RecordingClient, roles, text_of, until
+from tests.turns import FuncTool, Harness, RecordingClient, registry, roles, text_of, until
 from zero.config import Config
-from zero.core.stub_tools import StubToolRegistry
-from zero.core.turn import NOT_RUN, RETRY_DELAYS_S, Turn
+from zero.core.turn import NOT_RUN, RETRY_DELAYS_S
 from zero.core.turn_manager import TurnManager
 from zero.protocol.messages import Envelope, TurnFinished
 from zero.providers.base import ProviderError, StreamEvent, TextDelta, ToolCall, ToolCallEvent
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
+from zero.tools.base import ToolContext
 
 
 class BreaksAfterText(FakeProvider):
@@ -138,21 +138,18 @@ async def test_turn_cancelled_before_it_starts_never_calls_the_model(harness: Ha
 
 
 async def test_cancel_during_tools_skips_the_calls_not_started(harness: Harness) -> None:
-    turns: list[Turn] = []
     ran: list[str] = []
 
-    async def stop(args: dict[str, Any]) -> str:
+    async def stop(params: Any, ctx: ToolContext) -> str:
         ran.append("stop")
-        turns[0].cancel.cancel()
+        ctx.cancel.cancel()
         return "stopping"
 
-    async def count(args: dict[str, Any]) -> str:
+    async def count(params: Any, ctx: ToolContext) -> str:
         ran.append("count")
         return "1"
 
-    tools = StubToolRegistry()
-    tools.register("stop", stop)
-    tools.register("count", count)
+    tools = registry(FuncTool("stop", stop), FuncTool("count", count))
     provider = FakeProvider(
         [
             [
@@ -162,9 +159,8 @@ async def test_cancel_during_tools_skips_the_calls_not_started(harness: Harness)
             [TextDelta(text="never")],
         ]
     )
-    turns.append(harness.turn(provider, tools))
 
-    await turns[0].run()
+    await harness.turn(provider, tools).run()
 
     assert ran == ["stop"]
     assert len(provider.calls) == 1

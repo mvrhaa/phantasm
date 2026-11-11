@@ -14,7 +14,6 @@ from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
 from zero.core.expression import EXPRESSION_SET, EXPRESSION_TOOL, ExpressionTool
-from zero.core.stub_tools import StubToolRegistry, StubToolResult, error_result
 from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
@@ -39,6 +38,7 @@ from zero.providers.base import (
 )
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
+from zero.tools.base import ToolContext, ToolRegistry, ToolResult, error_result, text_result
 
 HISTORY_FETCH_LIMIT = 500
 RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
@@ -62,7 +62,7 @@ def _text_content(text: str) -> list[ContentPart]:
     return [TextPart(text=text)] if text else []
 
 
-def _only_expression(calls: list[ToolCall], results: list[StubToolResult]) -> bool:
+def _only_expression(calls: list[ToolCall], results: list[ToolResult]) -> bool:
     """True if every call of a step set the expression, and every one worked."""
     return all(
         call.name == EXPRESSION_TOOL and not result.is_error
@@ -91,7 +91,7 @@ class Turn:
         sessions: SessionsRepo,
         messages: MessagesRepo,
         events: EventBus,
-        tools: StubToolRegistry | None = None,
+        tools: ToolRegistry | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -107,11 +107,18 @@ class Turn:
         self._sessions = sessions
         self._messages = messages
         self._events = events
-        self._tools = tools if tools is not None else StubToolRegistry()
+        self._tools = tools if tools is not None else ToolRegistry()
         self._reply = reply
         self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
         self._expression = ExpressionTool(character) if character is not None else None
+        self._tool_context = ToolContext(
+            session_id=session_id,
+            turn_id=self.id,
+            client_id=client.client_id if client is not None else None,
+            cancel=self.cancel,
+            config=config,
+        )
 
     async def run(self) -> None:
         """Run the turn to the end. Never raises: failures end the turn with an error."""
@@ -250,7 +257,7 @@ class Turn:
 
     async def _run_tools(
         self, prompt: list[Message], calls: list[ToolCall], progress: _Progress
-    ) -> list[StubToolResult]:
+    ) -> list[ToolResult]:
         """Run the calls one by one, add them with their results to the conversation.
 
         The assistant message and its tool results are saved only after every
@@ -258,7 +265,7 @@ class Turn:
         Once the turn is cancelled, the calls that have not started are not run:
         they get a result saying so, and the turn stops after the step is saved.
         """
-        results: list[StubToolResult] = []
+        results: list[ToolResult] = []
         for call in calls:
             if self.cancel.cancelled:
                 results.append(error_result(NOT_RUN))
@@ -302,7 +309,7 @@ class Turn:
         self.cancel.raise_if_cancelled()
         return results
 
-    async def _run_tool(self, call: ToolCall) -> StubToolResult:
+    async def _run_tool(self, call: ToolCall) -> ToolResult:
         """Run one call, telling clients when it starts and how it ends.
 
         ``set_expression`` is handled by the turn itself and is marked hidden,
@@ -322,7 +329,7 @@ class Turn:
         if expression is not None:
             result = await self._set_expression(expression, call)
         else:
-            result = await self._tools.execute(call)
+            result = await self._tools.execute(call, self._tool_context)
         await self._events.publish(
             ToolFinished(
                 session_id=self.session_id,
@@ -333,7 +340,7 @@ class Turn:
         )
         return result
 
-    async def _set_expression(self, expression: ExpressionTool, call: ToolCall) -> StubToolResult:
+    async def _set_expression(self, expression: ExpressionTool, call: ToolCall) -> ToolResult:
         """Change the character's expression and tell the clients at once."""
         try:
             state = expression.apply(call.input)
@@ -344,7 +351,7 @@ class Turn:
                 session_id=self.session_id, turn_id=self.id, pose=state.pose, mood=state.mood
             )
         )
-        return StubToolResult(content=[TextPart(text=EXPRESSION_SET)])
+        return text_result(EXPRESSION_SET)
 
     async def _pause(self, seconds: float) -> None:
         """Sleep, but stop with ``TurnCancelled`` as soon as the turn is cancelled."""

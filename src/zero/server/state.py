@@ -12,6 +12,7 @@ from zero.server.connections import ConnectionManager
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
+from zero.tools.base import ToolRegistry
 
 
 @dataclass
@@ -26,6 +27,7 @@ class AppState:
     connections: ConnectionManager
     events: EventBus
     turns: TurnManager
+    tools: ToolRegistry  # built-in tools, shared by every turn
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 

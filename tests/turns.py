@@ -1,13 +1,14 @@
 """Helpers for running a turn directly, without a WebSocket."""
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel
+
 from zero.config import Config
 from zero.core.events import EventBus
-from zero.core.stub_tools import StubToolRegistry
 from zero.core.turn import Turn
 from zero.protocol.messages import (
     ClientInfo,
@@ -20,8 +21,42 @@ from zero.protocol.messages import (
 from zero.providers.base import LLMProvider, Message
 from zero.store.messages import MessagesRepo, StoredMessage
 from zero.store.sessions import SessionsRepo
+from zero.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
 
 NO_DELAYS = (0.0, 0.0)
+
+ToolFn = Callable[[Any, ToolContext], Awaitable[str]]
+
+
+class NoInput(BaseModel):
+    """Input of a tool that takes no arguments."""
+
+
+class FuncTool(Tool[Any]):
+    """A tool made from an async function that returns text; handy in tests."""
+
+    def __init__(
+        self,
+        name: str,
+        fn: ToolFn,
+        input_model: type[BaseModel] = NoInput,
+        description: str = "",
+    ) -> None:
+        self.name = name
+        self.description = description or f"The {name} tool."
+        self.input_model = input_model
+        self._fn = fn
+
+    async def run(self, params: Any, ctx: ToolContext) -> ToolResult:
+        return text_result(await self._fn(params, ctx))
+
+
+def registry(*tools: Tool[Any]) -> ToolRegistry:
+    """A registry holding ``tools``."""
+    result = ToolRegistry()
+    for tool in tools:
+        result.register(tool)
+    return result
 
 
 @dataclass
@@ -55,7 +90,7 @@ class Harness:
     def turn(
         self,
         provider: LLMProvider,
-        tools: StubToolRegistry | None = None,
+        tools: ToolRegistry | None = None,
         *,
         max_steps: int | None = None,
         text: str = "hi",
@@ -83,7 +118,7 @@ class Harness:
     async def run(
         self,
         provider: LLMProvider,
-        tools: StubToolRegistry | None = None,
+        tools: ToolRegistry | None = None,
         *,
         max_steps: int | None = None,
         text: str = "hi",

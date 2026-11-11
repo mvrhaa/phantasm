@@ -84,6 +84,7 @@ async def handle_message_send(
             sessions=state.sessions,
             messages=state.messages,
             events=state.events,
+            tools=state.tools,
             reply=ReplyTo(connection.id, message.id),
         ),
         after=after,

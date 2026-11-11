@@ -4,14 +4,13 @@ from typing import Any
 
 import pytest
 
-from tests.turns import Harness, roles, text_of
+from tests.turns import FuncTool, Harness, registry, roles, text_of
 from zero.core.expression import (
     EXPRESSION_SET,
     EXPRESSION_TOOL,
     ExpressionTool,
     default_expression,
 )
-from zero.core.stub_tools import StubToolRegistry
 from zero.protocol.messages import (
     Character,
     ClientInfo,
@@ -22,6 +21,7 @@ from zero.protocol.messages import (
 )
 from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
 from zero.providers.fake import FakeProvider
+from zero.tools.base import ToolContext
 
 CHARACTER = Character(name="Zero", poses=["idle", "sit", "wave"], moods=["happy", "neutral", "sad"])
 CLIENT = ClientInfo(app="desktop", client_id="c-1", character=CHARACTER)
@@ -204,11 +204,10 @@ async def test_invalid_expression_goes_back_to_the_model(harness: Harness) -> No
 
 
 async def test_expression_next_to_another_tool_does_not_end_the_turn(harness: Harness) -> None:
-    async def add(args: dict[str, Any]) -> str:
+    async def add(params: Any, ctx: ToolContext) -> str:
         return "5"
 
-    tools = StubToolRegistry()
-    tools.register("add", add)
+    tools = registry(FuncTool("add", add))
     provider = FakeProvider(
         [
             [
