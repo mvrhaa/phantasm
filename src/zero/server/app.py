@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from zero import APP_NAME, __version__
+from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
@@ -50,6 +51,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
         try:
             await db.migrate()
             connections = ConnectionManager()
+            events = EventBus(connections)
             app.state.zero = AppState(
                 config=config,
                 db=db,
@@ -57,9 +59,10 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 messages=MessagesRepo(db),
                 token=get_or_create_token(),
                 connections=connections,
-                events=EventBus(connections),
+                events=events,
                 turns=TurnManager(),
                 tools=builtin_registry(),
+                approvals=ApprovalManager(events),
                 provider=provider or _choose_provider(config),
             )
             turns = app.state.zero.turns

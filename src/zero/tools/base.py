@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from zero.approvals.manager import ApprovalAsk, Approver
 from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.protocol.messages import ContentPart, TextPart
@@ -15,7 +16,8 @@ from zero.tools.permissions import PathGuard, decide
 
 MAX_OUTPUT_CHARS = 30_000
 CANCELLED = "Cancelled: the user stopped the turn."
-NEEDS_APPROVAL = "so this call needs the user's approval, which cannot be asked for yet."
+NEEDS_APPROVAL = "so this call needs the user's approval, and no one can be asked here."
+DENIED = "The user denied this call."
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ class ToolResult:
     content: list[ContentPart] = field(default_factory=list)
     is_error: bool = False
     summary: str = ""  # a few words for the UI: "exit 0", "+12 -3", "5 matches"
+    denied: bool = False  # the user said no, so the tool did not run
+    cancelled: bool = False  # the turn was cancelled before the call could finish
 
 
 def text_result(text: str, *, summary: str = "") -> ToolResult:
@@ -39,6 +43,17 @@ def error_result(text: str) -> ToolResult:
     return ToolResult(content=[TextPart(text=text)], is_error=True)
 
 
+def denied_result(note: str | None = None) -> ToolResult:
+    """The user refused the call; their note, if any, goes to the model too."""
+    text = f"{DENIED} Their note: {note}" if note else DENIED
+    return ToolResult(content=[TextPart(text=text)], is_error=True, denied=True)
+
+
+def cancelled_result() -> ToolResult:
+    """The turn was cancelled while the call ran or waited for approval."""
+    return ToolResult(content=[TextPart(text=CANCELLED)], is_error=True, cancelled=True)
+
+
 @dataclass(frozen=True)
 class ToolContext:
     """What a running tool may use besides its input."""
@@ -49,6 +64,7 @@ class ToolContext:
     cancel: CancelToken
     config: Config
     paths: PathGuard  # every path a tool touches goes through ``paths.check``
+    approvals: Approver | None = None  # None when there is no one to ask
 
 
 class Tool[InputT: BaseModel](ABC):
@@ -165,12 +181,23 @@ class ToolRegistry:
             if policy == "deny":
                 return error_result(f"{tool.name} is turned off in the settings.")
             if policy == "ask":
-                # Approvals do not exist yet, so a call that needs one is refused.
                 why = reason or f"{tool.name} is set to ask the user first"
-                return error_result(f"{why}, {NEEDS_APPROVAL}")
+                if ctx.approvals is None:
+                    return error_result(f"{why}, {NEEDS_APPROVAL}")
+                ask = ApprovalAsk(
+                    session_id=ctx.session_id,
+                    turn_id=ctx.turn_id,
+                    tool=tool.name,
+                    label=tool.label(params),
+                    input=call.input,
+                    reason=why,
+                )
+                answer = await ctx.approvals.request(ask, ctx.cancel)
+                if answer.decision == "deny":
+                    return denied_result(answer.note)
             result = await tool.run(params, ctx)
         except TurnCancelled:
-            return error_result(CANCELLED)
+            return cancelled_result()
         except Exception as exc:
             logger.warning("Tool %s failed: %s", call.name, type(exc).__name__)
             return error_result(f"Tool {call.name!r} failed: {str(exc) or type(exc).__name__}")

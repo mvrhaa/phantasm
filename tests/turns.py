@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from zero.approvals.manager import Approver
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.turn import Turn
@@ -98,6 +99,7 @@ class Harness:
         text: str = "hi",
         client: ClientInfo | None = None,
         retry_delays: Sequence[float] = NO_DELAYS,
+        approvals: Approver | None = None,
     ) -> Turn:
         """Build a turn in this session; retries do not wait unless asked to."""
         config = Config()
@@ -115,6 +117,7 @@ class Harness:
             events=self.bus,
             tools=tools,
             retry_delays=retry_delays,
+            approvals=approvals,
         )
 
     async def run(

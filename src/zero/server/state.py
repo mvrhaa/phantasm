@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI
 
+from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
@@ -28,6 +29,7 @@ class AppState:
     events: EventBus
     turns: TurnManager
     tools: ToolRegistry  # built-in tools, shared by every turn
+    approvals: ApprovalManager
     provider: LLMProvider | None  # None when the config names an unusable provider
 
 

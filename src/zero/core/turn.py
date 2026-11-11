@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from zero import clock
+from zero.approvals.manager import Approver
 from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.context import build_history, build_system_prompt
@@ -63,6 +64,14 @@ def _text_content(text: str) -> list[ContentPart]:
     return [TextPart(text=text)] if text else []
 
 
+def _tool_status(result: ToolResult) -> Literal["ok", "error", "denied", "cancelled"]:
+    if result.cancelled:
+        return "cancelled"
+    if result.denied:
+        return "denied"
+    return "error" if result.is_error else "ok"
+
+
 def _only_expression(calls: list[ToolCall], results: list[ToolResult]) -> bool:
     """True if every call of a step set the expression, and every one worked."""
     return all(
@@ -78,6 +87,8 @@ class Turn:
     protocol events on the bus. ``reply`` names the request that started it,
     so the sender's ``turn.started`` can point back at that request.
     ``retry_delays`` are the pauses before each retry of a failed model call.
+    ``approvals`` asks the user about tool calls that need it; without it
+    such calls are refused.
     """
 
     def __init__(
@@ -93,6 +104,7 @@ class Turn:
         messages: MessagesRepo,
         events: EventBus,
         tools: ToolRegistry | None = None,
+        approvals: Approver | None = None,
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
     ) -> None:
@@ -120,6 +132,7 @@ class Turn:
             cancel=self.cancel,
             config=config,
             paths=PathGuard.from_config(config.permissions),
+            approvals=approvals,
         )
 
     async def run(self) -> None:
@@ -337,7 +350,7 @@ class Turn:
                 session_id=self.session_id,
                 turn_id=self.id,
                 call_id=call.id,
-                status="error" if result.is_error else "ok",
+                status=_tool_status(result),
             )
         )
         return result
