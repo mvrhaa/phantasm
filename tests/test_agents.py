@@ -10,14 +10,13 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.agents import RoleProvider
-from tests.turns import Audience, FuncTool, RecordingClient, registry, text_of
-from zero.agents.runner import NO_REPORT, RESTARTED, AgentError, AgentRunner
+from tests.agents import RoleProvider, RunnerKit
+from tests.turns import FuncTool, registry, text_of
+from zero.agents.runner import NO_REPORT, RESTARTED, AgentError
 from zero.config import Config
 from zero.core.context import build_system_prompt
-from zero.core.events import EventBus
 from zero.paths import db_path
-from zero.protocol.messages import AgentUpdated, TurnFinished, Usage
+from zero.protocol.messages import TurnFinished, Usage
 from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
@@ -148,34 +147,13 @@ async def test_the_service_fails_agents_left_by_its_last_run() -> None:
 # --- AgentRunner -------------------------------------------------------------
 
 
-class Stores:
-    def __init__(self, db: Database) -> None:
-        self.sessions = SessionsRepo(db)
-        self.agents = AgentsRepo(db)
-        self.client = RecordingClient()
-        self.started: list[tuple[str, str]] = []
-
-        async def start_turn(agent: Agent, text: str) -> None:
-            self.started.append((agent.id, text))
-
-        self.runner = AgentRunner(
-            self.agents, self.sessions, EventBus(Audience([self.client])), start_turn
-        )
-
-    @property
-    def updates(self) -> list[tuple[str, str | None]]:
-        return [
-            (e.agent.status, e.agent.report)
-            for e in self.client.received
-            if isinstance(e, AgentUpdated)
-        ]
-
-
 @pytest.fixture
-async def stores() -> AsyncIterator[Stores]:
+async def stores() -> AsyncIterator[RunnerKit]:
     async with Database(db_path()) as db:
         await db.migrate()
-        yield Stores(db)
+        kit = RunnerKit(db)
+        yield kit
+        await kit.runner.close()
 
 
 def result(status: str, text: str = "", error: str | None = None) -> TurnFinished:
@@ -184,7 +162,7 @@ def result(status: str, text: str = "", error: str | None = None) -> TurnFinishe
     )
 
 
-async def test_start_announces_and_starts_the_first_turn(stores: Stores) -> None:
+async def test_start_announces_and_starts_the_first_turn(stores: RunnerKit) -> None:
     parent = await stores.sessions.create()
 
     agent = await stores.runner.start("reader", "  Read it  ", parent.id)
@@ -208,7 +186,7 @@ async def test_start_announces_and_starts_the_first_turn(stores: Stores) -> None
     ],
 )
 async def test_how_a_turn_ended_sets_the_status(
-    stores: Stores, finished: TurnFinished | None, expected: tuple[str, str | None]
+    stores: RunnerKit, finished: TurnFinished | None, expected: tuple[str, str | None]
 ) -> None:
     agent = await stores.runner.start("a", "task", (await stores.sessions.create()).id)
 
@@ -219,7 +197,7 @@ async def test_how_a_turn_ended_sets_the_status(
     assert stores.updates[-1] == expected
 
 
-async def test_a_stopped_agent_stays_stopped(stores: Stores) -> None:
+async def test_a_stopped_agent_stays_stopped(stores: RunnerKit) -> None:
     agent = await stores.runner.start("a", "task", (await stores.sessions.create()).id)
     await stores.agents.set_status(agent.id, "stopped")
 
@@ -231,7 +209,7 @@ async def test_a_stopped_agent_stays_stopped(stores: Stores) -> None:
     assert stores.updates == [("working", None)]
 
 
-async def test_agents_do_not_start_agents(stores: Stores) -> None:
+async def test_agents_do_not_start_agents(stores: RunnerKit) -> None:
     agent = await stores.runner.start("a", "task", (await stores.sessions.create()).id)
     assert agent.session_id is not None
 
@@ -239,7 +217,7 @@ async def test_agents_do_not_start_agents(stores: Stores) -> None:
         await stores.runner.start("b", "task", agent.session_id)
 
 
-async def test_a_bad_agent_leaves_no_session_behind(stores: Stores) -> None:
+async def test_a_bad_agent_leaves_no_session_behind(stores: RunnerKit) -> None:
     parent = await stores.sessions.create()
 
     with pytest.raises(AgentError, match="needs a task"):
@@ -249,7 +227,7 @@ async def test_a_bad_agent_leaves_no_session_behind(stores: Stores) -> None:
     assert stores.started == []
 
 
-async def test_recover_fails_the_agents_an_earlier_run_left(stores: Stores) -> None:
+async def test_recover_fails_the_agents_an_earlier_run_left(stores: RunnerKit) -> None:
     parent = await stores.sessions.create()
     left = await stores.runner.start("left", "task", parent.id)
     finished = await stores.runner.start("finished", "task", parent.id)

@@ -19,7 +19,7 @@ from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
-from zero.server.turns import start_agent_turn, start_scheduled_turn
+from zero.server.turns import start_agent_turn, start_notice_turn, start_scheduled_turn
 from zero.server.ws import CLOSE_GOING_AWAY
 from zero.server.ws import router as ws_router
 from zero.store.agents import AgentsRepo
@@ -62,6 +62,7 @@ async def graceful_stop(state: AppState, grace_s: float = SHUTDOWN_GRACE_S) -> N
     state.stopping = True
     logger.info("Shutting down: %d turns running", len(state.turns.active))
     await state.scheduler.stop()
+    await state.agent_runner.close()  # no agent notices start new turns from now on
     await state.turns.cancel_all(grace_s)
     for connection in state.connections.connections:
         await connection.close(CLOSE_GOING_AWAY, f"{APP_NAME} is shutting down")
@@ -87,19 +88,27 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             schedules = SchedulesRepo(db)
             sessions = SessionsRepo(db)
             agents = AgentsRepo(db)
+            messages = MessagesRepo(db)
+            turns = TurnManager()
             agent_runner = AgentRunner(
-                agents, sessions, events, lambda agent, text: start_agent_turn(state, agent, text)
+                agents=agents,
+                sessions=sessions,
+                messages=messages,
+                events=events,
+                turns=turns,
+                start_turn=lambda agent, text: start_agent_turn(state, agent, text),
+                start_notice=lambda session_id, text: start_notice_turn(state, session_id, text),
             )
             await agent_runner.recover()
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
                 sessions=sessions,
-                messages=MessagesRepo(db),
+                messages=messages,
                 token=get_or_create_token(),
                 connections=connections,
                 events=events,
-                turns=TurnManager(),
+                turns=turns,
                 tools=builtin_registry(memory, TodoRepo(db), schedules, agent_runner),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),

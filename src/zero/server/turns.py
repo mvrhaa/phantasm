@@ -12,7 +12,7 @@ from zero.store.agents import Agent
 from zero.store.messages import Source
 from zero.store.schedules import Schedule
 from zero.tools.base import ToolRegistry
-from zero.tools.builtin.agents import AGENT_TOOL_PREFIX
+from zero.tools.builtin.agents import AGENT_TOOL_PREFIX, agent_side_tools
 
 TITLE_CHARS = 60
 
@@ -87,7 +87,9 @@ async def start_scheduled_turn(state: AppState, schedule: Schedule) -> None:
 
 
 async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
-    """Run ``text`` as a turn in the agent's session, with every tool but the agent ones.
+    """Run ``text`` as a turn in the agent's session.
+
+    The agent has every tool but the ``agent_*`` ones, plus ``ask_parent``.
 
     The agent runner hears how the turn ended once ``turn.finished`` is out.
     """
@@ -102,10 +104,29 @@ async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
         text=text,
         source="agent",
         agent=AgentRef(id=agent.id, name=agent.name),
-        tools=state.tools.without(AGENT_TOOL_PREFIX),
+        tools=state.tools.without(AGENT_TOOL_PREFIX).extended(agent_side_tools(state.agent_runner)),
     )
 
     async def report() -> None:
         await state.agent_runner.finished(agent.id, turn.finished)
 
     state.turns.start(turn, after=report)
+
+
+async def start_notice_turn(state: AppState, session_id: str, text: str) -> bool:
+    """Bring an agent's question or report to a session as a turn with source ``agent``.
+
+    False if the session is busy, so the caller can wait and try again. While
+    Zero shuts down nothing starts and the notice is dropped.
+    """
+    if state.stopping:
+        return True
+    if state.provider is None:
+        logger.warning("A notice for session %s was dropped: no usable provider", session_id)
+        return True
+    if state.turns.busy(session_id):
+        return False
+    state.turns.start(
+        make_turn(state, state.provider, session_id=session_id, text=text, source="agent")
+    )
+    return True

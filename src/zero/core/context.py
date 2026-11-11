@@ -66,6 +66,9 @@ def _agent_role(name: str) -> str:
             "that conversation. Work on it with your tools until it is done. Nobody watches "
             "you work, but the user may be asked to approve risky steps.",
             "",
+            "If you need something only that conversation or the user knows, ask with "
+            "ask_parent and end your turn: the answer comes as your next message.",
+            "",
             "When you are done, reply with a short report of what you did and found. That "
             "reply is sent back to the conversation that started you.",
         ]

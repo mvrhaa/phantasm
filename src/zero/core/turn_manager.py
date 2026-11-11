@@ -66,6 +66,22 @@ class TurnManager:
         while self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
+    async def wait_free(self, session_id: str) -> None:
+        """Wait until no unfinished turn runs in this session."""
+        while self.busy(session_id):
+            running = [
+                self._tasks[t.id] for t in self._turns.values() if t.session_id == session_id
+            ]
+            await asyncio.wait(running)
+
+    async def stop_session(self, session_id: str) -> None:
+        """Cancel the turns of a session and wait until they and their follow-ups are over."""
+        turns = [turn for turn in self._turns.values() if turn.session_id == session_id]
+        for turn in turns:
+            turn.cancel.cancel()
+        if turns:
+            await asyncio.wait([self._tasks[turn.id] for turn in turns])
+
     async def cancel_all(self, grace_s: float) -> None:
         """Cancel every turn and give them ``grace_s`` seconds to finish properly.
 
