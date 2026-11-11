@@ -1,5 +1,7 @@
 """Tests for the scripted FakeProvider."""
 
+import asyncio
+
 import pytest
 
 from zero.core.cancellation import CancelToken, TurnCancelled
@@ -134,11 +136,6 @@ async def test_running_past_the_script_is_a_provider_error() -> None:
     assert len(provider.calls) == 2
 
 
-async def test_provider_without_a_script_has_nothing_to_play() -> None:
-    with pytest.raises(ProviderError):
-        await play(FakeProvider())
-
-
 async def test_cancel_before_the_stream_yields_nothing() -> None:
     cancel = CancelToken()
     cancel.cancel()
@@ -182,3 +179,168 @@ async def test_fake_cannot_count_tokens_and_accepts_images() -> None:
 
     assert await provider.count_tokens([USER], [TOOL]) is None
     assert provider.supports_images("fake-1") is True
+
+
+EXPRESSION = ToolSpec(
+    name="set_expression",
+    description="Choose a pose and a mood",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "pose": {"type": "string", "enum": ["idle", "wave"]},
+            "mood": {"type": "string", "enum": ["neutral", "happy"]},
+        },
+    },
+)
+
+
+def text_of(events: list[StreamEvent]) -> str:
+    return "".join(event.text for event in events if isinstance(event, TextDelta))
+
+
+async def test_echo_repeats_the_user_text_in_chunks() -> None:
+    message = Message(role="user", content=[TextPart(text="hello  big world")])
+
+    events = await play(FakeProvider(), [message])
+
+    deltas = [event for event in events if isinstance(event, TextDelta)]
+    assert text_of(events) == "echo: hello  big world"
+    assert len(deltas) == 4
+    assert isinstance(events[-2], UsageEvent)
+    assert events[-1] == StopEvent(reason="end")
+
+
+async def test_echo_answers_the_latest_user_message() -> None:
+    history = [
+        Message(role="system", content=[TextPart(text="rules")]),
+        Message(role="user", content=[TextPart(text="first")]),
+        Message(role="assistant", content=[TextPart(text="echo: first")]),
+        Message(role="user", content=[TextPart(text="second")]),
+    ]
+
+    assert text_of(await play(FakeProvider(), history)) == "echo: second"
+
+
+async def test_echo_calls_set_expression_when_it_is_offered() -> None:
+    events = await play(FakeProvider(), [USER], [TOOL, EXPRESSION])
+
+    calls = [event.call for event in events if isinstance(event, ToolCallEvent)]
+    assert text_of(events) == "echo: hi"
+    assert [(call.name, call.input) for call in calls] == [
+        ("set_expression", {"pose": "idle", "mood": "neutral"})
+    ]
+    assert events[-1] == StopEvent(reason="tool_use")
+
+
+async def test_echo_finishes_after_the_tool_result() -> None:
+    provider = FakeProvider()
+    first = await play(provider, [USER], [EXPRESSION])
+    call = next(event.call for event in first if isinstance(event, ToolCallEvent))
+    history = [
+        USER,
+        Message(role="assistant", content=[TextPart(text="echo: hi")], tool_calls=[call]),
+        Message(role="tool", content=[TextPart(text="ok")], tool_call_id=call.id),
+    ]
+
+    assert await play(provider, history, [EXPRESSION]) == [StopEvent(reason="end")]
+
+
+async def test_echo_without_expression_enums_calls_nothing() -> None:
+    bare = ToolSpec(name="set_expression", description="x", input_schema={"type": "object"})
+
+    events = await play(FakeProvider(), [USER], [bare])
+
+    assert not any(isinstance(event, ToolCallEvent) for event in events)
+    assert events[-1] == StopEvent(reason="end")
+
+
+async def test_echo_with_no_user_message() -> None:
+    assert text_of(await play(FakeProvider(), [])) == "echo: "
+
+
+async def test_echo_never_runs_out() -> None:
+    provider = FakeProvider()
+
+    for _ in range(5):
+        assert text_of(await play(provider)) == "echo: hi"
+    assert provider.steps_left == 0
+
+
+async def test_empty_script_is_not_echo_mode() -> None:
+    with pytest.raises(ProviderError, match="no step 1"):
+        await play(FakeProvider([]))
+
+
+async def test_fail_times_fails_first_then_works() -> None:
+    provider = FakeProvider([[TextDelta(text="finally")]], fail_times=2)
+
+    for _ in range(2):
+        with pytest.raises(ProviderError) as excinfo:
+            await play(provider)
+        assert excinfo.value.retryable is True
+
+    assert text_of(await play(provider)) == "finally"
+    assert len(provider.calls) == 3
+    assert provider.steps_left == 0
+
+
+async def test_failures_can_be_non_retryable() -> None:
+    provider = FakeProvider(fail_times=1, fail_retryable=False)
+
+    with pytest.raises(ProviderError) as excinfo:
+        await play(provider)
+
+    assert excinfo.value.retryable is False
+    assert text_of(await play(provider)) == "echo: hi"
+
+
+async def test_delay_pauses_before_every_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    pauses: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(seconds: float) -> None:
+        pauses.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr("zero.providers.fake.asyncio.sleep", fake_sleep)
+
+    events = await play(FakeProvider([[TextDelta(text="a"), TextDelta(text="b")]], delay_s=0.5))
+
+    assert len(events) == 3
+    assert [pause for pause in pauses if pause > 0] == [0.5, 0.5, 0.5]
+
+
+async def test_infinite_stream_runs_until_cancelled() -> None:
+    cancel = CancelToken()
+    provider = FakeProvider(infinite=True)
+    received = 0
+
+    with pytest.raises(TurnCancelled):
+        async for event in provider.stream([USER], [], "fake-1", cancel=cancel):
+            assert isinstance(event, TextDelta)
+            received += 1
+            if received == 50:
+                cancel.cancel()
+
+    assert received == 50
+
+
+async def test_infinite_stream_can_be_cancelled_from_another_task() -> None:
+    cancel = CancelToken()
+    provider = FakeProvider(infinite=True)
+
+    async def consume() -> int:
+        count = 0
+        try:
+            async for _ in provider.stream([USER], [], "fake-1", cancel=cancel):
+                count += 1
+        except TurnCancelled:
+            return count
+        return -1
+
+    task = asyncio.create_task(consume())
+    for _ in range(20):
+        await asyncio.sleep(0)
+    cancel.cancel()
+
+    assert await asyncio.wait_for(task, timeout=1) > 0
