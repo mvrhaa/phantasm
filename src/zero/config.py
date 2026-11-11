@@ -3,15 +3,19 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from zero.paths import config_path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOOL_POLICIES: dict[str, str] = {
+Policy = Literal["allow", "ask", "deny"]
+
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+DEFAULT_TOOL_POLICIES: dict[str, Policy] = {
     "read_file": "allow",
     "list_dir": "allow",
     "search_files": "allow",
@@ -30,16 +34,28 @@ class ConfigError(Exception):
 
 
 class _Section(BaseModel):
-    """Base for config models: unknown keys are kept so they can be reported."""
+    """Base for config models.
 
-    model_config = ConfigDict(extra="allow")
+    Unknown keys are kept so they can be reported, and assignments are
+    validated so a loaded config cannot be changed into an invalid one.
+    """
+
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
 class ServerConfig(_Section):
-    """Where the service listens."""
+    """Where the service listens. Only loopback addresses are allowed."""
 
     host: str = "127.0.0.1"
-    port: int = 47400
+    port: int = Field(default=47400, ge=1, le=65535)
+
+    @field_validator("host")
+    @classmethod
+    def _host_must_be_loopback(cls, value: str) -> str:
+        if value not in LOOPBACK_HOSTS:
+            allowed = ", ".join(sorted(LOOPBACK_HOSTS))
+            raise ValueError(f"host must be a loopback address ({allowed})")
+        return value
 
 
 class ProviderConfig(_Section):
@@ -60,12 +76,16 @@ class AgentConfig(_Section):
 
 
 class PermissionsConfig(_Section):
-    """Sandbox roots and per-tool approval policies."""
+    """Sandbox roots and per-tool approval policies.
+
+    Paths are stored exactly as written (``~`` included) and are expanded
+    by the code that uses them, not when the config is loaded.
+    """
 
     bypass_approvals: bool = False
     allowed_roots: list[str] = Field(default_factory=lambda: ["~"])
     denied_paths: list[str] = Field(default_factory=lambda: ["~/.ssh", "~/Library/Keychains"])
-    tool_policies: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_TOOL_POLICIES))
+    tool_policies: dict[str, Policy] = Field(default_factory=lambda: dict(DEFAULT_TOOL_POLICIES))
 
 
 class Config(_Section):
@@ -76,6 +96,22 @@ class Config(_Section):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     secrets: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("secrets")
+    @classmethod
+    def _secrets_must_be_empty(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if value:
+            raise ValueError("secrets is reserved and must stay empty; keys belong in the Keychain")
+        return value
+
+
+def _describe_errors(exc: ValidationError) -> str:
+    """Summarize validation errors without echoing values from the file."""
+    parts = []
+    for error in exc.errors(include_input=False, include_url=False, include_context=False):
+        location = ".".join(str(item) for item in error["loc"])
+        parts.append(f"{location}: {error['msg']}" if location else error["msg"])
+    return "; ".join(parts)
 
 
 def _unknown_keys(model: BaseModel, prefix: str = "") -> list[str]:
@@ -91,8 +127,9 @@ def _unknown_keys(model: BaseModel, prefix: str = "") -> list[str]:
 def load_config(path: Path | None = None) -> Config:
     """Load the config, creating the file with defaults if it does not exist.
 
-    Unknown keys are logged as warnings and kept. Invalid JSON or values of
-    the wrong type raise ``ConfigError``.
+    Unknown keys are logged as warnings and kept. Invalid JSON or values that
+    fail validation raise ``ConfigError``; its message names the offending
+    keys but never repeats their values.
     """
     path = path or config_path()
     if not path.exists():
@@ -103,7 +140,7 @@ def load_config(path: Path | None = None) -> Config:
     try:
         config = Config.model_validate_json(path.read_text(encoding="utf-8"))
     except ValidationError as exc:
-        raise ConfigError(f"Invalid config file {path}: {exc}") from exc
+        raise ConfigError(f"Invalid config file {path}: {_describe_errors(exc)}") from None
 
     for key in _unknown_keys(config):
         logger.warning("Unknown config key %r in %s", key, path)
