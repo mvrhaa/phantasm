@@ -68,6 +68,7 @@ async def test_tables_exist_after_migration(db: Database) -> None:
         "memories_fts_idx",
         "todos",
         "schedules",
+        "session_summaries",
     }
 
 

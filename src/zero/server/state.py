@@ -17,6 +17,7 @@ from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
+from zero.store.summaries import SummariesRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import ToolRegistry
 from zero.tools.client_actions import ActionBroker
@@ -41,6 +42,7 @@ class AppState:
     actions: ActionBroker  # client actions waiting for an action.result
     memory: MemoryRepo
     schedules: SchedulesRepo
+    summaries: SummariesRepo
     scheduler: SchedulerRunner
     provider: LLMProvider | None  # None when the config names an unusable provider
 

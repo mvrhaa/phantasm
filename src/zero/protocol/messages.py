@@ -440,6 +440,15 @@ class SessionUpdated(Envelope):
     session: SessionInfo
 
 
+class SessionCompacted(Envelope):
+    """The start of a long session was summarized so the rest fits the model's context."""
+
+    type: Literal["session.compacted"] = "session.compacted"
+    session_id: str
+    summary: str
+    until_message_id: str  # the last message the summary covers
+
+
 class SessionDeleted(Envelope):
     """A session was deleted."""
 
@@ -475,6 +484,7 @@ ServerEvent = Annotated[
     | SessionCreated
     | SessionUpdated
     | SessionDeleted
+    | SessionCompacted
     | HistoryOk,
     Field(discriminator="type"),
 ]

@@ -6,16 +6,14 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Literal
 
-from zero import clock
 from zero.approvals.manager import Approver
 from zero.config import Config
-from zero.core.attachments import prepare_for_model
 from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.core.context import build_history, build_system_prompt
 from zero.core.events import EventBus, ReplyTo
 from zero.core.expression import EXPRESSION_TOOL, ExpressionTool
+from zero.core.prompting import MemorySource, PromptBuilder
 from zero.core.tool_runner import ToolRunner, ToolRunRecorder
 from zero.protocol.messages import (
     ClientInfo,
@@ -37,9 +35,9 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
-from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
+from zero.store.summaries import SummariesRepo
 from zero.tools.base import (
     ApprovalRules,
     ToolContext,
@@ -55,18 +53,10 @@ from zero.tools.client_actions import (
 )
 from zero.tools.permissions import PathGuard
 
-HISTORY_FETCH_LIMIT = 500
-PROMPT_MEMORIES = 10  # how many memories go into the system prompt
 RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
 NOT_RUN = "Not run: the user cancelled the turn."
 
 TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
-
-
-class MemorySource(Protocol):
-    """Gives the memories for the system prompt."""
-
-    async def top(self, n: int = 10) -> Sequence[Memory]: ...
 
 
 logger = logging.getLogger(__name__)
@@ -104,7 +94,8 @@ class Turn:
     such calls are refused. ``approval_rules`` holds the "always allow" answers.
     The actions the client declared in ``hello`` join ``tools`` for this turn;
     ``action_caller`` reaches that client when the model calls one.
-    ``memory`` gives the facts about the user that go into the system prompt.
+    ``memory`` gives the facts about the user that go into the system prompt;
+    ``summaries`` lets a long history be compacted into a summary.
     ``tool_runs`` keeps a record of the tool calls for the history.
     """
 
@@ -126,6 +117,7 @@ class Turn:
         tool_runs: ToolRunRecorder | None = None,
         action_caller: ActionCaller | None = None,
         memory: MemorySource | None = None,
+        summaries: SummariesRepo | None = None,
         attachments: Sequence[FilePart] = (),
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
@@ -151,7 +143,17 @@ class Turn:
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
         self._used_computer = False  # a computer_* action raises the step limit
         self._reply = reply
-        self._memory = memory
+        self._prompts = PromptBuilder(
+            session_id=session_id,
+            client=client,
+            source=source,
+            config=config,
+            provider=provider,
+            messages=messages,
+            events=events,
+            memory=memory,
+            summaries=summaries,
+        )
         self._attachments = list(attachments)
         self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
@@ -244,7 +246,7 @@ class Turn:
         wants tools when only one call is left, that call goes without tools so
         the model has to sum up. Returns True when the limit was reached.
         """
-        prompt = await self._build_prompt()
+        prompt = await self._prompts.build()
         specs = self._tools.specs()
         if self._expression is not None:
             specs.append(self._expression.spec)
@@ -381,15 +383,3 @@ class Turn:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self.cancel.wait(), timeout=seconds)
         self.cancel.raise_if_cancelled()
-
-    async def _build_prompt(self) -> list[Message]:
-        """System prompt followed by the history that fits the token budget."""
-        memories = await self._memory.top(PROMPT_MEMORIES) if self._memory is not None else []
-        system = build_system_prompt(
-            self._client, self._source, [memory.text for memory in memories], now=clock.now()
-        )
-        stored = await self._messages.list(self.session_id, limit=HISTORY_FETCH_LIMIT)
-        history = build_history(stored, self._config.agent.history_token_budget)
-        can_see = self._provider.supports_images(self._config.provider.model)
-        prompt = [Message(role="system", content=[TextPart(text=system)]), *history]
-        return await prepare_for_model(prompt, can_see)

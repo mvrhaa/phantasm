@@ -26,6 +26,7 @@ from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
+from zero.store.summaries import SummariesRepo
 from zero.store.todo import TodoRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.builtin import builtin_registry
@@ -78,6 +79,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 actions=ActionBroker(connections),
                 memory=memory,
                 schedules=schedules,
+                summaries=SummariesRepo(db),
                 scheduler=SchedulerRunner(
                     schedules, lambda schedule: start_scheduled_turn(state, schedule)
                 ),

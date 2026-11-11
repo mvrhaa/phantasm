@@ -87,6 +87,18 @@ def _memories(memories: Sequence[str]) -> str:
     )
 
 
+def _summary(summary: str) -> str:
+    return "\n".join(
+        [
+            "# Earlier in this conversation",
+            "",
+            "The start of this conversation no longer fits; this is a summary of it.",
+            "",
+            summary.strip(),
+        ]
+    )
+
+
 def _time(now: datetime, tz: tzinfo | None) -> str:
     local = now.astimezone(tz)
     offset = local.strftime("%z")
@@ -110,12 +122,14 @@ def build_system_prompt(
     *,
     now: datetime,
     tz: tzinfo | None = None,
+    summary: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
     Stable blocks come first so providers can cache the prefix: base rules,
-    persona, environment, expression rules, memory, and the current time last
-    because it always changes. Blocks with nothing to say are left out.
+    persona, environment, expression rules, memory, a summary of the start of a
+    long conversation, and the current time last because it always changes.
+    Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     """
     character = client.character if client is not None else None
@@ -125,6 +139,7 @@ def build_system_prompt(
         _environment(client, source),
         _expression(character) if character else None,
         _memories(memories) if memories else None,
+        _summary(summary) if summary else None,
         _time(now, tz),
     ]
     return "\n\n".join(block for block in blocks if block)
@@ -175,6 +190,38 @@ def _split_into_turns(messages: Sequence[StoredMessage]) -> list[list[StoredMess
     return turns
 
 
+def keep_from(
+    messages: Sequence[StoredMessage], budget: int, count_fn: CountFn = estimate_tokens
+) -> int:
+    """Index of the first message of the latest turns that fit into ``budget`` tokens.
+
+    History is cut only between turns, and the latest turn is always kept,
+    even if it alone is over budget. Everything before the index is dropped.
+    """
+    turns = _split_into_turns(messages)
+    start = len(messages)
+    used = 0
+    for index in range(len(turns) - 1, -1, -1):
+        is_latest = index == len(turns) - 1
+        converted = [_to_message(stored, keep_images=is_latest) for stored in turns[index]]
+        size = sum(count_fn(message) for message in converted)
+        if not is_latest and used + size > budget:
+            break
+        used += size
+        start -= len(turns[index])
+    return start
+
+
+def to_history(messages: Sequence[StoredMessage]) -> list[Message]:
+    """Messages for the model; images survive only in the latest turn, others become a note."""
+    turns = _split_into_turns(messages)
+    return [
+        _to_message(stored, keep_images=index == len(turns) - 1)
+        for index, turn in enumerate(turns)
+        for stored in turn
+    ]
+
+
 def build_history(
     messages: Sequence[StoredMessage],
     budget: int,
@@ -186,15 +233,4 @@ def build_history(
     even if it alone is over budget. Images survive only in the latest turn;
     in earlier ones they are replaced with a short note.
     """
-    turns = _split_into_turns(messages)
-    kept: list[list[Message]] = []
-    used = 0
-    for index in range(len(turns) - 1, -1, -1):
-        is_latest = index == len(turns) - 1
-        converted = [_to_message(stored, keep_images=is_latest) for stored in turns[index]]
-        size = sum(count_fn(message) for message in converted)
-        if not is_latest and used + size > budget:
-            break
-        kept.append(converted)
-        used += size
-    return [message for turn in reversed(kept) for message in turn]
+    return to_history(messages[keep_from(messages, budget, count_fn) :])

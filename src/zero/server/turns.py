@@ -44,6 +44,7 @@ def make_turn(
         tool_runs=state.tool_runs,
         action_caller=state.actions,
         memory=state.memory,
+        summaries=state.summaries,
         attachments=attachments,
         reply=reply,
     )
