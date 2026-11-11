@@ -2,6 +2,7 @@
 
 import enum
 import logging
+import socket
 import sys
 
 import httpx
@@ -11,8 +12,9 @@ from zero import APP_NAME, __version__
 from zero.config import ConfigError, load_config
 from zero.logging_setup import setup_logging
 from zero.paths import config_path, ensure_dirs
-from zero.server.app import APP_ID, create_app
+from zero.server.app import APP_ID, create_app, graceful_stop
 from zero.server.auth import get_or_create_token
+from zero.server.state import AppState
 
 PROBE_TIMEOUT_S = 2.0
 
@@ -54,6 +56,20 @@ def probe_port(host: str, port: int, *, transport: httpx.BaseTransport | None = 
     return PortState.TAKEN
 
 
+class ZeroServer(uvicorn.Server):
+    """uvicorn's server, but Zero winds down before uvicorn drops the connections.
+
+    On SIGTERM or SIGINT uvicorn closes every connection first and only then
+    runs the app's shutdown, too late to tell clients how their turns ended.
+    """
+
+    async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        state = getattr(self.config.app.state, "zero", None)
+        if isinstance(state, AppState):
+            await graceful_stop(state)
+        await super().shutdown(sockets)
+
+
 def main() -> int:
     """Prepare directories, logging, config and token, then run the server.
 
@@ -88,13 +104,16 @@ def main() -> int:
     logger.info(
         "Starting %s %s on %s:%s, logging to %s", APP_NAME, __version__, host, port, log_path
     )
-    uvicorn.run(
-        create_app(config),
-        host=host,
-        port=port,
-        log_config=None,  # uvicorn logs through our handlers instead of its own
-        access_log=False,
+    server = ZeroServer(
+        uvicorn.Config(
+            create_app(config),
+            host=host,
+            port=port,
+            log_config=None,  # uvicorn logs through our handlers instead of its own
+            access_log=False,
+        )
     )
+    server.run()
     return 0
 
 

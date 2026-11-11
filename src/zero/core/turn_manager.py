@@ -66,6 +66,23 @@ class TurnManager:
         while self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
+    async def cancel_all(self, grace_s: float) -> None:
+        """Cancel every turn and give them ``grace_s`` seconds to finish properly.
+
+        A cancelled turn saves what it has and announces ``turn.finished``
+        with status ``cancelled``; waits for approvals and client actions end
+        with it. Turns still running after the grace period are cut off.
+        """
+        for turn in self.active:
+            turn.cancel.cancel()
+        tasks = list(self._tasks.values())
+        if not tasks:
+            return
+        _, late = await asyncio.wait(tasks, timeout=grace_s)
+        for task in late:
+            task.cancel()
+        await asyncio.gather(*late, return_exceptions=True)
+
     async def shutdown(self) -> None:
         """Stop all running turns; used when the application shuts down."""
         tasks = list(self._tasks.values())

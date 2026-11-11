@@ -12,6 +12,8 @@ from zero.protocol.messages import ApprovalRequest, ApprovalResolved
 
 Decision = Literal["allow", "deny", "always"]
 
+WITHDRAWN_BY = "zero"  # by_client_id of an approval dropped because its turn ended
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,11 +95,29 @@ class ApprovalManager:
                 )
             )
             await asyncio.wait({future, cancelled}, return_when=asyncio.FIRST_COMPLETED)
+            if cancel.cancelled:
+                await self._withdraw(approval_id)
             cancel.raise_if_cancelled()
             return future.result()
         finally:
             cancelled.cancel()
             self._pending.pop(approval_id, None)
+
+    async def _withdraw(self, approval_id: str) -> None:
+        """The turn ended before an answer: clients drop the card as denied."""
+        pending = self._pending[approval_id]
+        if pending.answered:
+            return  # an answer came at the same moment and was announced already
+        pending.answered = True
+        await self._events.publish(
+            ApprovalResolved(
+                session_id=pending.ask.session_id,
+                turn_id=pending.ask.turn_id,
+                approval_id=approval_id,
+                decision="deny",
+                by_client_id=WITHDRAWN_BY,
+            )
+        )
 
     async def respond(
         self, approval_id: str, decision: Decision, *, by_client_id: str, note: str | None = None

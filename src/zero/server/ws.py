@@ -11,6 +11,7 @@ from zero.server.connections import Connection
 from zero.server.handlers import dispatch
 from zero.server.state import get_state
 
+CLOSE_GOING_AWAY = 1001
 CLOSE_UNAUTHORIZED = 4401
 CLOSE_FORBIDDEN_ORIGIN = 4403
 
@@ -53,6 +54,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     if not verify(presented_token(websocket), state.token):
         logger.warning("Rejected WebSocket with a missing or wrong token")
         await websocket.close(code=CLOSE_UNAUTHORIZED, reason="unauthorized")
+        return
+    if state.stopping:
+        await websocket.close(code=CLOSE_GOING_AWAY, reason="shutting down")
         return
 
     connection = Connection(websocket)

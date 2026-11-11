@@ -19,6 +19,7 @@ from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
 from zero.server.turns import start_scheduled_turn
+from zero.server.ws import CLOSE_GOING_AWAY
 from zero.server.ws import router as ws_router
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
@@ -33,6 +34,7 @@ from zero.tools.builtin import builtin_registry
 from zero.tools.client_actions import ActionBroker
 
 APP_ID = "zero"
+SHUTDOWN_GRACE_S = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,24 @@ def _choose_provider(config: Config) -> LLMProvider | None:
     except ProviderNotConfigured as exc:
         logger.error("Provider is not configured: %s", exc)
         return None
+
+
+async def graceful_stop(state: AppState, grace_s: float = SHUTDOWN_GRACE_S) -> None:
+    """Wind the service down so clients see every turn end.
+
+    New messages are refused, the scheduler stops, every turn is cancelled
+    and given ``grace_s`` seconds to finish (approvals and client actions it
+    waits for end with it), and then every client is closed with 1001.
+    Calling it again does nothing.
+    """
+    if state.stopping:
+        return
+    state.stopping = True
+    logger.info("Shutting down: %d turns running", len(state.turns.active))
+    await state.scheduler.stop()
+    await state.turns.cancel_all(grace_s)
+    for connection in state.connections.connections:
+        await connection.close(CLOSE_GOING_AWAY, f"{APP_NAME} is shutting down")
 
 
 def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
@@ -89,7 +109,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             try:
                 yield
             finally:
-                await state.scheduler.stop()
+                await graceful_stop(state)
                 await state.turns.shutdown()
         finally:
             app.state.zero = None

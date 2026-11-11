@@ -19,7 +19,13 @@ from tests.turns import (
     text_of,
     until,
 )
-from zero.approvals.manager import Answer, ApprovalAsk, ApprovalManager, Decision
+from zero.approvals.manager import (
+    WITHDRAWN_BY,
+    Answer,
+    ApprovalAsk,
+    ApprovalManager,
+    Decision,
+)
 from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.events import EventBus
@@ -116,7 +122,7 @@ async def test_answer_to_an_unknown_approval_is_ignored() -> None:
     assert client.received == []
 
 
-async def test_cancel_ends_the_wait() -> None:
+async def test_cancel_ends_the_wait_and_withdraws_the_card() -> None:
     manager, client = manager_with_client()
     cancel = CancelToken()
     waiting = asyncio.create_task(manager.request(ASK, cancel))
@@ -128,7 +134,9 @@ async def test_cancel_ends_the_wait() -> None:
         await waiting
     assert manager.waiting == []
     assert not await manager.respond(request.approval_id, "allow", by_client_id="c-1")
-    assert resolutions(client.received) == []
+    (withdrawn,) = resolutions(client.received)
+    assert withdrawn.approval_id == request.approval_id
+    assert (withdrawn.decision, withdrawn.by_client_id) == ("deny", WITHDRAWN_BY)
 
 
 async def test_cancelled_turn_asks_nothing() -> None:
@@ -152,6 +160,7 @@ async def test_cancel_wins_over_an_answer_at_the_same_moment() -> None:
 
     with pytest.raises(TurnCancelled):
         await waiting
+    assert [r.decision for r in resolutions(client.received)] == ["allow"]
 
 
 async def test_clients_hear_the_answer_before_the_turn_goes_on() -> None:

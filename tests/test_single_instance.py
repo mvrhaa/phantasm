@@ -100,17 +100,19 @@ def test_probe_ignores_proxy_settings_from_the_environment(
 
 
 class FakeUvicorn:
+    """Stands in for running the server; records only that it was started."""
+
     def __init__(self) -> None:
         self.started = False
 
-    def __call__(self, app: Any, **kwargs: Any) -> None:
+    def __call__(self, *args: Any, **kwargs: Any) -> None:
         self.started = True
 
 
 @pytest.fixture
 def fake_uvicorn(monkeypatch: pytest.MonkeyPatch) -> FakeUvicorn:
     fake = FakeUvicorn()
-    monkeypatch.setattr("uvicorn.run", fake)
+    monkeypatch.setattr(entry.ZeroServer, "run", fake)
     return fake
 
 

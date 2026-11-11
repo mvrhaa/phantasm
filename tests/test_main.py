@@ -17,13 +17,20 @@ pytestmark = pytest.mark.usefixtures("clean_root_logger")
 
 
 class FakeUvicorn:
-    """Stands in for ``uvicorn.run`` and records how it was called."""
+    """Stands in for running the server and records what it would have served, and where."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[FastAPI, dict[str, Any]]] = []
 
-    def __call__(self, app: FastAPI, **kwargs: Any) -> None:
-        self.calls.append((app, kwargs))
+    def run(self, server: entry.ZeroServer) -> None:
+        config = server.config
+        settings = {
+            "host": config.host,
+            "port": config.port,
+            "log_config": config.log_config,
+            "access_log": config.access_log,
+        }
+        self.calls.append((config.app, settings))
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +42,7 @@ def port_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def fake_uvicorn(monkeypatch: pytest.MonkeyPatch) -> FakeUvicorn:
     fake = FakeUvicorn()
-    monkeypatch.setattr("uvicorn.run", fake)
+    monkeypatch.setattr(entry.ZeroServer, "run", lambda server, *args, **kwargs: fake.run(server))
     return fake
 
 

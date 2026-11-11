@@ -30,6 +30,15 @@ async def handle_message_send(
     Attachments are saved to ``files/`` first; a bad one is answered with
     ``invalid_message`` and nothing starts.
     """
+    if state.stopping:
+        await connection.send(
+            Error(
+                code=ErrorCode.INTERNAL,
+                message="Zero is shutting down",
+                reply_to=message.id,
+            )
+        )
+        return
     if state.provider is None:
         await connection.send(
             Error(

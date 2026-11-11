@@ -45,6 +45,7 @@ class AppState:
     summaries: SummariesRepo
     scheduler: SchedulerRunner
     provider: LLMProvider | None  # None when the config names an unusable provider
+    stopping: bool = False  # set when the service starts to shut down
 
 
 def get_state(app: FastAPI) -> AppState:
