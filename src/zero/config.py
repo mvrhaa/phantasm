@@ -1,0 +1,119 @@
+"""Zero configuration: pydantic models, loading and saving ``config.json``."""
+
+import logging
+import os
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from zero.paths import config_path
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TOOL_POLICIES: dict[str, str] = {
+    "read_file": "allow",
+    "list_dir": "allow",
+    "search_files": "allow",
+    "write_file": "ask",
+    "edit_file": "ask",
+    "run_command": "ask",
+    "web_fetch": "allow",
+    "memory_save": "allow",
+    "memory_search": "allow",
+    "memory_delete": "ask",
+}
+
+
+class ConfigError(Exception):
+    """Raised when ``config.json`` cannot be parsed or fails validation."""
+
+
+class _Section(BaseModel):
+    """Base for config models: unknown keys are kept so they can be reported."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ServerConfig(_Section):
+    """Where the service listens."""
+
+    host: str = "127.0.0.1"
+    port: int = 47400
+
+
+class ProviderConfig(_Section):
+    """Which LLM provider and model to use."""
+
+    name: str = "fake"
+    model: str = "fake-1"
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentConfig(_Section):
+    """Limits of the agent loop."""
+
+    max_steps: int = 40
+    max_steps_computer: int = 100
+    turn_timeout_s: int = 900
+    history_token_budget: int = 60000
+
+
+class PermissionsConfig(_Section):
+    """Sandbox roots and per-tool approval policies."""
+
+    bypass_approvals: bool = False
+    allowed_roots: list[str] = Field(default_factory=lambda: ["~"])
+    denied_paths: list[str] = Field(default_factory=lambda: ["~/.ssh", "~/Library/Keychains"])
+    tool_policies: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_TOOL_POLICIES))
+
+
+class Config(_Section):
+    """Root of ``config.json``."""
+
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    provider: ProviderConfig = Field(default_factory=ProviderConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+    permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
+    secrets: dict[str, Any] = Field(default_factory=dict)
+
+
+def _unknown_keys(model: BaseModel, prefix: str = "") -> list[str]:
+    """Return dotted names of keys that no config model declares."""
+    keys = [f"{prefix}{name}" for name in (model.model_extra or {})]
+    for name in type(model).model_fields:
+        value = getattr(model, name)
+        if isinstance(value, BaseModel):
+            keys.extend(_unknown_keys(value, f"{prefix}{name}."))
+    return keys
+
+
+def load_config(path: Path | None = None) -> Config:
+    """Load the config, creating the file with defaults if it does not exist.
+
+    Unknown keys are logged as warnings and kept. Invalid JSON or values of
+    the wrong type raise ``ConfigError``.
+    """
+    path = path or config_path()
+    if not path.exists():
+        config = Config()
+        save_config(config, path)
+        return config
+
+    try:
+        config = Config.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise ConfigError(f"Invalid config file {path}: {exc}") from exc
+
+    for key in _unknown_keys(config):
+        logger.warning("Unknown config key %r in %s", key, path)
+    return config
+
+
+def save_config(config: Config, path: Path | None = None) -> None:
+    """Write the config as indented JSON, replacing the file atomically."""
+    path = path or config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(config.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp_path, path)
