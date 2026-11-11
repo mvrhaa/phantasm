@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 from zero.config import Config
+from zero.core.turn import TurnManager
+from zero.providers.base import LLMProvider
 from zero.server.connections import ConnectionManager
 from zero.store.db import Database
 from zero.store.messages import MessagesRepo
@@ -21,6 +23,8 @@ class AppState:
     messages: MessagesRepo
     token: str
     connections: ConnectionManager
+    turns: TurnManager
+    provider: LLMProvider | None  # None when the config names an unusable provider
 
 
 def get_state(app: FastAPI) -> AppState:

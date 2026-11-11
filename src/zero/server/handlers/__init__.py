@@ -14,6 +14,7 @@ from zero.protocol.messages import (
     Error,
     Hello,
     HistoryGet,
+    MessageSend,
     Ping,
     Pong,
     SessionCreate,
@@ -23,6 +24,7 @@ from zero.protocol.messages import (
 )
 from zero.server.connections import Connection
 from zero.server.handlers.hello import handle_hello
+from zero.server.handlers.messages import handle_message_send
 from zero.server.handlers.sessions import (
     handle_history_get,
     handle_session_create,
@@ -47,6 +49,7 @@ async def handle_ping(connection: Connection, message: Ping, state: AppState) ->
 HANDLERS: dict[type[Envelope], Handler] = {
     Hello: handle_hello,
     Ping: handle_ping,
+    MessageSend: handle_message_send,
     SessionList: handle_session_list,
     SessionCreate: handle_session_create,
     SessionRename: handle_session_rename,

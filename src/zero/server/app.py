@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,7 +8,10 @@ from fastapi import FastAPI
 
 from zero import APP_NAME, __version__
 from zero.config import Config
+from zero.core.turn import TurnManager
 from zero.paths import db_path
+from zero.providers.base import LLMProvider
+from zero.providers.registry import ProviderNotConfigured, get_provider
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
@@ -18,9 +22,23 @@ from zero.store.sessions import SessionsRepo
 
 APP_ID = "zero"
 
+logger = logging.getLogger(__name__)
 
-def create_app(config: Config) -> FastAPI:
-    """Build the application. Everything it needs is passed in, nothing is global."""
+
+def _choose_provider(config: Config) -> LLMProvider | None:
+    try:
+        return get_provider(config.provider)
+    except ProviderNotConfigured as exc:
+        logger.error("Provider is not configured: %s", exc)
+        return None
+
+
+def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
+    """Build the application. Everything it needs is passed in, nothing is global.
+
+    ``provider`` overrides the one named in the config; tests use it to pass
+    a scripted provider.
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -36,8 +54,14 @@ def create_app(config: Config) -> FastAPI:
                 messages=MessagesRepo(db),
                 token=get_or_create_token(),
                 connections=ConnectionManager(),
+                turns=TurnManager(),
+                provider=provider or _choose_provider(config),
             )
-            yield
+            turns = app.state.zero.turns
+            try:
+                yield
+            finally:
+                await turns.shutdown()
         finally:
             app.state.zero = None
             await db.close()
