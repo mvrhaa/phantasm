@@ -49,7 +49,7 @@ class Database:
         conn.row_factory = aiosqlite.Row
         await conn.execute("PRAGMA foreign_keys=ON")
         await conn.execute("PRAGMA journal_mode=WAL")
-        self.path.chmod(DB_FILE_MODE)  # the history is private to the owner
+        self.path.chmod(DB_FILE_MODE)
         self._conn = conn
 
     async def close(self) -> None:

@@ -29,7 +29,7 @@ from zero.tools.permissions import PathDenied, PathGuard
 
 DEFAULT_READ_LINES = 2000
 MAX_LINE_CHARS = 2000
-TEXT_BUDGET = MAX_OUTPUT_CHARS - 1000  # room for the note about the next page
+TEXT_BUDGET = MAX_OUTPUT_CHARS - 1000
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 SNIFF_BYTES = 8192
 MAX_LIST_DEPTH = 5
@@ -70,9 +70,6 @@ def image_mime(head: bytes) -> str | None:
     if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         return "image/webp"
     return None
-
-
-# --- read_file ---------------------------------------------------------------
 
 
 class ReadFileInput(BaseModel):
@@ -177,9 +174,6 @@ class ReadFile(Tool[ReadFileInput]):
             return error_result(f"Cannot read {shown}: {exc.strerror or exc}.")
 
 
-# --- list_dir ----------------------------------------------------------------
-
-
 class ListDirInput(BaseModel):
     path: str = Field(description=PATH_HELP)
     depth: int = Field(
@@ -272,9 +266,6 @@ class ListDir(Tool[ListDirInput]):
         if listing.full:
             lines.append(f"[… stopped after {MAX_LIST_ENTRIES} entries; list a subfolder]")
         return text_result("\n".join(lines), summary=f"{listing.entries} entries")
-
-
-# --- send_file ---------------------------------------------------------------
 
 
 class SendFileInput(BaseModel):

@@ -12,10 +12,10 @@ from zero import clock
 from zero.store.db import Database
 
 _WORD = re.compile(r"\w+", re.UNICODE)
-MIN_PREFIX_CHARS = 3  # shorter words must match whole, longer ones also match as a prefix
-STEM_FROM_CHARS = 5  # from this length on, the last letters are dropped from the prefix
-STEM_DROP = 2  # how many letters an ending may have
-MIN_STEM_CHARS = 4  # a trimmed prefix keeps at least this many letters
+MIN_PREFIX_CHARS = 3
+STEM_FROM_CHARS = 5
+STEM_DROP = 2
+MIN_STEM_CHARS = 4
 
 
 class Memory(BaseModel):

@@ -38,20 +38,20 @@ class AppState:
     connections: ConnectionManager
     events: EventBus
     turns: TurnManager
-    tools: ToolRegistry  # built-in tools, shared by every turn
+    tools: ToolRegistry
     approvals: ApprovalManager
     approval_rules: ApprovalRulesRepo
     tool_runs: ToolRunsRepo
-    actions: ActionBroker  # client actions waiting for an action.result
+    actions: ActionBroker
     memory: MemoryRepo
     schedules: SchedulesRepo
     summaries: SummariesRepo
-    usage: UsageRepo  # every call to a model
+    usage: UsageRepo
     agents: AgentsRepo
     agent_runner: AgentRunner
     scheduler: SchedulerRunner
-    provider: LLMProvider | None  # None when the config names an unusable provider
-    stopping: bool = False  # set when the service starts to shut down
+    provider: LLMProvider | None
+    stopping: bool = False
 
 
 def get_state(app: FastAPI) -> AppState:

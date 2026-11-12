@@ -106,9 +106,6 @@ def raising(exc: BaseException) -> FuncTool:
     return FuncTool("broken", fail)
 
 
-# --- Tool --------------------------------------------------------------------
-
-
 def test_spec_takes_its_schema_from_the_input_model() -> None:
     spec = Greet().spec()
 
@@ -136,9 +133,6 @@ def test_result_helpers() -> None:
     assert error_result("nope") == ToolResult(content=[TextPart(text="nope")], is_error=True)
 
 
-# --- Registration ------------------------------------------------------------
-
-
 def test_registry_lists_specs_in_registration_order() -> None:
     registry = registry_with(Greet(), Echo())
 
@@ -162,9 +156,6 @@ def test_registry_refuses_a_second_tool_with_the_same_name() -> None:
 
 def test_empty_registry_has_no_specs() -> None:
     assert ToolRegistry().specs() == []
-
-
-# --- Execution ---------------------------------------------------------------
 
 
 async def test_execute_runs_the_tool_with_validated_input_and_context() -> None:
@@ -293,9 +284,6 @@ async def test_failure_while_deciding_on_approval_is_an_error() -> None:
     assert text_of(result) == "Tool 'confused' failed: lost"
 
 
-# --- Output size -------------------------------------------------------------
-
-
 def test_short_text_is_not_truncated() -> None:
     text = "x" * MAX_OUTPUT_CHARS
 
@@ -330,4 +318,4 @@ async def test_execute_truncates_every_text_part_and_keeps_the_rest() -> None:
     assert second == image
     assert third == TextPart(text="small")
     assert (executed.summary, executed.is_error) == ("3 parts", False)
-    assert result.content[0] == TextPart(text=big)  # the tool's own result is not changed
+    assert result.content[0] == TextPart(text=big)

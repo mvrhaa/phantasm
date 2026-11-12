@@ -17,7 +17,7 @@ from zero.tools.builtin import builtin_registry
 from zero.tools.client_actions import ClientActionTool, action_tools
 from zero.tools.permissions import PathGuard, decide, stricter
 
-FROM_DESKTOP = ReplyTo("conn-1", "m1")  # the turn was started by connection conn-1
+FROM_DESKTOP = ReplyTo("conn-1", "m1")
 
 SCREENSHOT = ActionDecl(
     name="screenshot",
@@ -48,9 +48,6 @@ class RecordingCaller:
     ) -> ToolResult:
         self.calls.append((connection_id, action.name, params))
         return text_result(f"{action.name} done")
-
-
-# --- Policies ----------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -84,9 +81,6 @@ def test_config_still_loosens_a_built_in_tool() -> None:
     permissions = PermissionsConfig(tool_policies={"write_file": "allow"})
 
     assert decide("write_file", "ask", permissions) == "allow"
-
-
-# --- The tool ----------------------------------------------------------------
 
 
 def test_action_becomes_a_tool_with_the_declared_schema_and_policy() -> None:
@@ -135,9 +129,6 @@ async def test_action_input_goes_to_the_caller_as_it_is() -> None:
     assert caller.calls == [("conn-1", "screenshot", {"display": 2, "extra": [1, 2]})]
 
 
-# --- Registry ----------------------------------------------------------------
-
-
 def test_extended_registry_adds_actions_after_the_built_in_tools() -> None:
     base = builtin_registry()
 
@@ -146,7 +137,7 @@ def test_extended_registry_adds_actions_after_the_built_in_tools() -> None:
     names = [spec.name for spec in extended.specs()]
     assert names[-1] == "screenshot"
     assert names[:-1] == [spec.name for spec in base.specs()]
-    assert base.get("screenshot") is None  # the shared registry is not changed
+    assert base.get("screenshot") is None
 
 
 def test_action_cannot_replace_a_built_in_tool_or_set_expression(
@@ -164,9 +155,6 @@ def test_action_cannot_replace_a_built_in_tool_or_set_expression(
     assert extended.get("set_expression") is None
     assert isinstance(extended.get("screenshot"), ClientActionTool)
     assert "Tool 'read_file' is already taken" in caplog.text
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 def turn_for(

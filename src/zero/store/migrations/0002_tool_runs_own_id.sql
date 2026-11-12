@@ -1,7 +1,3 @@
--- Tool runs get their own id. Call ids come from the model and may repeat
--- (local models and the fake provider reuse them), so they cannot be the key.
--- SQLite cannot change a primary key in place, so the table is rebuilt.
-
 CREATE TABLE tool_runs_new (
   id TEXT PRIMARY KEY,
   call_id TEXT NOT NULL,

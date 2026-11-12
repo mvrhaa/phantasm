@@ -27,9 +27,9 @@ class StoredMessage(BaseModel):
     turn_id: str | None = None
     role: Role
     content: list[ContentPart]
-    tool_calls: list[dict[str, Any]] = Field(default_factory=list)  # assistant only
-    tool_call_id: str | None = None  # tool only
-    is_error: bool = False  # tool only
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    tool_call_id: str | None = None
+    is_error: bool = False
     status: Status | None = None
     source: Source | None = None
     created_at: datetime
@@ -108,8 +108,6 @@ class MessagesRepo:
         await self._db.conn.commit()
         return message
 
-    # Keep this method last: inside the class body its name shadows the built-in
-    # ``list``, which would break ``list[...]`` annotations written after it.
     async def list(
         self, session_id: str, before: str | None = None, limit: int = 50
     ) -> list[StoredMessage]:
@@ -122,7 +120,6 @@ class MessagesRepo:
         sql = "SELECT * FROM messages WHERE session_id = ?"
         params: list[Any] = [session_id]
         if before is not None:
-            # Messages are ordered by time, then by insertion order for equal times.
             sql += (
                 " AND (created_at, rowid) < "
                 "(SELECT created_at, rowid FROM messages WHERE id = ? AND session_id = ?)"

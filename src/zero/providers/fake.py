@@ -124,7 +124,7 @@ class FakeProvider:
                 await asyncio.sleep(self.delay_s)
             cancel.raise_if_cancelled()
             yield event
-            await asyncio.sleep(0)  # let other tasks run, as a real network stream would
+            await asyncio.sleep(0)
 
     async def _next_step(self) -> AsyncIterator[StreamEvent]:
         assert self._script is not None

@@ -34,10 +34,10 @@ def build_plist(label: str, python: str, logs: Path, path_env: str) -> dict[str,
         "Label": label,
         "ProgramArguments": [python, "-m", "zero"],
         "RunAtLoad": True,
-        "KeepAlive": {"SuccessfulExit": False},  # restart after a crash, not after a clean exit
+        "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
         "ProcessType": "Interactive",
-        "EnvironmentVariables": {"PATH": path_env},  # launchd's own PATH lacks Homebrew and rg
+        "EnvironmentVariables": {"PATH": path_env},
         "StandardOutPath": str(logs / "launchd.out.log"),
         "StandardErrorPath": str(logs / "launchd.err.log"),
     }
@@ -58,7 +58,7 @@ def install(label: str, home: Path, python: str, path_env: str, uid: int, run: R
     target = plist_path(label, home)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(plistlib.dumps(build_plist(label, python, logs, path_env)))
-    _launchctl(run, "bootout", f"gui/{uid}/{label}")  # an older copy, if any; failure is fine
+    _launchctl(run, "bootout", f"gui/{uid}/{label}")
     if _launchctl(run, "bootstrap", f"gui/{uid}", str(target)) != 0:
         raise RuntimeError(f"launchctl could not load {target}")
     return target

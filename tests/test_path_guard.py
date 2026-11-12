@@ -40,9 +40,6 @@ def denial(guard: PathGuard, path: str | Path) -> str:
     return str(error.value)
 
 
-# --- Inside the sandbox ------------------------------------------------------
-
-
 def test_path_inside_a_root_is_returned_resolved(guard: PathGuard, home: Path) -> None:
     assert guard.check("~/notes.md") == home / "notes.md"
     assert guard.check(home / "notes.md") == home / "notes.md"
@@ -84,9 +81,6 @@ def test_case_is_ignored_for_roots(tmp_path: Path, home: Path) -> None:
     assert guard.check(tmp_path.resolve() / "projects" / "app.py")
 
 
-# --- Outside the sandbox -----------------------------------------------------
-
-
 def test_path_outside_the_roots_is_denied(guard: PathGuard, outside: Path) -> None:
     assert denial(guard, outside / "secret.txt") == (
         f"{outside / 'secret.txt'} is outside the folders tools may use (~)."
@@ -121,9 +115,6 @@ def test_no_roots_allow_nothing(home: Path) -> None:
     )
 
 
-# --- Protected paths ---------------------------------------------------------
-
-
 @pytest.mark.parametrize("path", ["~/.ssh", "~/.ssh/id_rsa", "~/.ssh/new_key"])
 def test_protected_folder_and_everything_in_it_are_denied(guard: PathGuard, path: str) -> None:
     assert denial(guard, path).endswith("is in a protected location.")
@@ -145,9 +136,9 @@ def test_letter_case_cannot_slip_past_a_protected_folder(guard: PathGuard, path:
 
 
 def test_unicode_composition_cannot_slip_past_a_protected_folder(home: Path) -> None:
-    guard = PathGuard(["~"], ["~/café"])  # é as one code point
+    guard = PathGuard(["~"], ["~/café"])
 
-    assert "protected location" in denial(guard, "~/café/menu.txt")  # e + accent
+    assert "protected location" in denial(guard, "~/café/menu.txt")
 
 
 def test_protected_entry_wins_over_a_root(home: Path) -> None:
@@ -162,9 +153,6 @@ def test_default_config_protects_ssh_and_keychains(home: Path) -> None:
     assert guard.check("~/notes.md") == home / "notes.md"
     assert "protected location" in denial(guard, "~/.ssh/id_rsa")
     assert "protected location" in denial(guard, "~/Library/Keychains/login.keychain-db")
-
-
-# --- Paths that cannot be checked --------------------------------------------
 
 
 @pytest.mark.parametrize("path", ["notes.md", "./notes.md", "../outside", ""])

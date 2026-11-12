@@ -83,9 +83,6 @@ class Web:
             return await registry(self.tool).execute(call, ctx)
 
 
-# --- Addresses ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("address", "internal"),
     [
@@ -107,9 +104,6 @@ class Web:
 )
 def test_is_internal(address: str, internal: bool) -> None:
     assert is_internal(address) is internal
-
-
-# --- Pages -------------------------------------------------------------------
 
 
 async def test_html_page_comes_back_as_its_main_text() -> None:
@@ -213,9 +207,6 @@ async def test_http_error_status_is_an_error() -> None:
     )
 
 
-# --- Limits ------------------------------------------------------------------
-
-
 async def test_declared_size_over_the_limit_is_refused_before_reading() -> None:
     site = Web(lambda request: html(**{"content-length": str(web.MAX_BYTES + 1)}))
 
@@ -280,9 +271,6 @@ async def test_cancel_stops_the_download() -> None:
     )
 
     assert (text_of(result), result.cancelled) == (CANCELLED, True)
-
-
-# --- Redirects ---------------------------------------------------------------
 
 
 async def test_redirects_are_followed_and_shown() -> None:
@@ -350,9 +338,6 @@ async def test_redirect_within_an_approved_local_host_is_followed() -> None:
     text = text_of(await site.fetch("http://localhost:3000/"))
 
     assert text.endswith("login page")
-
-
-# --- What needs approval -----------------------------------------------------
 
 
 async def test_public_page_needs_no_approval() -> None:

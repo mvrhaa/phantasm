@@ -93,21 +93,17 @@ def test_an_agent_reads_asks_gets_the_answer_and_reports(tmp_path: Path) -> None
     assert updates[-1]["report"] == "The first line is 'hello zero'."
     main_session, agent_session = updates[0]["parent_session_id"], updates[0]["session_id"]
 
-    # The agent read the file with its own tools.
     read = provider.agent.calls[1].messages[-1]
     assert read.role == "tool" and "hello zero" in text_of(read)
 
-    # Its question reached the main conversation as a turn of its own...
     question = provider.main.calls[2].messages[-1]
     assert (question.role, text_of(question)) == (
         "user",
         f"Agent 'reader' (id {agent_id}) asks:\nWhich line should I quote?\n\n"
         "Answer it with agent_message, or ask the user first if only they know.",
     )
-    # ...the answer came back to the agent as its next message...
     answer = provider.agent.calls[3].messages[-1]
     assert (answer.role, text_of(answer)) == ("user", "Quote the first line.")
-    # ...and so did the report, to the main conversation.
     report = provider.main.calls[4].messages[-1]
     assert text_of(report) == (
         f"Agent 'reader' (id {agent_id}) has finished. Its report:\nThe first line is 'hello zero'."

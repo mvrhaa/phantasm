@@ -32,9 +32,6 @@ class BreaksAfterText(FakeProvider):
         raise ProviderError("connection reset", retryable=True)
 
 
-# --- Retries -----------------------------------------------------------------
-
-
 async def test_retryable_failure_is_retried(harness: Harness) -> None:
     provider = FakeProvider([[TextDelta(text="ok")]], fail_times=4)
 
@@ -102,7 +99,7 @@ class AsksToWait(FakeProvider):
 async def test_the_wait_the_provider_asks_for_is_kept(harness: Harness) -> None:
     provider = AsksToWait(retry_after=0.2)
 
-    await harness.turn(provider).run()  # the harness itself does not wait between retries
+    await harness.turn(provider).run()
 
     first, second = provider.started
     assert second - first >= 0.19
@@ -127,7 +124,7 @@ async def test_retry_waits_and_the_wait_ends_on_cancel(harness: Harness) -> None
     task = asyncio.create_task(turn.run())
     await until(lambda: len(provider.calls) == 1)
     await asyncio.sleep(0.05)
-    assert not task.done()  # still pausing before the retry
+    assert not task.done()
 
     turn.cancel.cancel()
     async with asyncio.timeout(0.5):
@@ -135,9 +132,6 @@ async def test_retry_waits_and_the_wait_ends_on_cancel(harness: Harness) -> None
 
     assert len(provider.calls) == 1
     assert (harness.finished.status, harness.finished.error) == ("cancelled", None)
-
-
-# --- Cancellation ------------------------------------------------------------
 
 
 async def test_cancel_mid_stream_keeps_the_partial_answer(harness: Harness) -> None:
@@ -214,9 +208,6 @@ async def test_cancel_during_tools_skips_the_calls_not_started(harness: Harness)
     assert (last.status, last.content) == ("cancelled", [])
 
 
-# --- Busy sessions -----------------------------------------------------------
-
-
 async def test_manager_knows_running_turns_and_busy_sessions(harness: Harness) -> None:
     manager = TurnManager()
     turn = harness.turn(FakeProvider(infinite=True))
@@ -281,9 +272,6 @@ async def test_failing_work_after_a_turn_is_logged(
     assert harness.finished.status == "ok"
     assert manager.active == []
     assert f"Follow-up of turn {turn.id} failed" in caplog.text
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 @contextmanager

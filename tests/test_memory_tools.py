@@ -50,9 +50,6 @@ def test_memory_tools_join_the_registry_only_with_a_memory(memory: MemoryRepo) -
     assert policies == {"memory_save": "allow", "memory_search": "allow", "memory_delete": "ask"}
 
 
-# --- memory_save -------------------------------------------------------------
-
-
 async def test_save_remembers_a_fact(memory: MemoryRepo) -> None:
     result = await use(memory, "memory_save", text="The user writes Python", tags=["code"])
 
@@ -76,9 +73,6 @@ async def test_save_limits_its_size(memory: MemoryRepo) -> None:
     assert "text: String should have at most 1000 characters" in text_of(result)
 
 
-# --- memory_search -----------------------------------------------------------
-
-
 async def test_search_lists_matches_with_ids_and_counts_their_use(memory: MemoryRepo) -> None:
     cat = await memory.add("The user's cat is called Bublik", ["pets"])
     await memory.add("Lives in Prague")
@@ -99,9 +93,6 @@ async def test_search_without_matches(memory: MemoryRepo) -> None:
         "0 memories",
         False,
     )
-
-
-# --- memory_delete -----------------------------------------------------------
 
 
 async def test_delete_asks_and_shows_what_will_be_forgotten(memory: MemoryRepo) -> None:

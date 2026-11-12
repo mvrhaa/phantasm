@@ -80,6 +80,7 @@ async def _ask_model(
     messages: Sequence[StoredMessage],
     call: ModelCall,
     usage: UsageRecorder | None,
+    cancel: CancelToken,
 ) -> str:
     earlier = f"Earlier summary:\n{previous}\n\n" if previous else ""
     request = [
@@ -91,7 +92,7 @@ async def _ask_model(
     ]
     parts = []
     stream = metered(
-        provider.stream(request, [], model, max_tokens=SUMMARY_MAX_TOKENS, cancel=CancelToken()),
+        provider.stream(request, [], model, max_tokens=SUMMARY_MAX_TOKENS, cancel=cancel),
         call,
         usage,
     )
@@ -110,6 +111,7 @@ async def summarize(
     session_id: str | None = None,
     usage: UsageRecorder | None = None,
     retry_delays: Sequence[float] = RETRY_DELAYS_S,
+    cancel: CancelToken | None = None,
 ) -> str:
     """Fold ``messages`` into ``previous``; falls back to a digest if the model cannot help.
 
@@ -119,9 +121,11 @@ async def summarize(
     if isinstance(provider, FakeProvider):
         return digest(previous, messages)
 
+    token = cancel or CancelToken()
+
     async def attempt() -> str:
         call = ModelCall(provider.name, model, "summary", session_id)
-        return await _ask_model(provider, model, previous, messages, call, usage)
+        return await _ask_model(provider, model, previous, messages, call, usage, token)
 
     try:
         async with asyncio.timeout(SUMMARY_TIMEOUT_S):
@@ -142,6 +146,7 @@ async def compact(
     model: str,
     events: EventBus,
     usage: UsageRecorder | None = None,
+    cancel: CancelToken | None = None,
 ) -> str:
     """The summary of everything before ``stored[keep_from]``, brought up to date.
 
@@ -154,12 +159,16 @@ async def compact(
     if existing is not None and existing.until_message_id in ids:
         covered = ids.index(existing.until_message_id) + 1
         if covered >= keep_from:
-            return existing.text  # nothing new dropped out
+            return existing.text
         new = dropped[covered:]
     else:
         new = list(dropped)
     previous = existing.text if existing is not None else None
-    text = await summarize(provider, model, previous, new, session_id=session_id, usage=usage)
+    text = await summarize(
+        provider, model, previous, new, session_id=session_id, usage=usage, cancel=cancel
+    )
+    if cancel is not None:
+        cancel.raise_if_cancelled()
     until = dropped[-1].id
     await summaries.save(session_id, text, until)
     await events.publish(

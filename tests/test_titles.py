@@ -80,9 +80,6 @@ class TitleWriter:
         return False
 
 
-# --- Making a title ----------------------------------------------------------
-
-
 def test_first_words_takes_six_words_and_squeezes_spaces() -> None:
     assert first_words("  plan a\ttrip  to Rome next spring\nwith friends ") == (
         "plan a trip to Rome next"
@@ -184,7 +181,7 @@ async def test_a_failure_worth_retrying_is_retried_like_in_a_turn() -> None:
     title = await make_title(provider, "model-x", LONG_MESSAGE, usage=calls, retry_delays=NO_DELAYS)
 
     assert title == "Trip to Rome"
-    assert calls.ok == [False, False, True]  # every attempt is counted
+    assert calls.ok == [False, False, True]
 
 
 async def test_a_final_failure_is_not_retried() -> None:
@@ -208,9 +205,6 @@ async def test_empty_message_gives_no_title_and_asks_nobody() -> None:
 
     assert await make_title(provider, "model-x", "   ") == ""
     assert provider.requests == []
-
-
-# --- Titling a session -------------------------------------------------------
 
 
 async def title(harness: Harness, provider: Any, text: str = LONG_MESSAGE) -> None:
@@ -275,9 +269,6 @@ async def test_empty_message_leaves_the_session_untitled(harness: Harness) -> No
     session = await harness.sessions.get(harness.session_id)
     assert session is not None and session.title is None
     assert harness.client.received == []
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def connect(client: TestClient) -> Any:
@@ -371,4 +362,4 @@ def test_the_title_is_written_by_the_small_model() -> None:
         updated = ws.receive_json()
 
     assert updated["session"]["title"] == "Trip to Rome"
-    assert provider.models == ["fake-1", "small-1"]  # the turn, then its title
+    assert provider.models == ["fake-1", "small-1"]

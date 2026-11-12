@@ -29,7 +29,7 @@ def test_token_is_created_on_first_call() -> None:
 
     token = get_or_create_token()
 
-    assert len(token) == 43  # 32 random bytes in URL-safe base64
+    assert len(token) == 43
     assert token_path().read_text(encoding="utf-8") == token
 
 

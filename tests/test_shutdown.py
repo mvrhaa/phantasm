@@ -27,9 +27,6 @@ from zero.tools.base import ToolContext
 HELLO = {"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"}}
 
 
-# --- TurnManager.cancel_all ---------------------------------------------------
-
-
 async def test_cancel_all_ends_running_turns_as_cancelled(harness: Harness) -> None:
     manager = TurnManager()
     manager.start(harness.turn(FakeProvider(infinite=True)))
@@ -47,7 +44,7 @@ async def test_cancel_all_cuts_off_a_turn_that_does_not_stop(harness: Harness) -
 
     async def stubborn(params: Any, ctx: ToolContext) -> str:
         started.set()
-        await asyncio.sleep(30)  # never looks at ctx.cancel
+        await asyncio.sleep(30)
         return "late"
 
     script = [[ToolCallEvent(call=ToolCall(id="s1", name="stubborn"))], [TextDelta(text="x")]]
@@ -65,9 +62,6 @@ async def test_cancel_all_cuts_off_a_turn_that_does_not_stop(harness: Harness) -
 async def test_cancel_all_without_turns_returns_at_once() -> None:
     async with asyncio.timeout(1):
         await TurnManager().cancel_all(grace_s=30)
-
-
-# --- graceful_stop in the service --------------------------------------------
 
 
 @contextmanager
@@ -109,7 +103,7 @@ def test_stop_withdraws_approvals_ends_turns_and_closes_clients() -> None:
         assert (resolved["decision"], resolved["by_client_id"]) == ("deny", WITHDRAWN_BY)
         assert receive_until(ws, "turn.finished")["status"] == "cancelled"
         while (frame := ws.receive())["type"] != "websocket.close":
-            pass  # the session's title may still arrive
+            pass
         assert (frame["code"], frame["reason"]) == (CLOSE_GOING_AWAY, "Zero is shutting down")
         assert state.turns.active == []
         assert state.approvals.waiting == []
@@ -166,9 +160,6 @@ def test_leaving_the_app_stops_gracefully(monkeypatch: pytest.MonkeyPatch) -> No
     assert state.stopping
 
 
-# --- uvicorn -----------------------------------------------------------------
-
-
 async def test_server_winds_zero_down_before_uvicorn_drops_connections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -185,9 +176,9 @@ async def test_server_winds_zero_down_before_uvicorn_drops_connections(
     monkeypatch.setattr(entry, "graceful_stop", zero_stop)
     monkeypatch.setattr(uvicorn.Server, "shutdown", uvicorn_stop)
     app = create_app(Config(), FakeProvider([]))
-    server = entry.ZeroServer(uvicorn.Config(app, log_config=None))  # leave logging alone
+    server = entry.ZeroServer(uvicorn.Config(app, log_config=None))
 
-    await server.shutdown()  # before startup there is no state: only uvicorn stops
+    await server.shutdown()
     app.state.zero = object.__new__(AppState)
     await server.shutdown()
 

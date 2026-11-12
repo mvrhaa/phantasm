@@ -122,8 +122,6 @@ class SchedulesRepo:
         await self._db.conn.commit()
         return cursor.rowcount > 0
 
-    # Keep this method last: inside the class body its name shadows the built-in
-    # ``list``, which would break ``list[...]`` annotations written after it.
     async def list(self, include_disabled: bool = False) -> list[Schedule]:
         """Schedules by their next run; finished one-off ones only on request."""
         where = "" if include_disabled else "WHERE enabled = 1"

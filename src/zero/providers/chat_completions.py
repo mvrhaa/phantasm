@@ -37,12 +37,12 @@ from zero.providers.chat_format import (
 from zero.providers.presets import Preset
 from zero.secrets import api_key, env_file, mask_secrets
 
-TIMEOUT = httpx.Timeout(120.0, connect=15.0)  # read: the longest silence within an answer
+TIMEOUT = httpx.Timeout(120.0, connect=15.0)
 USER_AGENT = f"Zero/{__version__} (local assistant)"
 ERROR_TEXT_CHARS = 300
-RETRYABLE_STATUSES = frozenset({408, 425, 429})  # and every 5xx
-MALFORMED_CALL = "MALFORMED_FUNCTION_CALL"  # Google's finish reason for a broken tool call
-GOOGLE_DELAY = re.compile(r"(\d+(?:\.\d+)?)s")  # RetryInfo.retryDelay, e.g. "17s"
+RETRYABLE_STATUSES = frozenset({408, 425, 429})
+MALFORMED_CALL = "MALFORMED_FUNCTION_CALL"
+GOOGLE_DELAY = re.compile(r"(\d+(?:\.\d+)?)s")
 
 _CANCELLED = object()
 _END = object()
@@ -69,7 +69,7 @@ class ChatCompletionsProvider:
         self.min_interval_s = preset.min_interval_s if min_interval_s is None else min_interval_s
         self._images = preset.images if images is None else images
         self._transport = transport
-        self._next_start = 0.0  # event loop time before which no request may start
+        self._next_start = 0.0
 
     def supports_images(self, model: str) -> bool:
         """Tell whether the model takes images; set per preset, not per model."""
@@ -201,7 +201,6 @@ class ChatCompletionsProvider:
         tool_calls = calls.calls()
         for call in tool_calls:
             yield ToolCallEvent(call=call)
-        # The calls decide, whatever finish_reason says: Google ends them with "stop".
         reason = "tool_use" if tool_calls else "max_tokens" if finish == "length" else "end"
         yield StopEvent(reason=reason)
 
@@ -232,7 +231,7 @@ async def _next_line(lines: AsyncIterator[str]) -> Any:
 def _parse(provider: str, line: str) -> Any:
     """One line of the stream: a chunk, ``_END`` for ``[DONE]``, or None for anything else."""
     if not line.startswith("data:"):
-        return None  # blank lines between events, ": keep-alive" comments
+        return None
     data = line[5:].strip()
     if data == "[DONE]":
         return _END
@@ -242,7 +241,7 @@ def _parse(provider: str, line: str) -> Any:
         chunk = json.loads(data)
     except ValueError:
         raise ProviderError(f"{provider} sent a broken chunk", retryable=True) from None
-    if isinstance(chunk, list):  # Google wraps errors in a list
+    if isinstance(chunk, list):
         chunk = chunk[0] if chunk else None
     return chunk
 
@@ -251,7 +250,7 @@ def _delta_text(delta: dict[str, Any]) -> str:
     content = delta.get("content")
     if isinstance(content, str):
         return content
-    if isinstance(content, list):  # Mistral may send content as a list of chunks
+    if isinstance(content, list):
         return "".join(item.get("text", "") for item in content if isinstance(item, dict))
     return ""
 

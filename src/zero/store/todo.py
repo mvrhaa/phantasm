@@ -79,8 +79,6 @@ class TodoRepo:
             row = await found.fetchone()
         return _to_todo(row) if row else None
 
-    # Keep this method last: inside the class body its name shadows the built-in
-    # ``list``, which would break ``list[...]`` annotations written after it.
     async def list(self, session_id: str) -> list[Todo]:
         """The session's items in order."""
         async with self._db.conn.execute(

@@ -36,7 +36,7 @@ def _write_token(path: Path, token: str) -> None:
     tmp_path = path.with_name(path.name + ".tmp")
     fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, TOKEN_FILE_MODE)
     with os.fdopen(fd, "w", encoding="utf-8") as file:
-        os.fchmod(fd, TOKEN_FILE_MODE)  # the mode given to os.open is subject to umask
+        os.fchmod(fd, TOKEN_FILE_MODE)
         file.write(token)
     os.replace(tmp_path, path)
 

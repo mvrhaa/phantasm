@@ -35,9 +35,6 @@ def start_call(name: str = "reader", task: str = "Count the files in ~/notes") -
     return [ToolCallEvent(call=call)]
 
 
-# --- Through the service -----------------------------------------------------
-
-
 @contextmanager
 def service(provider: FakeProvider) -> Iterator[tuple[AppState, WebSocketTestSession]]:
     with TestClient(create_app(Config(), provider)) as client:
@@ -122,7 +119,7 @@ def test_the_main_turn_does_not_wait_for_the_agent() -> None:
         ws.send_json({"type": "message.send", "id": "m1", "text": "go", "source": "desktop"})
         while (event := ws.receive_json())["type"] != "turn.started":
             pass
-        main_session = event["session_id"]  # the main turn starts before the agent's
+        main_session = event["session_id"]
         while not ((event := ws.receive_json())["type"] == "turn.finished"):
             pass
 
@@ -142,9 +139,6 @@ async def test_the_service_fails_agents_left_by_its_last_run() -> None:
         stored = client.portal.call(get_state(client.app).agents.get, left.id)  # type: ignore[union-attr,arg-type]
 
     assert stored is not None and (stored.status, stored.report) == ("failed", RESTARTED)
-
-
-# --- AgentRunner -------------------------------------------------------------
 
 
 @pytest.fixture
@@ -240,9 +234,6 @@ async def test_recover_fails_the_agents_an_earlier_run_left(stores: RunnerKit) -
     assert await stores.runner.recover() == 0
 
 
-# --- Pieces ------------------------------------------------------------------
-
-
 def test_registry_without_a_prefix() -> None:
     async def nothing(params: Any, ctx: ToolContext) -> str:
         return ""
@@ -250,7 +241,7 @@ def test_registry_without_a_prefix() -> None:
     tools = registry(*(FuncTool(name, nothing) for name in ("read", "agent_start", "agent_x")))
 
     assert [spec.name for spec in tools.without("agent_").specs()] == ["read"]
-    assert len(tools.specs()) == 3  # the original is untouched
+    assert len(tools.specs()) == 3
 
 
 def test_agent_role_follows_the_environment() -> None:

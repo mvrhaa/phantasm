@@ -1,5 +1,6 @@
 """The agent loop: one turn from a user message to the final answer."""
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Sequence
@@ -18,6 +19,7 @@ from zero.protocol.messages import (
     ClientInfo,
     ContentPart,
     FilePart,
+    ImagePart,
     TextPart,
     TurnFinished,
     TurnStarted,
@@ -47,6 +49,7 @@ from zero.tools.client_actions import (
 from zero.tools.permissions import PathGuard
 
 NOT_RUN = "Not run: the user cancelled the turn."
+IMAGE_UNSEEN = "[an image; this model cannot see images]"
 
 TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
 
@@ -111,11 +114,11 @@ class Turn:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
         self.cancel = CancelToken()
-        self.done = False  # set once everything is saved, just before turn.finished
-        self.finished: TurnFinished | None = None  # the turn.finished it announced
+        self.done = False
+        self.finished: TurnFinished | None = None
         self.agent = agent
         if agent is not None:
-            events = events.for_agent(agent)  # every event of this turn names the agent
+            events = events.for_agent(agent)
         self._text = text
         self._source: Source = source
         self._client = client
@@ -130,7 +133,9 @@ class Turn:
         )
         base = tools if tools is not None else ToolRegistry()
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
-        self._used_computer = False  # a computer_* action raises the step limit
+        self._used_computer = False
+        self._timed_out = False
+        self._can_see_images = provider.supports_images(config.provider.model)
         self._reply = reply
         self._prompts = PromptBuilder(
             session_id=session_id,
@@ -144,6 +149,7 @@ class Turn:
             summaries=summaries,
             agent_name=agent.name if agent is not None else None,
             usage=usage,
+            cancel=self.cancel,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None
@@ -182,29 +188,38 @@ class Turn:
         )
 
     async def run(self) -> None:
-        """Run the turn to the end. Never raises: failures end the turn with an error."""
-        await self._messages.append(
-            self.session_id,
-            "user",
-            [TextPart(text=self._text), *self._attachments],
-            turn_id=self.id,
-            status="ok",
-            source=self._source,
-        )
-        await self._events.publish(
-            TurnStarted(session_id=self.session_id, turn_id=self.id, source=self._source),
-            reply=self._reply,
-        )
+        """Run the turn to the end. Never raises: failures end the turn with an error.
 
+        A turn that runs longer than ``turn_timeout_s`` is stopped like a cancelled
+        one (its tools and approvals end with it) and finishes with an error.
+        """
         progress = Progress()
         status: TurnStatus = "ok"
         error: str | None = None
+        limit = self._config.agent.turn_timeout_s
+        timer = asyncio.get_running_loop().call_later(limit, self._time_out)
         try:
+            await self._messages.append(
+                self.session_id,
+                "user",
+                [TextPart(text=self._text), *self._attachments],
+                turn_id=self.id,
+                status="ok",
+                source=self._source,
+            )
+            await self._events.publish(
+                TurnStarted(session_id=self.session_id, turn_id=self.id, source=self._source),
+                reply=self._reply,
+            )
             if await self._steps(progress):
                 status = "max_steps"
         except TurnCancelled:
-            logger.info("Turn %s cancelled", self.id)
-            status = "cancelled"
+            if self._timed_out:
+                logger.warning("Turn %s stopped after %s s", self.id, limit)
+                status, error = "error", f"the turn ran longer than {limit} s and was stopped"
+            else:
+                logger.info("Turn %s cancelled", self.id)
+                status = "cancelled"
         except ProviderError as exc:
             logger.warning("Turn %s failed: provider error (retryable=%s)", self.id, exc.retryable)
             status, error = "error", exc.message
@@ -212,18 +227,24 @@ class Turn:
             logger.exception("Turn %s failed", self.id)
             status, error = "error", "internal error"
 
-        # Providers reject empty assistant messages, so an empty answer is kept
-        # only as a mark that the turn broke off.
-        if progress.step_text or status in ("error", "cancelled"):
-            await self._messages.append(
-                self.session_id,
-                "assistant",
-                _text_content(progress.step_text),
-                turn_id=self.id,
-                status="ok" if status == "max_steps" else status,
-                source=self._source,
-            )
-        await self._sessions.touch(self.session_id)
+        finally:
+            timer.cancel()
+
+        try:
+            if progress.step_text or status in ("error", "cancelled"):
+                await self._messages.append(
+                    self.session_id,
+                    "assistant",
+                    _text_content(progress.step_text),
+                    turn_id=self.id,
+                    status="ok" if status == "max_steps" else status,
+                    source=self._source,
+                )
+            await self._sessions.touch(self.session_id)
+        except Exception:
+            logger.exception("Turn %s could not save its end", self.id)
+            if status in ("ok", "max_steps"):
+                status, error = "error", "internal error"
         self.done = True
         self.finished = TurnFinished(
             session_id=self.session_id,
@@ -235,6 +256,10 @@ class Turn:
             error=error,
         )
         await self._events.publish(self.finished)
+
+    def _time_out(self) -> None:
+        self._timed_out = True
+        self.cancel.cancel()
 
     async def _steps(self, progress: Progress) -> bool:
         """Call the model step by step until it answers without asking for tools.
@@ -271,6 +296,14 @@ class Turn:
                 len(ignored),
             )
         return True
+
+    def _for_model(self, content: list[ContentPart]) -> list[ContentPart]:
+        """A tool's result as the model gets it: no images for a model that cannot see them."""
+        if self._can_see_images:
+            return content
+        return [
+            TextPart(text=IMAGE_UNSEEN) if isinstance(part, ImagePart) else part for part in content
+        ]
 
     def _step_limit(self) -> int:
         agent = self._config.agent
@@ -326,7 +359,7 @@ class Turn:
             prompt.append(
                 Message(
                     role="tool",
-                    content=result.content,
+                    content=self._for_model(result.content),
                     tool_call_id=call.id,
                     is_error=result.is_error,
                 )

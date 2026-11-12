@@ -23,7 +23,7 @@ class ModelCall:
     session_id: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
-    ok: bool = True  # False if it failed or was cancelled; it still counts as a request
+    ok: bool = True
 
 
 class UsageTotal(BaseModel):

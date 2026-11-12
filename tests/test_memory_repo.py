@@ -21,9 +21,6 @@ def texts(memories: list[Memory]) -> list[str]:
     return [m.text for m in memories]
 
 
-# --- The query ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("query", "expected"),
     [
@@ -40,9 +37,6 @@ def texts(memories: list[Memory]) -> list[str]:
 )
 def test_fts_query_quotes_every_word(query: str, expected: str) -> None:
     assert fts_query(query) == expected
-
-
-# --- Saving ------------------------------------------------------------------
 
 
 async def test_add_returns_the_memory(memory: MemoryRepo, frozen_clock: Any) -> None:
@@ -70,7 +64,7 @@ async def test_same_text_again_updates_instead_of_duplicating(
     again = await memory.add("Likes tea")
 
     assert again.id == first.id
-    assert again.tags == ["drinks"]  # kept: no new tags were given
+    assert again.tags == ["drinks"]
     assert again.updated_at > first.updated_at
     assert texts(await memory.top()) == ["Likes tea"]
 
@@ -86,9 +80,6 @@ async def test_get_and_delete(memory: MemoryRepo) -> None:
     assert await memory.delete(saved.id)
     assert await memory.get(saved.id) is None
     assert not await memory.delete(saved.id)
-
-
-# --- Searching ---------------------------------------------------------------
 
 
 @pytest.fixture
@@ -121,7 +112,7 @@ async def test_search(facts: MemoryRepo, query: str, found: list[str]) -> None:
     "query", ['"', "AND", "NEAR(", "a:b", "*", "-python", "(python) OR", "^", "''"]
 )
 async def test_fts_syntax_in_a_query_is_harmless(facts: MemoryRepo, query: str) -> None:
-    await facts.search(query)  # no sqlite3.OperationalError
+    await facts.search(query)
 
 
 async def test_better_matches_come_first(memory: MemoryRepo) -> None:
@@ -152,9 +143,6 @@ async def test_changed_tags_are_searched(memory: MemoryRepo) -> None:
 
     assert texts(await memory.search("morning")) == ["Likes tea"]
     assert await memory.search("drinks") == []
-
-
-# --- For the prompt ----------------------------------------------------------
 
 
 async def test_top_mixes_the_most_used_and_the_newest(

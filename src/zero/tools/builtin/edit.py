@@ -34,7 +34,7 @@ class Target:
     """A file about to be changed, as it is now."""
 
     path: Path
-    old: str | None  # None when the file does not exist yet or holds binary data
+    old: str | None
     binary: bool = False
 
     @property
@@ -59,7 +59,10 @@ def load_target(raw: str, guard: PathGuard) -> Target | str:
         return f"Cannot read {raw}: {exc.strerror or exc}."
     if b"\x00" in data[:SNIFF_BYTES]:
         return Target(path, None, binary=True)
-    return Target(path, data.decode("utf-8", errors="replace"))
+    try:
+        return Target(path, data.decode("utf-8"))
+    except UnicodeDecodeError:
+        return Target(path, None, binary=True)
 
 
 def make_diff(shown: str, target: Target, new: str) -> str:
@@ -74,7 +77,9 @@ def make_diff(shown: str, target: Target, new: str) -> str:
         )
     )
     if target.binary:
-        lines.insert(0, f"Binary file {shown} will be replaced with text.")
+        lines.insert(
+            0, f"{shown} is a binary file or not UTF-8 text; it will be replaced with UTF-8 text."
+        )
     return "\n".join(lines)
 
 
@@ -109,9 +114,6 @@ def write_atomically(path: Path, text: str) -> None:
         raise
 
 
-# --- write_file --------------------------------------------------------------
-
-
 class WriteFileInput(BaseModel):
     path: str = Field(description=PATH_HELP)
     content: str = Field(description="The whole new content of the file")
@@ -144,7 +146,7 @@ class WriteFile(Tool[WriteFileInput]):
 
     def _write(self, params: WriteFileInput, ctx: ToolContext) -> ToolResult:
         shown = params.path
-        target = load_target(shown, ctx.paths)  # again: the file may have changed meanwhile
+        target = load_target(shown, ctx.paths)
         if isinstance(target, str):
             return error_result(target)
         if target.old == params.content:
@@ -158,9 +160,6 @@ class WriteFile(Tool[WriteFileInput]):
             return error_result(f"Cannot write {shown}: {exc.strerror or exc}.")
         verb = "Wrote" if target.exists else "Created"
         return text_result(f"{verb} {shown} ({summary}).", summary=summary)
-
-
-# --- edit_file ---------------------------------------------------------------
 
 
 class EditFileInput(BaseModel):
@@ -196,7 +195,7 @@ def plan_edit(params: EditFileInput, guard: PathGuard) -> tuple[Target, str] | s
     if not target.exists:
         return f"{shown} does not exist; use write_file to create it."
     if target.old is None:
-        return f"{shown} is a binary file and cannot be edited."
+        return f"{shown} is a binary file or not UTF-8 text and cannot be edited."
     if params.old == params.new:
         return "old and new are the same, so there is nothing to change."
 
@@ -244,7 +243,7 @@ class EditFile(Tool[EditFileInput]):
         return await asyncio.to_thread(self._edit, params, ctx)
 
     def _edit(self, params: EditFileInput, ctx: ToolContext) -> ToolResult:
-        plan = plan_edit(params, ctx.paths)  # again: the file may have changed meanwhile
+        plan = plan_edit(params, ctx.paths)
         if isinstance(plan, str):
             return error_result(plan)
         target, edited = plan

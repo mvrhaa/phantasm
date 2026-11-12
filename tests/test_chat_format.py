@@ -19,18 +19,12 @@ PNG = ImagePart(mime="image/png", data_b64="iVBORw0KGgo=")
 PNG_URL = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}
 
 
-# --- Tool call ids -------------------------------------------------------------
-
-
 def test_ids_become_nine_letters_and_digits() -> None:
     google_id = "call_14755307676125612924"
 
-    assert wire_id("abc123XYZ") == "abc123XYZ"  # already fine for Mistral
+    assert wire_id("abc123XYZ") == "abc123XYZ"
     assert len(wire_id(google_id)) == 9 and wire_id(google_id).isalnum()
     assert wire_id(google_id) == wire_id(google_id) != wire_id("call_1")
-
-
-# --- The request ---------------------------------------------------------------
 
 
 def test_a_whole_conversation() -> None:
@@ -89,7 +83,6 @@ def test_a_whole_conversation() -> None:
             "tool_call_id": "abcdefghi",
             "content": "(an image, sent in the next message)",
         },
-        # Tool results hold text only: the screenshot follows the step's results.
         {"role": "user", "content": [{"type": "text", "text": TOOL_IMAGES}, PNG_URL]},
         {"role": "assistant", "content": "Done."},
         {"role": "user", "content": "Thanks"},
@@ -106,7 +99,7 @@ def test_errors_empty_results_and_silent_assistants() -> None:
 
     wire = wire_messages(messages)
 
-    assert wire[0]["content"] is None  # a call without text
+    assert wire[0]["content"] is None
     assert wire[1]["content"] == "Error: (empty)"
     assert wire[2] == {"role": "assistant", "content": ""}
 
@@ -126,9 +119,6 @@ def test_tools() -> None:
             "function": {"name": "read_file", "description": "Read.", "parameters": schema},
         }
     ]
-
-
-# --- Tool calls from a stream --------------------------------------------------
 
 
 def test_fragments_of_calls_are_put_together() -> None:
@@ -152,7 +142,7 @@ def test_whole_calls_with_object_arguments_and_a_reused_index() -> None:
     first, second, third = calls.calls()
 
     assert (first.name, first.input, second.name, second.input) == ("a", {"x": 1}, "b", {"y": 2})
-    assert len(third.id) == 9  # the provider sent no id: one is made up
+    assert len(third.id) == 9
 
 
 @pytest.mark.parametrize(
@@ -166,9 +156,6 @@ def test_broken_calls_are_worth_another_try(function: dict[str, str]) -> None:
     with pytest.raises(ProviderError) as excinfo:
         calls.calls()
     assert excinfo.value.retryable
-
-
-# --- Thinking ------------------------------------------------------------------
 
 
 def visible(*pieces: str | tuple[str, str]) -> str:

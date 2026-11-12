@@ -1,12 +1,7 @@
--- Long-term memory: facts the user told about themselves or asked to remember.
--- memories_fts is an external-content FTS5 index over text and tags; the
--- triggers keep it in step with the table. Updating only `uses` does not
--- touch the index.
-
 CREATE TABLE memories (
   id TEXT PRIMARY KEY,
   text TEXT NOT NULL,
-  tags TEXT,                       -- comma-separated
+  tags TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   uses INTEGER NOT NULL DEFAULT 0

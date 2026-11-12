@@ -25,7 +25,7 @@ class ToolSpec(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any]  # JSON Schema
+    input_schema: dict[str, Any]
 
 
 class Message(BaseModel):
@@ -33,9 +33,9 @@ class Message(BaseModel):
 
     role: Literal["system", "user", "assistant", "tool"]
     content: list[ContentPart] = Field(default_factory=list)
-    tool_calls: list[ToolCall] = Field(default_factory=list)  # assistant only
-    tool_call_id: str | None = None  # tool only
-    is_error: bool = False  # tool only
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    tool_call_id: str | None = None
+    is_error: bool = False
 
     @model_validator(mode="after")
     def _fields_match_role(self) -> Self:
@@ -46,9 +46,6 @@ class Message(BaseModel):
         if self.role != "tool" and (self.tool_call_id is not None or self.is_error):
             raise ValueError("tool_call_id and is_error belong to tool messages only")
         return self
-
-
-# --- Stream events -------------------------------------------------------------
 
 
 class TextDelta(BaseModel):
@@ -84,9 +81,6 @@ StreamEvent = Annotated[
     TextDelta | ToolCallEvent | UsageEvent | StopEvent, Field(discriminator="type")
 ]
 """Anything a provider yields while streaming an answer."""
-
-
-# --- Provider interface --------------------------------------------------------
 
 
 class ProviderError(Exception):

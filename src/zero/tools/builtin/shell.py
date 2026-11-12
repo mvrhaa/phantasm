@@ -25,10 +25,10 @@ from zero.tools.permissions import PathDenied, PathGuard
 
 DEFAULT_TIMEOUT_S = 120
 MAX_TIMEOUT_S = 3600
-STOP_GRACE_S = 3.0  # between SIGTERM and SIGKILL
-DRAIN_S = 1.0  # how long to wait for the last output once the shell is gone
-POLL_S = 0.05  # how often to look whether the shell has exited
-KEEP_BYTES = 128 * 1024  # of the head and of the tail of the output
+STOP_GRACE_S = 3.0
+DRAIN_S = 1.0
+POLL_S = 0.05
+KEEP_BYTES = 128 * 1024
 LABEL_CHARS = 80
 
 Outcome = Literal["exit", "timeout", "cancelled"]
@@ -73,6 +73,8 @@ class _Output:
     def text(self) -> str:
         dropped = self.total - len(self.head) - len(self.tail)
         middle = f"\n[… {dropped} bytes of output dropped …]\n" if dropped else ""
+        if not dropped:
+            return (self.head + self.tail).decode(errors="replace")
         return self.head.decode(errors="replace") + middle + self.tail.decode(errors="replace")
 
 
@@ -123,7 +125,7 @@ async def _stop_group(process: asyncio.subprocess.Process, reading: asyncio.Task
 
 
 async def _execute(command: str, cwd: Path, timeout_s: int, cancel: CancelToken) -> ToolResult:
-    cancel.raise_if_cancelled()  # a cancelled turn starts nothing
+    cancel.raise_if_cancelled()
     process = await asyncio.create_subprocess_exec(
         find_zsh(),
         "-lc",
@@ -147,7 +149,6 @@ async def _execute(command: str, cwd: Path, timeout_s: int, cancel: CancelToken)
             outcome: Outcome = "exit"
         else:
             outcome = "cancelled" if cancel.cancelled else "timeout"
-        # Stops the command itself, or whatever it left running in the background.
         await _stop_group(process, reading)
         await asyncio.wait({reading}, timeout=DRAIN_S)
         return _result(outcome, process.returncode, output, timeout_s)
@@ -158,7 +159,7 @@ async def _execute(command: str, cwd: Path, timeout_s: int, cancel: CancelToken)
             _signal_group(process, signal.SIGKILL)
             await _exited(process)
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(process.wait(), DRAIN_S)  # let asyncio close the pipes
+            await asyncio.wait_for(process.wait(), DRAIN_S)
 
 
 def _result(outcome: Outcome, code: int | None, output: _Output, timeout_s: int) -> ToolResult:

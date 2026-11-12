@@ -82,8 +82,6 @@ async def gone(pid: int) -> bool:
     return False
 
 
-# --- Running -----------------------------------------------------------------
-
 pytestmark = pytest.mark.usefixtures("home")
 
 
@@ -151,9 +149,6 @@ async def test_huge_output_keeps_head_and_tail_in_memory(monkeypatch: pytest.Mon
     assert text.endswith("99999\n100000\n[exit 0]")
 
 
-# --- Stopping ----------------------------------------------------------------
-
-
 async def test_timeout_stops_the_command() -> None:
     started = asyncio.get_running_loop().time()
 
@@ -218,9 +213,6 @@ async def test_background_job_with_its_own_output_is_stopped_too(home: Path) -> 
     assert await gone(int((home / "bg.pid").read_text()))
 
 
-# --- Checks before running ---------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("cwd", "message"),
     [
@@ -274,9 +266,6 @@ async def test_timeout_is_limited() -> None:
     result = await run("true", timeout_s=shell.MAX_TIMEOUT_S + 1)
 
     assert "timeout_s: Input should be less than or equal to 3600" in text_of(result)
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 def test_cancelling_the_turn_kills_the_command(home: Path) -> None:

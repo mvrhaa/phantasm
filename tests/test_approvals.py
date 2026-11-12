@@ -65,9 +65,6 @@ def resolutions(events: list[Envelope]) -> list[ApprovalResolved]:
     return [e for e in events if isinstance(e, ApprovalResolved)]
 
 
-# --- ApprovalManager ---------------------------------------------------------
-
-
 async def test_request_asks_every_client_and_returns_the_answer() -> None:
     manager, client = manager_with_client()
     waiting = asyncio.create_task(manager.request(ASK, CancelToken()))
@@ -196,9 +193,6 @@ async def test_approvals_are_independent() -> None:
     assert ((await first).decision, (await second).decision) == ("allow", "deny")
 
 
-# --- ToolRegistry.execute asks -----------------------------------------------
-
-
 class Counter:
     def __init__(self) -> None:
         self.runs = 0
@@ -305,9 +299,6 @@ async def test_cancel_while_asking_gives_a_cancelled_result() -> None:
     assert (text_of(result), result.cancelled, counter.runs) == (CANCELLED, True, 0)
 
 
-# --- In a turn ---------------------------------------------------------------
-
-
 def work_call() -> list[list[Any]]:
     return [[ToolCallEvent(call=ToolCall(id="w1", name="work"))], [TextDelta(text="Done.")]]
 
@@ -370,9 +361,6 @@ async def test_cancel_while_waiting_ends_the_turn(harness: Harness) -> None:
     assert len(provider.calls) == 1
     tool_message = (await harness.stored())[2]
     assert (tool_message.role, text_of(tool_message)) == ("tool", CANCELLED)
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 @pytest.fixture

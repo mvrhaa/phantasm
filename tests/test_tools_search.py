@@ -66,8 +66,6 @@ def python_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(search, "find_rg", lambda: None)
 
 
-# --- Python search -----------------------------------------------------------
-
 pytestmark = pytest.mark.usefixtures("home")
 
 
@@ -214,9 +212,6 @@ async def test_empty_pattern_is_invalid_input() -> None:
 
     assert result.is_error
     assert "pattern: String should have at least 1 character" in text_of(result)
-
-
-# --- ripgrep, faked ----------------------------------------------------------
 
 
 class FakeRg:
@@ -368,7 +363,6 @@ async def test_rg_is_stopped_at_the_match_limit(
 async def test_rg_is_stopped_when_time_is_up(
     fake_rg: FakeRg, project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Long enough for the fake rg (a Python script) to start and print, even on a slow machine.
     monkeypatch.setattr(search, "SEARCH_TIMEOUT_S", 2)
     fake_rg.write([match(project / "a.txt", 1, "TODO\n")], sleep_s=30)
 
@@ -392,9 +386,6 @@ async def test_cancel_stops_rg_at_once(fake_rg: FakeRg, project: Path) -> None:
         result, _ = await asyncio.gather(search_for("TODO", "~/project", cancel), cancel_soon())
 
     assert text_of(result) == CANCELLED
-
-
-# --- ripgrep, real -----------------------------------------------------------
 
 
 @pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep is not installed")

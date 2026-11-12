@@ -19,6 +19,16 @@ from zero.tools.permissions import PathGuard
 logger = logging.getLogger(__name__)
 
 
+async def _busy(connection: Connection, message: MessageSend) -> None:
+    await connection.send(
+        Error(
+            code=ErrorCode.TURN_BUSY,
+            message="a turn is already running in this session",
+            reply_to=message.id,
+        )
+    )
+
+
 async def handle_message_send(
     connection: Connection, message: MessageSend, state: AppState
 ) -> None:
@@ -63,6 +73,10 @@ async def handle_message_send(
             )
             return
 
+    if found is not None and state.turns.busy(found.id):
+        await _busy(connection, message)
+        return
+
     try:
         attachments = await asyncio.to_thread(
             save_attachments,
@@ -81,15 +95,8 @@ async def handle_message_send(
     else:
         session = found
 
-    # No await between this check and start(), so two messages cannot both pass it.
     if state.turns.busy(session.id):
-        await connection.send(
-            Error(
-                code=ErrorCode.TURN_BUSY,
-                message="a turn is already running in this session",
-                reply_to=message.id,
-            )
-        )
+        await _busy(connection, message)
         return
 
     after = None

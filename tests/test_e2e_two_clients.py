@@ -81,16 +81,13 @@ def test_two_clients_share_the_turn_the_approval_and_the_action(
     on_desktop += read_until(desktop, "turn.finished")
     on_phone += read_until(phone, "turn.finished")
 
-    # the approval closed on the desktop too, answered by the phone
     resolved = [e for e in on_desktop if e["type"] == "approval.resolved"]
     assert [(e["decision"], e["by_client_id"]) for e in resolved] == [("allow", "phone")]
     assert [e for e in on_phone if e["type"] == "approval.resolved"] == resolved
 
-    # only the desktop was asked to act
     assert (action_call["action"], action_call["input"]) == ("screenshot", {"display": 1})
     assert not any(e["type"] == "action.call" for e in on_phone)
 
-    # both saw the same turn, apart from the action call
     shared = [e for e in on_desktop if e["type"] != "action.call"]
     assert [e["type"] for e in shared] == [e["type"] for e in on_phone]
     assert [e["type"] for e in on_phone] == [
@@ -106,7 +103,6 @@ def test_two_clients_share_the_turn_the_approval_and_the_action(
     assert on_desktop[-1] == on_phone[-1]
     assert on_desktop[-1]["text"] == "Nice wallpaper."
 
-    # the picture reached the model on the next step
     result = provider.calls[1].messages[-1]
     assert (result.role, result.tool_call_id) == ("tool", "shot-1")
     assert result.content == [ImagePart.model_validate(PIXEL)]

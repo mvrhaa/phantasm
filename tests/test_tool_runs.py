@@ -45,9 +45,6 @@ def call(name: str, call_id: str = "c1", **tool_input: Any) -> ToolCallEvent:
     return ToolCallEvent(call=ToolCall(id=call_id, name=name, input=tool_input))
 
 
-# --- output_preview and labels -----------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("content", "preview"),
     [
@@ -77,9 +74,6 @@ def test_registry_labels_a_call_with_the_tools_label() -> None:
     )
     assert tools.label(ToolCall(id="c", name="run_command", input={})) == "run_command"
     assert tools.label(ToolCall(id="c", name="fly")) == "fly"
-
-
-# --- send_file ---------------------------------------------------------------
 
 
 async def send(path: str | Path, approver: FakeApprover | None = None) -> ToolResult:
@@ -160,9 +154,6 @@ async def test_too_big_file_is_refused(home: Path, monkeypatch: pytest.MonkeyPat
     assert text_of(result) == "~/big.bin is 11 B; files over 10 B cannot be sent."
 
 
-# --- ToolRunsRepo ------------------------------------------------------------
-
-
 def run(call_id: str, turn_id: str, created: Any, **fields: Any) -> ToolRun:
     return ToolRun(
         call_id=call_id, turn_id=turn_id, tool="add", status="ok", created_at=created, **fields
@@ -195,9 +186,6 @@ async def test_a_repeated_call_id_is_recorded_twice(repo: ToolRunsRepo, frozen_c
     await repo.add("s1", run("call-1", "t2", frozen_clock()))
 
     assert [r.turn_id for r in await repo.for_turns("s1", ["t1", "t2"])] == ["t1", "t2"]
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 class Recorder:
@@ -317,9 +305,6 @@ async def test_file_parts_reach_clients_as_file_events(harness: Harness, home: P
     assert finished.summary == "plan.md, 6 B"  # type: ignore[attr-defined]
 
 
-# --- Over the WebSocket ------------------------------------------------------
-
-
 def read_until(ws: Any, event_type: str) -> dict[str, Any]:
     """The first event of ``event_type``; others (such as session.updated) are skipped."""
     while (event := ws.receive_json())["type"] != event_type:
@@ -358,4 +343,4 @@ def test_history_returns_the_tool_runs_of_its_turns(home: Path) -> None:
     assert runs[0]["turn_id"] != runs[1]["turn_id"]
     assert without_tools["tool_runs"] == []
     assert [m["role"] for m in without_tools["messages"]].count("tool") == 0
-    assert len(last_page["tool_runs"]) == 1  # only the turn on this page
+    assert len(last_page["tool_runs"]) == 1

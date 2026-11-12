@@ -29,8 +29,8 @@ from zero.providers.base import (
 )
 from zero.store.usage import ModelCall, Purpose
 
-RETRY_DELAYS_S: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)  # free plans fail often
-MAX_RETRY_AFTER_S = 60.0  # a provider that wants a longer pause gets the error instead
+RETRY_DELAYS_S: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)
+MAX_RETRY_AFTER_S = 60.0
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +97,8 @@ async def metered(
 class Progress:
     """What a turn has produced so far; survives a failure in the middle of a step."""
 
-    text: str = ""  # everything the model wrote during the turn, as streamed
-    step_text: str = ""  # what it wrote in the current step and is not saved yet
+    text: str = ""
+    step_text: str = ""
     usage: Usage = field(default_factory=Usage)
 
 
@@ -178,7 +178,6 @@ class ModelCaller:
             elif isinstance(event, UsageEvent):
                 progress.usage.input_tokens += event.input_tokens
                 progress.usage.output_tokens += event.output_tokens
-        # A provider may end its stream quietly on cancellation instead of raising.
         self._cancel.raise_if_cancelled()
         return calls
 

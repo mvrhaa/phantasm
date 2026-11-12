@@ -36,9 +36,6 @@ HELLO = {"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"
 READER = AgentRef(id="a1", name="reader")
 
 
-# --- The bus -----------------------------------------------------------------
-
-
 async def test_an_agents_bus_marks_turn_events_only() -> None:
     first, second = RecordingClient(id="one"), RecordingClient(id="two")
     bus = EventBus(Audience([first, second])).for_agent(READER)
@@ -51,7 +48,7 @@ async def test_an_agents_bus_marks_turn_events_only() -> None:
 
     started, delta, created = first.received
     assert started.agent == READER  # type: ignore[attr-defined]
-    assert delta.agent == other  # type: ignore[attr-defined]  # an explicit label is kept
+    assert delta.agent == other  # type: ignore[attr-defined]
     assert created == SessionCreated(session=session, reply_to="m1")
     assert second.received[0].agent == READER  # type: ignore[attr-defined]
     assert second.received[2].reply_to is None
@@ -66,9 +63,6 @@ async def test_a_plain_bus_marks_nothing() -> None:
 
     assert client.received[0].agent is None  # type: ignore[attr-defined]
     assert "agent" not in client.received[0].model_dump_json(exclude_none=True)
-
-
-# --- Approvals and waiting_user ----------------------------------------------
 
 
 @pytest.fixture
@@ -119,14 +113,11 @@ async def test_a_stopped_agent_does_not_come_back_after_an_approval(kit: RunnerK
     assert stored is not None and stored.status == "stopped"
 
 
-# --- The limit ---------------------------------------------------------------
-
-
 async def test_no_more_agents_than_the_limit(kit: RunnerKit) -> None:
     parent = await kit.sessions.create()
     first = await kit.runner.start("a", "task", parent.id)
     second = await kit.runner.start("b", "task", parent.id)
-    await kit.runner.ask(second.session_id or "", "?")  # asking still counts as at work
+    await kit.runner.ask(second.session_id or "", "?")
 
     with pytest.raises(AgentError, match="2 agents are already at work and the limit is 2"):
         await kit.runner.start("c", "task", parent.id)
@@ -140,9 +131,6 @@ async def test_no_more_agents_than_the_limit(kit: RunnerKit) -> None:
 def test_the_limit_is_kept_sane(value: int) -> None:
     with pytest.raises(ValidationError):
         AgentConfig(max_agents=value)
-
-
-# --- Through the service -----------------------------------------------------
 
 
 @contextmanager

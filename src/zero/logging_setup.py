@@ -6,6 +6,7 @@ import re
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 from zero.paths import logs_dir
 from zero.secrets import mask_secrets
@@ -31,14 +32,30 @@ _TOKEN_IN_URL = re.compile(r"(token=)[^&\s\"']+", re.IGNORECASE)
 logger = logging.getLogger(__name__)
 
 
+def redact(text: str) -> str:
+    """``text`` without API keys from the .env file and without tokens in URLs."""
+    cleaned = mask_secrets(text)
+    if "token=" in cleaned.lower():
+        cleaned = _TOKEN_IN_URL.sub(r"\1***", cleaned)
+    return cleaned
+
+
+class RedactingFormatter(logging.Formatter):
+    """A formatter whose tracebacks and stack dumps are redacted like the messages."""
+
+    def formatException(self, ei: Any) -> str:
+        return redact(super().formatException(ei))
+
+    def formatStack(self, stack_info: str) -> str:
+        return redact(super().formatStack(stack_info))
+
+
 class RedactTokenFilter(logging.Filter):
     """Hide the access token in URLs with ``?token=`` and every API key from the .env file."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
-        cleaned = mask_secrets(message)
-        if "token=" in cleaned.lower():
-            cleaned = _TOKEN_IN_URL.sub(r"\1***", cleaned)
+        cleaned = redact(message)
         if cleaned != message:
             record.msg = cleaned
             record.args = None
@@ -51,11 +68,11 @@ def log_file_path() -> Path:
 
 
 def _formatter() -> logging.Formatter:
-    formatter = logging.Formatter(
+    formatter = RedactingFormatter(
         fmt="%(asctime)sZ %(levelname)-8s %(name)s: %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
-    formatter.converter = time.gmtime  # log timestamps are UTC, like everything else
+    formatter.converter = time.gmtime
     return formatter
 
 

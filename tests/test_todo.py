@@ -28,9 +28,6 @@ async def stores() -> AsyncIterator[tuple[TodoRepo, SessionsRepo]]:
         yield TodoRepo(db), SessionsRepo(db)
 
 
-# --- TodoRepo ----------------------------------------------------------------
-
-
 async def test_items_are_numbered_per_session(stores: tuple[TodoRepo, SessionsRepo]) -> None:
     todo, sessions = stores
     first, second = await sessions.create(), await sessions.create()
@@ -75,9 +72,6 @@ async def test_deleting_a_session_deletes_its_list(stores: tuple[TodoRepo, Sessi
     assert await todo.list(session.id) == []
 
 
-# --- Tools -------------------------------------------------------------------
-
-
 async def use(
     todo: TodoRepo, session_id: str, client: RecordingClient, tool: str, **tool_input: Any
 ) -> ToolResult:
@@ -111,7 +105,7 @@ async def test_tools_keep_the_list_and_tell_the_clients(
     expected = "1. [done] read the spec\n2. [pending] write the code"
     assert text_of(updated) == text_of(listed) == expected
     assert updated.summary == "2 items, 1 done"
-    assert [e.type for e in client.received] == ["todo.updated"] * 3  # todo_list changes nothing
+    assert [e.type for e in client.received] == ["todo.updated"] * 3
     assert client.received[-1] == TodoUpdated(
         session_id=session.id,
         items=[
@@ -149,13 +143,10 @@ def test_todo_tools_are_allowed_and_only_registered_with_a_store(
     assert set(policies.values()) == {"allow"}
 
 
-# --- In a turn ---------------------------------------------------------------
-
-
 async def test_turn_publishes_todo_updates_on_the_bus(
     harness: Harness, stores: tuple[TodoRepo, SessionsRepo]
 ) -> None:
-    todo, _ = stores  # another connection to the harness's database file
+    todo, _ = stores
     add = ToolCallEvent(call=ToolCall(id="t1", name="todo_add", input={"text": "plan the trip"}))
     provider = FakeProvider([[add], [TextDelta(text="Planned.")]])
 

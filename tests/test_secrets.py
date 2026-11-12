@@ -25,11 +25,8 @@ def write_env(text: str, mode: int = 0o600) -> Path:
     path = env_file()
     path.write_text(text)
     path.chmod(mode)
-    os.utime(path)  # a fresh mtime, so the mask cache sees the change
+    os.utime(path)
     return path
-
-
-# --- Reading the file --------------------------------------------------------
 
 
 def test_tests_never_see_the_real_env_file(zero_home: Path) -> None:
@@ -73,15 +70,12 @@ def test_the_file_format(tmp_path: Path) -> None:
 def test_the_key_comes_from_the_file_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MISTRAL_API_KEY", "from-the-shell-environment")
 
-    assert api_key("mistral") is None  # no .env yet; the environment does not count
+    assert api_key("mistral") is None
     write_env("MISTRAL_API_KEY=\n")
-    assert api_key("mistral") is None  # an empty value is no key
+    assert api_key("mistral") is None
     write_env(f"MISTRAL_API_KEY={KEY}\n")
     assert api_key("mistral") == KEY
     assert api_key("fake") is None
-
-
-# --- Masking -----------------------------------------------------------------
 
 
 def test_values_from_the_file_are_masked() -> None:
@@ -89,7 +83,7 @@ def test_values_from_the_file_are_masked() -> None:
 
     assert mask_secrets(f"Bearer {KEY} and abc") == "Bearer *** and abc"
     write_env("MISTRAL_API_KEY=another-key-value\n")
-    assert mask_secrets(f"{KEY} another-key-value") == f"{KEY} ***"  # the file changed
+    assert mask_secrets(f"{KEY} another-key-value") == f"{KEY} ***"
 
 
 @pytest.mark.usefixtures("clean_root_logger")
@@ -132,9 +126,6 @@ async def test_tool_output_and_errors_carry_no_key() -> None:
     assert text_of(error) == "Tool 'broken' failed: bad key ***"
 
 
-# --- The model cannot read the file ------------------------------------------
-
-
 def test_the_env_file_is_off_limits_to_tools(zero_home: Path) -> None:
     path = write_env(f"MISTRAL_API_KEY={KEY}\n")
     config = Config()
@@ -145,7 +136,7 @@ def test_the_env_file_is_off_limits_to_tools(zero_home: Path) -> None:
     with pytest.raises(PathDenied, match="protected location"):
         guard.check(path)
     with pytest.raises(PathDenied):
-        guard.check(str(path).upper())  # case does not help on macOS
+        guard.check(str(path).upper())
     assert guard.check(zero_home / "notes.txt") == (zero_home / "notes.txt").resolve()
 
 
@@ -156,16 +147,13 @@ def test_the_config_has_no_place_for_keys() -> None:
         load_config()
 
 
-# --- zero doctor -------------------------------------------------------------
-
-
 def doctor_line(capsys: pytest.CaptureFixture[str], provider: str) -> str:
     config_path().write_text(f'{{"provider": {{"name": "{provider}"}}}}')
     cli.main(["doctor"], probe=lambda host, port: cli.PortState.FREE)
     out = capsys.readouterr().out
     assert KEY not in out
     line = next(line for line in out.splitlines() if line.split()[1] == "key")
-    return " ".join(line.split())  # the column padding does not matter
+    return " ".join(line.split())
 
 
 def test_doctor_on_the_fake_provider_needs_no_key(capsys: pytest.CaptureFixture[str]) -> None:

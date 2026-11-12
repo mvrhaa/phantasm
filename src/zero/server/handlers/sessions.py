@@ -71,7 +71,15 @@ async def handle_session_rename(
 async def handle_session_delete(
     connection: Connection, message: SessionDelete, state: AppState
 ) -> None:
-    """Delete a session with its history and announce it to everyone."""
+    """Delete a session with its history and announce it to everyone.
+
+    Its running turn is cancelled first and the agents it started go with it.
+    """
+    if await state.sessions.get(message.session_id) is None:
+        await _not_found(connection, message.session_id, message.id)
+        return
+    await state.agent_runner.session_closing(message.session_id)
+    await state.turns.stop_session(message.session_id)
     if not await state.sessions.delete(message.session_id):
         await _not_found(connection, message.session_id, message.id)
         return

@@ -77,7 +77,7 @@ class AgentRunner:
         self._start_notice = start_notice
         self._max_agents = max_agents
         self._deliveries: set[asyncio.Task[None]] = set()
-        self._questions: dict[str, list[str]] = {}  # asked during a turn that is not over yet
+        self._questions: dict[str, list[str]] = {}
         self._closed = False
 
     async def start(self, name: str, task: str, parent_session_id: str) -> Agent:
@@ -132,7 +132,7 @@ class AgentRunner:
         if agent.session_id is None:
             return agent
         if agent.active:
-            agent = await self._set(agent, "stopped")  # before cancelling: ``finished`` keeps it
+            agent = await self._set(agent, "stopped")
         await self._turns.stop_session(agent.session_id)
         await self._sessions.delete(agent.session_id)
         await self._events.publish(SessionDeleted(session_id=agent.session_id))
@@ -141,6 +141,19 @@ class AgentRunner:
         await self._announce(stopped)
         logger.info("Agent %s stopped", agent.id)
         return stopped
+
+    async def session_closing(self, session_id: str) -> None:
+        """A session is about to be deleted: stop what agents have to do with it.
+
+        The agents it started are stopped and their sessions deleted; if it is
+        an agent's own session, that agent is marked as stopped.
+        """
+        own = await self._agents.by_session(session_id)
+        if own is not None and own.active:
+            await self._set(own, "stopped")
+        for agent in await self._agents.list(session_id):
+            if agent.session_id is not None:
+                await self.stop(agent.id, session_id)
 
     async def ask(self, session_id: str, question: str) -> Agent:
         """An agent asks the session that started it; the answer comes as an ``agent_message``.
@@ -188,7 +201,7 @@ class AgentRunner:
         """An agent's turn starts or stops waiting for the user's approval."""
         before, after = ("working", "waiting_user") if waiting else ("waiting_user", "working")
         agent = await self._agents.get(agent_id)
-        if agent is not None and agent.status == before:  # a stopped agent stays stopped
+        if agent is not None and agent.status == before:
             await self._set(agent, after)
 
     async def recover(self) -> int:
@@ -233,7 +246,7 @@ class AgentRunner:
         while True:
             await self._turns.wait_free(session_id)
             if await self._sessions.get(session_id) is None:
-                return  # the parent session was deleted meanwhile
+                return
             if await self._start_notice(session_id, text):
                 return
 

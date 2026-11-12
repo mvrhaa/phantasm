@@ -6,6 +6,7 @@ from typing import Protocol
 from zero import clock
 from zero.config import Config
 from zero.core.attachments import prepare_for_model
+from zero.core.cancellation import CancelToken
 from zero.core.compaction import compact
 from zero.core.context import build_system_prompt, keep_from, to_history
 from zero.core.events import EventBus
@@ -14,12 +15,18 @@ from zero.protocol.messages import ClientInfo, TextPart
 from zero.providers.base import LLMProvider, Message
 from zero.providers.registry import small_model
 from zero.store.memory import Memory
-from zero.store.messages import MessagesRepo, Source
+from zero.store.messages import MessagesRepo, Source, StoredMessage
 from zero.store.summaries import SummariesRepo
 
 HISTORY_FETCH_LIMIT = 500
-PROMPT_MEMORIES = 10  # how many memories go into the system prompt
-SUMMARY_RESERVE_TOKENS = 1500  # room kept for the summary once history has to be cut
+PROMPT_MEMORIES = 10
+SUMMARY_RESERVE_TOKENS = 1500
+
+
+def _from_first_turn(stored: list[StoredMessage]) -> list[StoredMessage]:
+    """A cut-off page of history without the end of a turn whose start is missing."""
+    first = next((i for i, message in enumerate(stored) if message.role == "user"), len(stored))
+    return stored[first:]
 
 
 class MemorySource(Protocol):
@@ -52,6 +59,7 @@ class PromptBuilder:
         summaries: SummariesRepo | None = None,
         agent_name: str | None = None,
         usage: UsageRecorder | None = None,
+        cancel: CancelToken | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -64,11 +72,14 @@ class PromptBuilder:
         self._summaries = summaries
         self._agent_name = agent_name
         self._usage = usage
+        self._cancel = cancel
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
         memories = await self._memory.top(PROMPT_MEMORIES) if self._memory is not None else []
         stored = await self._messages.list(self._session_id, limit=HISTORY_FETCH_LIMIT)
+        if len(stored) >= HISTORY_FETCH_LIMIT:
+            stored = _from_first_turn(stored)
         budget = self._config.provider.history_token_budget or (
             self._config.agent.history_token_budget
         )
@@ -85,6 +96,7 @@ class PromptBuilder:
                 model=small_model(self._config.provider),
                 events=self._events,
                 usage=self._usage,
+                cancel=self._cancel,
             )
         system = build_system_prompt(
             self._client,

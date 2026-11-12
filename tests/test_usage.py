@@ -55,9 +55,6 @@ async def drain(stream: AsyncIterator[StreamEvent]) -> list[StreamEvent]:
     return [event async for event in stream]
 
 
-# --- metered -----------------------------------------------------------------
-
-
 async def test_a_finished_call_is_recorded_with_its_tokens() -> None:
     recorder = Recorder()
     call = ModelCall("groq", "m", "turn", "s1")
@@ -94,12 +91,9 @@ async def test_a_record_that_fails_does_not_break_the_answer(
     assert "Could not record a call to p" in caplog.text
 
 
-# --- In a turn ---------------------------------------------------------------
-
-
 async def test_every_model_call_of_a_turn_is_recorded(harness: Harness) -> None:
     recorder = Recorder()
-    provider = FakeProvider(fail_times=1)  # echo after one retryable failure
+    provider = FakeProvider(fail_times=1)
     await harness.turn(provider, usage=recorder).run()
 
     failed, answered = recorder.calls
@@ -110,10 +104,7 @@ async def test_every_model_call_of_a_turn_is_recorded(harness: Harness) -> None:
         False,
     )
     assert answered.ok and answered.session_id == harness.session_id
-    assert (answered.input_tokens, answered.output_tokens) == (1, 2)  # echo of "hi"
-
-
-# --- Titles and summaries ----------------------------------------------------
+    assert (answered.input_tokens, answered.output_tokens) == (1, 2)
 
 
 class Writer:
@@ -150,15 +141,12 @@ async def test_titles_and_summaries_are_recorded_by_purpose(harness: Harness) ->
 
     await make_title(Writer("Greeting"), "m1", "hello there", session_id="s", usage=recorder)
     await summarize(Writer("A summary."), "m2", None, stored, session_id="s", usage=recorder)
-    await make_title(FakeProvider(), "fake-1", "hello", usage=recorder)  # no model call
+    await make_title(FakeProvider(), "fake-1", "hello", usage=recorder)
 
     assert [(c.purpose, c.model, c.input_tokens, c.output_tokens) for c in recorder.calls] == [
         ("title", "m1", 30, 4),
         ("summary", "m2", 30, 4),
     ]
-
-
-# --- The store ---------------------------------------------------------------
 
 
 async def test_totals_per_model_since_a_moment(frozen_clock: FrozenClock) -> None:
@@ -180,9 +168,6 @@ async def test_totals_per_model_since_a_moment(frozen_clock: FrozenClock) -> Non
         ("mistral", "small", 1, 0, 7),
     ]
     assert everything[0].requests == 3
-
-
-# --- Through the service and the command -------------------------------------
 
 
 def test_the_service_records_turns_and_zero_usage_shows_them(

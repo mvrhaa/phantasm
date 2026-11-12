@@ -130,9 +130,6 @@ async def failure(p: ChatCompletionsProvider) -> ProviderError:
     return excinfo.value
 
 
-# --- The request ---------------------------------------------------------------
-
-
 async def test_the_request_to_google() -> None:
     seen: list[httpx.Request] = []
 
@@ -152,7 +149,7 @@ async def test_the_request_to_google() -> None:
     assert body["model"] == "gemma-4-31b-it"
     assert body["stream"] is True
     assert body["stream_options"] == {"include_usage": True}
-    assert body["max_tokens"] == 1000 + 4096  # room for Gemma's thinking
+    assert body["max_tokens"] == 1000 + 4096
     assert body["messages"][1] == {"role": "user", "content": "Какая погода в Праге?"}
     assert body["tools"][0]["function"]["name"] == "get_weather"
 
@@ -222,9 +219,6 @@ def test_images_follow_the_preset_unless_the_config_says_otherwise() -> None:
     assert isinstance(provider(never), LLMProvider)
 
 
-# --- The answer ----------------------------------------------------------------
-
-
 async def test_text_comes_without_the_thinking() -> None:
     body = sse(
         chunk(
@@ -244,7 +238,7 @@ async def test_text_comes_without_the_thinking() -> None:
     assert events == [
         TextDelta(text="Сейчас в Праге"),
         TextDelta(text=" +4°C."),
-        UsageEvent(input_tokens=30, output_tokens=275),  # the thinking counts as output
+        UsageEvent(input_tokens=30, output_tokens=275),
         StopEvent(reason="end"),
     ]
 
@@ -320,9 +314,6 @@ async def test_a_content_filter_is_final() -> None:
     assert not error.retryable and "content filter" in error.message
 
 
-# --- Failures --------------------------------------------------------------------
-
-
 GOOGLE_500 = (
     b'[{"error": {"code": 500, "message": "Internal error encountered.", "status": "INTERNAL"}}]'
 )
@@ -384,12 +375,9 @@ async def test_broken_streams_are_tried_again(body: bytes) -> None:
     assert (await failure(provider(answering(body)))).retryable
 
 
-# --- Cancellation ------------------------------------------------------------------
-
-
 async def test_cancel_while_the_model_is_still_thinking() -> None:
     async def handle(request: httpx.Request) -> httpx.Response:
-        await asyncio.Event().wait()  # Gemma can think for most of a minute
+        await asyncio.Event().wait()
         raise AssertionError
 
     cancel = CancelToken()
@@ -428,9 +416,6 @@ async def test_cancel_in_the_middle_of_an_answer() -> None:
     assert events == [TextDelta(text="Hello")]
 
 
-# --- Limits of free plans ----------------------------------------------------------
-
-
 def test_each_preset_keeps_its_own_pace() -> None:
     paces = {name: preset.min_interval_s for name, preset in PRESETS.items()}
 
@@ -445,7 +430,7 @@ async def test_requests_start_an_interval_apart() -> None:
         return httpx.Response(200, content=sse(chunk("hi", finish="stop")))
 
     p = provider(handle, min_interval_s=0.1)
-    await asyncio.gather(collect(p), collect(p), collect(p))  # say, a turn and two agents
+    await asyncio.gather(collect(p), collect(p), collect(p))
 
     assert len(started) == 3
     assert started[1] - started[0] >= 0.09 and started[2] - started[1] >= 0.09

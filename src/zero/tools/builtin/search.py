@@ -20,15 +20,15 @@ from pydantic import BaseModel, Field
 
 from zero import clock
 from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.tools.base import Tool, ToolContext, ToolResult, error_result, text_result
-from zero.tools.builtin.files import PATH_HELP, SNIFF_BYTES
+from zero.tools.base import Preview, Tool, ToolContext, ToolResult, error_result, text_result
+from zero.tools.builtin.files import PATH_HELP, SNIFF_BYTES, looks_secret
 from zero.tools.permissions import PathDenied, PathGuard
 
 MAX_MATCHES = 200
 MAX_MATCH_CHARS = 300
 SEARCH_TIMEOUT_S = 30.0
-MAX_SCAN_BYTES = 10 * 1024 * 1024  # bigger files are skipped
-RG_LINE_LIMIT = 64 * 1024 * 1024  # one JSON line of rg holds a whole matched line
+MAX_SCAN_BYTES = 10 * 1024 * 1024
+RG_LINE_LIMIT = 64 * 1024 * 1024
 
 
 class SearchFilesInput(BaseModel):
@@ -43,7 +43,7 @@ class SearchFilesInput(BaseModel):
 class Match:
     """One matching line."""
 
-    path: str  # relative to the folder searched
+    path: str
     line: int
     text: str
 
@@ -86,9 +86,6 @@ def _timeout_note() -> str:
     return f"search stopped after {SEARCH_TIMEOUT_S:g} s; narrow the path or glob"
 
 
-# --- ripgrep -----------------------------------------------------------------
-
-
 def _rg_command(rg: str, params: SearchFilesInput, root: Path) -> list[str]:
     command = [rg, "--json", "--no-config", "--no-messages", "--sort", "path"]
     command += ["--max-filesize", str(MAX_SCAN_BYTES), "-e", params.pattern]
@@ -110,9 +107,10 @@ async def _collect(
         data = event["data"]
         path, text = data["path"].get("text"), data["lines"].get("text")
         if path is None or text is None:
-            continue  # rg sends names and lines that are not UTF-8 as bytes; skip them
+            continue
         if path not in allowed:
-            allowed[path] = await asyncio.to_thread(_allowed, guard, path)
+            hidden = Path(path) != root and looks_secret(Path(path).name)
+            allowed[path] = not hidden and await asyncio.to_thread(_allowed, guard, path)
         if not allowed[path]:
             continue
         matches.append(Match(_shown_path(Path(path), root), data["line_number"], text))
@@ -153,9 +151,6 @@ async def _search_rg(rg: str, params: SearchFilesInput, root: Path, ctx: ToolCon
             await process.wait()
 
 
-# --- Python ------------------------------------------------------------------
-
-
 def _files(root: Path, glob: str | None, guard: PathGuard) -> Iterator[Path]:
     """Files to search under ``root``, in path order; a file given directly is always searched."""
     if root.is_file():
@@ -173,6 +168,8 @@ def _files(root: Path, glob: str | None, guard: PathGuard) -> Iterator[Path]:
         for name in sorted(names):
             path = here / name
             if name.startswith(".") or path.is_symlink() or not path.is_file():
+                continue
+            if looks_secret(name):
                 continue
             if glob and not PurePosixPath(path.relative_to(root).as_posix()).match(glob):
                 continue
@@ -216,9 +213,6 @@ def _search_python(
     return _render(matches, None)
 
 
-# --- The tool ----------------------------------------------------------------
-
-
 def _root(params: SearchFilesInput, guard: PathGuard) -> Path | ToolResult:
     try:
         root = guard.check(params.path)
@@ -235,7 +229,8 @@ class SearchFiles(Tool[SearchFilesInput]):
     name = "search_files"
     description = (
         "Search files for a regular expression and get back path:line: text for each "
-        "matching line, at most 200. Hidden names, binary files and symlinks are skipped. "
+        "matching line, at most 200. Hidden names, binary files, symlinks and files that "
+        "usually hold secrets are skipped. "
         "Use glob to narrow the files, e.g. *.py."
     )
     input_model = SearchFilesInput
@@ -243,6 +238,15 @@ class SearchFiles(Tool[SearchFilesInput]):
 
     def label(self, params: SearchFilesInput) -> str:
         return f"{params.pattern!r} in {params.path}"
+
+    async def preview(self, params: SearchFilesInput, ctx: ToolContext) -> Preview:
+        """Ask before searching one file that may hold secrets, as read_file does."""
+        root = await asyncio.to_thread(_root, params, ctx.paths)
+        if isinstance(root, ToolResult) or not await asyncio.to_thread(root.is_file):
+            return Preview()
+        if any(map(looks_secret, (Path(params.path).name, root.name))):
+            return Preview(approval_reason=f"{params.path} may hold secrets")
+        return Preview()
 
     async def run(self, params: SearchFilesInput, ctx: ToolContext) -> ToolResult:
         root = await asyncio.to_thread(_root, params, ctx.paths)

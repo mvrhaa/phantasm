@@ -73,9 +73,6 @@ def endless_turn(kit: RunnerKit, session_id: str) -> Turn:
     )
 
 
-# --- agent_message -----------------------------------------------------------
-
-
 async def test_a_message_puts_the_agent_back_to_work(kit: RunnerKit) -> None:
     parent, agent = await new_agent(kit)
     await kit.runner.finished(agent.id, ended("ok", "First report."))
@@ -107,9 +104,6 @@ async def test_messages_reach_only_free_agents_of_this_conversation(kit: RunnerK
         await kit.runner.message(agent.id, "hi", parent)
 
 
-# --- agent_status ------------------------------------------------------------
-
-
 async def test_progress_counts_steps_and_shows_the_last_words(kit: RunnerKit) -> None:
     parent, agent = await new_agent(kit)
     assert agent.session_id is not None
@@ -138,9 +132,6 @@ async def test_progress_of_a_new_or_stopped_agent(kit: RunnerKit) -> None:
     assert (stopped.agent.status, stopped.steps, stopped.last_output) == ("stopped", 0, None)
 
 
-# --- agent_stop --------------------------------------------------------------
-
-
 async def test_stop_cancels_the_work_and_deletes_the_session(kit: RunnerKit) -> None:
     parent, agent = await new_agent(kit)
     assert agent.session_id is not None
@@ -156,7 +147,7 @@ async def test_stop_cancels_the_work_and_deletes_the_session(kit: RunnerKit) -> 
     assert SessionDeleted(session_id=agent.session_id) in kit.client.received
     assert kit.updates[-2:] == [("stopped", None), ("stopped", None)]
     assert kit.notices == []
-    assert (await kit.runner.stop(agent.id, parent)).status == "stopped"  # twice is fine
+    assert (await kit.runner.stop(agent.id, parent)).status == "stopped"
 
 
 async def test_stopping_a_finished_agent_keeps_its_result(kit: RunnerKit) -> None:
@@ -168,16 +159,13 @@ async def test_stopping_a_finished_agent_keeps_its_result(kit: RunnerKit) -> Non
     assert (stopped.status, stopped.report, stopped.session_id) == ("done", "Report.", None)
 
 
-# --- Questions and reports ---------------------------------------------------
-
-
 async def test_a_question_goes_to_the_parent_and_the_agent_waits(kit: RunnerKit) -> None:
     parent, agent = await new_agent(kit)
     assert agent.session_id is not None
 
     asking = await kit.runner.ask(agent.session_id, "  Which folder?  ")
     await asyncio.sleep(0.05)
-    assert kit.notices == []  # not while its turn is still going
+    assert kit.notices == []
     await kit.runner.finished(agent.id, ended("ok", "I asked."))
     await until(lambda: len(kit.notices) == 1)
 
@@ -190,7 +178,7 @@ async def test_a_question_goes_to_the_parent_and_the_agent_waits(kit: RunnerKit)
         )
     ]
     stored = await kit.agents.get(agent.id)
-    assert stored is not None and stored.status == "asking"  # the end of its turn changes nothing
+    assert stored is not None and stored.status == "asking"
 
 
 async def test_questions_of_one_turn_go_together(kit: RunnerKit) -> None:
@@ -287,9 +275,6 @@ async def test_no_notice_for_a_parent_deleted_meanwhile(kit: RunnerKit) -> None:
     assert kit.notices == []
 
 
-# --- The tools ---------------------------------------------------------------
-
-
 class Control:
     """Answers the tools like the runner would, or refuses with ``error``."""
 
@@ -372,9 +357,6 @@ async def test_tools_explain_refusals(sample: Agent, tool: Any, params: Any, pre
 
     assert out.is_error
     assert text_of(SimpleNamespace(content=out.content)) == f"{prefix}: no luck."
-
-
-# --- Through the service -----------------------------------------------------
 
 
 @contextmanager

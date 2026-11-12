@@ -23,9 +23,6 @@ def permissions(
     )
 
 
-# --- The table ---------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("default", "configured", "saved", "bypass", "needs_approval", "expected"),
     [
@@ -108,7 +105,7 @@ def test_every_combination_follows_the_spec(
 
     assert decision == spec_9_4(configured or default, saved, bypass, needs_approval)
     if (configured or default) == "deny":
-        assert decision == "deny"  # bypass and saved rules never lift a deny
+        assert decision == "deny"
 
 
 def test_rules_and_config_of_other_tools_do_not_matter() -> None:
@@ -123,9 +120,6 @@ def test_default_config_lets_read_tools_run_and_asks_before_writing() -> None:
     assert decide("read_file", "allow", config) == "allow"
     assert decide("write_file", "ask", config) == "ask"
     assert decide("run_command", "ask", config) == "ask"
-
-
-# --- In ToolRegistry.execute -------------------------------------------------
 
 
 class Recorder:

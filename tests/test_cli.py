@@ -56,9 +56,6 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out.startswith("Zero ")
 
 
-# --- doctor ------------------------------------------------------------------
-
-
 def test_doctor_on_a_fresh_install_is_green_and_changes_nothing(
     capsys: pytest.CaptureFixture[str], zero_home: Path
 ) -> None:

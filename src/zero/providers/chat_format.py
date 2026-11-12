@@ -19,9 +19,6 @@ TOOL_IMAGES = "Images returned by the tools above:"
 THOUGHT_OPEN, THOUGHT_CLOSE = "<thought>", "</thought>"
 
 
-# --- The request ---------------------------------------------------------------
-
-
 def wire_id(call_id: str) -> str:
     """A tool call id as the API gets it: 9 letters and digits, which Mistral demands.
 
@@ -124,9 +121,6 @@ def wire_tools(tools: list[ToolSpec]) -> list[dict[str, Any]]:
     ]
 
 
-# --- The answer ----------------------------------------------------------------
-
-
 class _CallParts:
     def __init__(self) -> None:
         self.id = ""
@@ -152,7 +146,7 @@ class ToolCallAssembler:
         call_id = delta.get("id") or ""
         parts = self._by_index.get(index)
         if parts is None or (call_id and parts.id and call_id != parts.id):
-            parts = _CallParts()  # a new call, even if the provider reused its index
+            parts = _CallParts()
             self._calls.append(parts)
             self._by_index[index] = parts
         parts.id = parts.id or call_id
@@ -202,7 +196,7 @@ class ThoughtFilter:
 
     def __init__(self) -> None:
         self._inside = False
-        self._marked = False  # the last chunks were marked as thinking
+        self._marked = False
         self._held = ""
 
     def feed(self, text: str, *, thought: bool = False) -> str:
@@ -214,7 +208,7 @@ class ThoughtFilter:
         if self._marked:
             stripped = text.lstrip()
             if len(stripped) < len(THOUGHT_CLOSE) and THOUGHT_CLOSE.startswith(stripped):
-                self._held = text  # maybe the start of the closing tag: wait for more
+                self._held = text
                 return ""
             self._inside = self._marked = False
             if stripped.startswith(THOUGHT_CLOSE):

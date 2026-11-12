@@ -26,9 +26,6 @@ class Envelope(BaseModel):
     reply_to: str | None = None
 
 
-# --- Content parts -----------------------------------------------------------
-
-
 class TextPart(BaseModel):
     """A piece of plain text."""
 
@@ -55,9 +52,6 @@ class FilePart(BaseModel):
 
 ContentPart = Annotated[TextPart | ImagePart | FilePart, Field(discriminator="type")]
 """One item of message content: tool results and attachments are lists of these."""
-
-
-# --- Client -> Zero: handshake ----------------------------------------------
 
 
 class Character(BaseModel):
@@ -96,9 +90,6 @@ class Hello(Envelope):
     type: Literal["hello"] = "hello"
     protocol: int
     client: ClientInfo
-
-
-# --- Client -> Zero: turns ---------------------------------------------------
 
 
 class Attachment(BaseModel):
@@ -150,9 +141,6 @@ class ActionResult(Envelope):
     ok: bool
     content: list[ContentPart] = Field(default_factory=list)
     error: str | None = None
-
-
-# --- Client -> Zero: sessions and history ------------------------------------
 
 
 class SessionList(Envelope):
@@ -214,9 +202,6 @@ ClientMessage = Annotated[
     Field(discriminator="type"),
 ]
 """Any message a client may send. An unknown ``type`` fails validation."""
-
-
-# --- Zero -> client: shared pieces -------------------------------------------
 
 
 SessionKind = Literal["chat", "agent", "scheduled"]
@@ -305,9 +290,6 @@ class TurnEvent(Envelope):
     agent: AgentRef | None = None
 
 
-# --- Zero -> client: handshake and service -----------------------------------
-
-
 class HelloOk(Envelope):
     """Answer to ``hello``."""
 
@@ -329,9 +311,6 @@ class Error(Envelope):
     type: Literal["error"] = "error"
     code: ErrorCode
     message: str
-
-
-# --- Zero -> client: turn events ---------------------------------------------
 
 
 class TurnStarted(TurnEvent):
@@ -412,7 +391,7 @@ class FileSent(TurnEvent):
     """A file was sent to the user, e.g. by ``send_file``; clients show it in the chat."""
 
     type: Literal["file"] = "file"
-    call_id: str | None = None  # the tool call that sent it
+    call_id: str | None = None
     file: FilePart
 
 
@@ -433,9 +412,6 @@ class TurnFinished(TurnEvent):
     expression: ExpressionState | None = None
     usage: Usage = Field(default_factory=Usage)
     error: str | None = None
-
-
-# --- Zero -> client: sessions and history ------------------------------------
 
 
 class SessionListOk(Envelope):
@@ -465,14 +441,14 @@ class SessionCompacted(Envelope):
     type: Literal["session.compacted"] = "session.compacted"
     session_id: str
     summary: str
-    until_message_id: str  # the last message the summary covers
+    until_message_id: str
 
 
 class AgentInfo(AgentRef):
     """What clients are told about an agent."""
 
     parent_session_id: str
-    session_id: str | None = None  # None once the agent's session is deleted
+    session_id: str | None = None
     task: str
     status: AgentStatus
     report: str | None = None

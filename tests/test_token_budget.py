@@ -26,8 +26,8 @@ def test_a_russian_message_is_estimated_larger_than_an_english_one() -> None:
     english = estimate_tokens(message("hello " * 100))
     russian = estimate_tokens(message("привет " * 100))
 
-    assert english == 172  # 600 ASCII chars / 3.5, rounded up
-    assert russian == 269  # 600 Cyrillic letters / 2.5 + 100 spaces / 3.5, rounded up
+    assert english == 172
+    assert russian == 269
 
 
 def test_tool_calls_count_by_the_same_rule() -> None:
@@ -63,7 +63,7 @@ def builder(harness: Harness, config: Config) -> PromptBuilder:
 
 
 async def test_the_models_own_budget_wins_over_the_default(harness: Harness) -> None:
-    await stored_turns(harness, count=6, chars=1400)  # each turn ≈ 400 tokens
+    await stored_turns(harness, count=6, chars=1400)
     roomy = Config()
     tight = Config()
     tight.provider.history_token_budget = 1000
@@ -72,7 +72,7 @@ async def test_the_models_own_budget_wins_over_the_default(harness: Harness) -> 
     latest = await builder(harness, tight).build()
 
     assert len(everything) == 1 + 12
-    assert len(latest) == 1 + 4  # only the two latest turns fit 1000 tokens
+    assert len(latest) == 1 + 4
     assert latest[-2].content[0].text.startswith("q5 ")  # type: ignore[union-attr]
 
 

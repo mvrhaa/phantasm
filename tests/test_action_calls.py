@@ -79,9 +79,6 @@ def start(
     return asyncio.create_task(broker.call("desk", action, params or {}, context(cancel)))
 
 
-# --- ActionBroker ------------------------------------------------------------
-
-
 async def test_action_goes_only_to_its_client_and_the_answer_comes_back() -> None:
     desk, phone = FakeConnection(), FakeConnection()
     broker = broker_with(desk=desk, phone=phone)
@@ -135,7 +132,7 @@ async def test_only_the_client_that_got_the_call_can_answer() -> None:
 
     assert not broker.resolve("phone", ActionResult(call_id=call_id, ok=True, content=[PIXEL]))
     assert broker.resolve("desk", ActionResult(call_id=call_id, ok=True))
-    assert not broker.resolve("desk", ActionResult(call_id=call_id, ok=True))  # a repeat
+    assert not broker.resolve("desk", ActionResult(call_id=call_id, ok=True))
     assert (await running).content != [PIXEL]
 
 
@@ -189,9 +186,6 @@ async def test_cancel_stops_waiting() -> None:
     with pytest.raises(TurnCancelled):
         await running
     assert broker.waiting == 0
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def hello(ws: WebSocketTestSession, client_id: str, actions: list[dict[str, Any]]) -> None:

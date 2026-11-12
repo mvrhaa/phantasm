@@ -31,16 +31,12 @@ from zero.tools.permissions import PathGuard
 
 PRAGUE = ZoneInfo("Europe/Prague")
 NEW_YORK = ZoneInfo("America/New_York")
-# Thursday 2026-01-01 12:00 UTC is 13:00 in Prague.
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 EVERY_DAY = [0, 1, 2, 3, 4, 5, 6]
 
 
 def utc(year: int, month: int, day: int, hour: int, minute: int) -> datetime:
     return datetime(year, month, day, hour, minute, tzinfo=UTC)
-
-
-# --- Parsing -----------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -89,9 +85,6 @@ def test_parse_errors_explain_the_forms(when: str, problem: str) -> None:
     assert problem in str(error.value)
 
 
-# --- Next runs ---------------------------------------------------------------
-
-
 def test_once_runs_once() -> None:
     rule = Once(at=utc(2026, 1, 1, 13, 0))
 
@@ -106,7 +99,7 @@ def test_once_runs_once() -> None:
         (utc(2026, 1, 1, 12, 29), utc(2026, 1, 1, 12, 30)),
         (utc(2026, 1, 1, 12, 30), utc(2026, 1, 1, 13, 0)),
         (utc(2026, 1, 1, 15, 10), utc(2026, 1, 1, 15, 30)),
-        (utc(2025, 12, 31, 0, 0), NOW),  # before the anchor: the anchor itself
+        (utc(2025, 12, 31, 0, 0), NOW),
     ],
 )
 def test_interval_keeps_its_rhythm(now: datetime, expected: datetime) -> None:
@@ -124,9 +117,9 @@ def test_interval_catches_up_after_a_long_sleep() -> None:
 @pytest.mark.parametrize(
     ("now", "expected"),
     [
-        (NOW, utc(2026, 1, 2, 8, 0)),  # Thursday 13:00 Prague: Friday 09:00 = 08:00 UTC
-        (utc(2026, 1, 1, 7, 59), utc(2026, 1, 1, 8, 0)),  # 08:59 Prague: still today
-        (utc(2026, 1, 1, 8, 0), utc(2026, 1, 2, 8, 0)),  # exactly at the time: tomorrow
+        (NOW, utc(2026, 1, 2, 8, 0)),
+        (utc(2026, 1, 1, 7, 59), utc(2026, 1, 1, 8, 0)),
+        (utc(2026, 1, 1, 8, 0), utc(2026, 1, 2, 8, 0)),
     ],
 )
 def test_daily_in_local_time(now: datetime, expected: datetime) -> None:
@@ -136,7 +129,6 @@ def test_daily_in_local_time(now: datetime, expected: datetime) -> None:
 def test_weekly_skips_to_the_next_listed_day() -> None:
     mondays_and_wednesdays = Weekly(days=[0, 2], at=time(9, 0))
 
-    # Thursday 2026-01-01 → Monday 2026-01-05, 09:00 Prague = 08:00 UTC
     assert next_run(mondays_and_wednesdays, NOW, PRAGUE) == utc(2026, 1, 5, 8, 0)
 
 
@@ -146,17 +138,15 @@ def test_weekly_on_the_same_weekday_a_week_later() -> None:
 
 def test_weekly_keeps_wall_time_across_summer_time() -> None:
     daily = Weekly(days=EVERY_DAY, at=time(9, 0))
-    # Europe switches to summer time on Sunday 2026-03-29.
     before = next_run(daily, utc(2026, 3, 28, 12, 0), PRAGUE)
     after = next_run(daily, utc(2026, 3, 29, 12, 0), PRAGUE)
 
-    assert before == utc(2026, 3, 29, 7, 0)  # 09:00 CEST is 07:00 UTC
+    assert before == utc(2026, 3, 29, 7, 0)
     assert after == utc(2026, 3, 30, 7, 0)
     assert before is not None and before.astimezone(PRAGUE).hour == 9
 
 
 def test_the_same_rule_in_another_zone() -> None:
-    # 12:00 UTC is 07:00 in New York: 09:00 there is 14:00 UTC the same day.
     assert next_run(Weekly(days=EVERY_DAY, at=time(9, 0)), NOW, NEW_YORK) == utc(2026, 1, 1, 14, 0)
 
 
@@ -191,9 +181,6 @@ def test_local_zone_falls_back_to_utc(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rules.os, "readlink", lambda path: "/nowhere")
 
     assert local_zone().key == "UTC"
-
-
-# --- SchedulesRepo -----------------------------------------------------------
 
 
 @pytest.fixture
@@ -254,9 +241,6 @@ async def test_list_hides_finished_schedules_unless_asked(
     assert not await repo.delete(done.id)
 
 
-# --- Tools -------------------------------------------------------------------
-
-
 async def use(
     repo: SchedulesRepo, tool: str, approver: FakeApprover | None = None, **tool_input: Any
 ) -> ToolResult:
@@ -285,7 +269,6 @@ async def test_create_and_list(repo: SchedulesRepo, frozen_clock: Any) -> None:
     listed = await use(repo, "schedule_list")
 
     (schedule,) = await repo.list()
-    # the frozen clock starts at 2026-01-01 12:00 UTC: 13:02 in Prague
     line = (
         f"[{schedule.id}] once at Thu 2026-01-01 13:02, next Thu 2026-01-01 13:02 "
         "(Europe/Prague): Remind me to drink water"

@@ -17,7 +17,7 @@ TITLE_WORDS = 6
 TITLE_MAX_CHARS = 80
 TITLE_INPUT_CHARS = 2000
 TITLE_MAX_TOKENS = 32
-TITLE_TIMEOUT_S = 60.0  # the title comes after the turn, and Gemma thinks before it writes
+TITLE_TIMEOUT_S = 60.0
 
 TITLE_PROMPT = (
     "Name the conversation that starts with the user's message below. "

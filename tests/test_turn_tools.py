@@ -48,9 +48,6 @@ def calculator(log: list[dict[str, Any]] | None = None) -> ToolRegistry:
     return registry(Add(log))
 
 
-# --- Tool-call cycle ---------------------------------------------------------
-
-
 async def test_tool_call_and_answer_take_two_provider_calls(harness: Harness) -> None:
     provider = FakeProvider([[call(a=2, b=3)], [TextDelta(text="5")]])
 
@@ -235,9 +232,6 @@ async def test_next_turn_sends_the_earlier_tool_exchange(harness: Harness) -> No
     assert messages[3].tool_call_id == "call-1"
 
 
-# --- Step limit --------------------------------------------------------------
-
-
 async def test_last_allowed_step_goes_without_tools(harness: Harness) -> None:
     log: list[dict[str, Any]] = []
     provider = FakeProvider(
@@ -274,7 +268,7 @@ async def test_turn_that_ends_before_the_limit_is_ok(harness: Harness) -> None:
 
 
 async def test_provider_failure_after_a_tool_step_keeps_calls_paired(harness: Harness) -> None:
-    provider = FakeProvider([[TextDelta(text="Checking. "), call(a=1, b=1)]])  # no step 2
+    provider = FakeProvider([[TextDelta(text="Checking. "), call(a=1, b=1)]])
 
     await harness.run(provider, calculator())
 
@@ -298,9 +292,6 @@ async def test_empty_final_answer_is_not_stored(harness: Harness) -> None:
 
     assert (harness.finished.status, harness.finished.text) == ("ok", "Adding.")
     assert roles(await harness.stored()) == "user assistant tool"
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def test_tool_call_over_websocket() -> None:

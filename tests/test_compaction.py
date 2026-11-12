@@ -72,9 +72,6 @@ async def chat(messages: MessagesRepo, session_id: str, *pairs: tuple[str, str])
         await messages.append(session_id, "assistant", [TextPart(text=answer)], status="ok")
 
 
-# --- Text helpers ------------------------------------------------------------
-
-
 async def test_transcript_names_who_said_what(stores: Any) -> None:
     sessions, messages, _ = stores
     session = await sessions.create()
@@ -107,9 +104,6 @@ async def test_digest_keeps_the_end_when_it_grows_too_long(
 
     assert len(text) == 40
     assert text.startswith("…") and text.endswith("a" * 10)
-
-
-# --- Summarizing -------------------------------------------------------------
 
 
 async def test_fake_provider_gets_a_digest_without_a_call(stores: Any) -> None:
@@ -182,9 +176,6 @@ async def test_the_summary_is_retried_like_a_turn(stores: Any) -> None:
     assert summary == "Said hello." and len(writer.requests) == 2
 
 
-# --- The cut -----------------------------------------------------------------
-
-
 async def test_keep_from_cuts_between_turns(stores: Any) -> None:
     sessions, messages, _ = stores
     session = await sessions.create()
@@ -192,11 +183,8 @@ async def test_keep_from_cuts_between_turns(stores: Any) -> None:
     stored = await messages.list(session.id)
 
     assert keep_from(stored, 10_000) == 0
-    assert keep_from(stored, 25) == 2  # each long message is 10 tokens: two turns fit
-    assert keep_from(stored, 0) == 4  # the latest turn is always kept
-
-
-# --- compact -----------------------------------------------------------------
+    assert keep_from(stored, 25) == 2
+    assert keep_from(stored, 0) == 4
 
 
 async def test_compact_summarizes_once_and_then_only_what_is_new(stores: Any) -> None:
@@ -231,9 +219,6 @@ async def test_compact_summarizes_once_and_then_only_what_is_new(stores: Any) ->
         SessionCompacted(session_id=session.id, summary="S1", until_message_id=stored[1].id),
         SessionCompacted(session_id=session.id, summary="S2", until_message_id=stored[3].id),
     ]
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 def turn_with(
@@ -280,7 +265,7 @@ async def test_long_history_reaches_the_model_as_a_summary_and_the_latest_turns(
     assert "# Earlier in this conversation" in system_text(sent)
     assert "User: q0 q0" in system_text(sent)
     assert [m.role for m in sent[1:]][-1] == "user"
-    assert len(sent) - 1 < 13  # fewer messages than the 12 stored plus the new one
+    assert len(sent) - 1 < 13
     assert "session.compacted" in harness.types
     saved = await summaries.get(harness.session_id)
     assert saved is not None and saved.text.startswith("User: q0")
@@ -349,6 +334,6 @@ async def test_the_summary_is_written_by_the_small_model(
     provider = ByModel()
     await turn_with(harness, provider, summaries, budget=60, small_model="small-1").run()
 
-    assert provider.models == ["small-1", "fake-1"]  # the summary first, then the turn
+    assert provider.models == ["small-1", "fake-1"]
     saved = await summaries.get(harness.session_id)
     assert saved is not None and saved.text == "S"

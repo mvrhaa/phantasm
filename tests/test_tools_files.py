@@ -71,9 +71,6 @@ def lines_of(count: int) -> str:
     return "".join(f"line {n}\n" for n in range(1, count + 1))
 
 
-# --- Helpers -----------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("size", "shown"),
     [(0, "0 B"), (1023, "1023 B"), (1024, "1.0 KB"), (1536, "1.5 KB"), (5 * 1024**2, "5.0 MB")],
@@ -118,9 +115,6 @@ def test_builtin_tools_are_registered_and_allowed() -> None:
     assert {registry.get(name).default_policy for name in ("read_file", "list_dir")} == {"allow"}  # type: ignore[union-attr]
     assert builtin.files.ReadFile().label(ReadFileInput(path="~/a.md")) == "~/a.md"
     assert builtin.files.ListDir().label(ListDirInput(path="~/src")) == "~/src"
-
-
-# --- read_file: text ---------------------------------------------------------
 
 
 async def test_text_comes_with_line_numbers(home: Path) -> None:
@@ -199,9 +193,6 @@ async def test_big_file_stops_before_the_output_limit(home: Path) -> None:
     assert text.endswith("]") and "read on with offset=" in text
 
 
-# --- read_file: images and binaries ------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("data", "mime"),
     [
@@ -239,9 +230,6 @@ async def test_binary_file_is_an_error(home: Path) -> None:
     assert text_of(result) == "~/app.bin is a binary file and cannot be read as text."
 
 
-# --- read_file: what cannot be read ------------------------------------------
-
-
 async def test_missing_file(home: Path) -> None:
     assert text_of(await read("~/nope.txt")) == "~/nope.txt does not exist."
 
@@ -251,10 +239,7 @@ async def test_folder_points_to_list_dir(home: Path) -> None:
 
 
 async def test_special_file_is_refused(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A socket stands in for every file that is not a regular one. A FIFO is the
-    # real danger (opening it waits for a writer forever), but a test with one
-    # would hang instead of failing if the check were ever lost.
-    monkeypatch.chdir(home)  # a short relative name keeps under the socket path limit
+    monkeypatch.chdir(home)
     with socket.socket(socket.AF_UNIX) as server:
         server.bind("agent.sock")
 
@@ -292,9 +277,6 @@ async def test_protected_folder_is_refused_without_asking(home: Path) -> None:
     assert text_of(result) == "~/.ssh/id_rsa is in a protected location."
 
 
-# --- read_file: files that may hold secrets ----------------------------------
-
-
 @pytest.mark.parametrize("name", [".env", ".env.production", "id_ed25519", "server.pem", ".ENV"])
 async def test_secret_looking_file_needs_approval(home: Path, name: str) -> None:
     (home / "app").mkdir()
@@ -321,9 +303,6 @@ async def test_secret_name_linking_to_an_ordinary_file_needs_approval(home: Path
     (home / ".env").symlink_to(home / "plain.txt")
 
     assert (await read("~/.env")).is_error
-
-
-# --- list_dir ----------------------------------------------------------------
 
 
 @pytest.fixture
@@ -430,9 +409,6 @@ async def test_list_dir_depth_is_limited(project: Path) -> None:
 
     assert result.is_error
     assert "depth: Input should be less than or equal to 5" in text_of(result)
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 def test_model_reads_a_file_through_a_turn(home: Path) -> None:

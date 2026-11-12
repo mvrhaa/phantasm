@@ -20,7 +20,7 @@ from zero.protocol.messages import ActionCall, ActionDecl, ActionResult, Envelop
 from zero.providers.base import ToolSpec
 from zero.tools.base import Tool, ToolContext, ToolResult, error_result
 
-COMPUTER_PREFIX = "computer_"  # actions that drive the screen; turns using them may take more steps
+COMPUTER_PREFIX = "computer_"
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +72,6 @@ def action_tools(
     for action in actions:
         tools.setdefault(action.name, ClientActionTool(action, connection_id, caller))
     return list(tools.values())
-
-
-# --- Calling the client ------------------------------------------------------
 
 
 class ActionTarget(Protocol):
@@ -163,7 +160,7 @@ class ActionBroker:
             cancelled.cancel()
             self._pending.pop(call_id, None)
             if future.done() and not future.cancelled():
-                future.exception()  # mark a client_gone nobody waited for as seen
+                future.exception()
 
     def resolve(self, connection_id: str, answer: ActionResult) -> bool:
         """Deliver an ``action.result``. False if no action of that connection waits for it."""

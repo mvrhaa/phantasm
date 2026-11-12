@@ -37,9 +37,6 @@ def guard() -> PathGuard:
     return PathGuard.from_config(Config().permissions)
 
 
-# --- Saving ------------------------------------------------------------------
-
-
 def test_inline_image_is_saved_with_its_detected_type(home: Path) -> None:
     (part,) = save_attachments(
         [Attachment(name="shot.png", mime="image/png", data_b64=PNG_B64)], guard()
@@ -132,9 +129,6 @@ def test_too_big_attachment_is_refused(home: Path, monkeypatch: pytest.MonkeyPat
         save_attachments([Attachment(name="big.png", mime="image/png", data_b64=PNG_B64)], guard())
 
 
-# --- For the model -----------------------------------------------------------
-
-
 def image_file(tmp_path: Path, data: bytes = PNG, name: str = "shot.png") -> FilePart:
     path = tmp_path / name
     path.write_bytes(data)
@@ -200,9 +194,6 @@ async def test_huge_or_missing_or_fake_images_become_notes(
         f"[image gone.png at {gone.path}; the file is gone]",
         f"[image fake.png at {fake.path}]",
     ]
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def connect(client: TestClient) -> Any:

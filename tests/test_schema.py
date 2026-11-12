@@ -100,6 +100,9 @@ async def test_migration_2_keeps_existing_tool_runs(tmp_path: Path) -> None:
     async with Database(db_path(), migrations_dir=only_first) as database:
         assert await database.migrate() == [1]
         await database.conn.execute(
+            "INSERT INTO sessions (id, created_at, updated_at) VALUES ('s1', ?, ?)", (NOW, NOW)
+        )
+        await database.conn.execute(
             "INSERT INTO tool_runs (call_id, session_id, turn_id, tool, label, created_at) "
             "VALUES ('old', 's1', 't1', 'read_file', '~/a.md', ?)",
             (NOW,),

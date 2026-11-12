@@ -29,9 +29,6 @@ async def rules() -> AsyncIterator[ApprovalRulesRepo]:
         yield ApprovalRulesRepo(db)
 
 
-# --- ApprovalRulesRepo -------------------------------------------------------
-
-
 async def test_no_rules_at_first(rules: ApprovalRulesRepo) -> None:
     assert await rules.always_allowed() == set()
 
@@ -68,9 +65,6 @@ async def test_rules_survive_a_restart() -> None:
     async with Database(db_path()) as db:
         await db.migrate()
         assert await ApprovalRulesRepo(db).always_allowed() == {"write_file"}
-
-
-# --- In ToolRegistry.execute -------------------------------------------------
 
 
 class Counter:
@@ -206,9 +200,6 @@ async def test_without_an_approver_the_rule_still_lets_the_call_run(
 
     assert (text_of(result), counter.runs) == ("done", 1)
     assert NEEDS_APPROVAL not in text_of(result)
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def config_asking_for_list_dir() -> Config:

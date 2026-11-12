@@ -38,9 +38,9 @@ class ToolResult:
 
     content: list[ContentPart] = field(default_factory=list)
     is_error: bool = False
-    summary: str = ""  # a few words for the UI: "exit 0", "+12 -3", "5 matches"
-    denied: bool = False  # the user said no, so the tool did not run
-    cancelled: bool = False  # the turn was cancelled before the call could finish
+    summary: str = ""
+    denied: bool = False
+    cancelled: bool = False
 
 
 def output_preview(result: ToolResult, limit: int = PREVIEW_CHARS) -> str:
@@ -97,10 +97,10 @@ class ApprovalRules(Protocol):
 class Preview:
     """What a tool says about a call before it runs; see ``Tool.preview``."""
 
-    refusal: str | None = None  # the call cannot run; the model gets this and no one is asked
-    approval_reason: str | None = None  # ask the user even if bypass or a saved rule says allow
-    diff: str | None = None  # shown in the approval card, for changes to files
-    label: str | None = None  # a better line for the approval card than ``Tool.label`` gives
+    refusal: str | None = None
+    approval_reason: str | None = None
+    diff: str | None = None
+    label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,14 +109,14 @@ class ToolContext:
 
     session_id: str
     turn_id: str
-    client_id: str | None  # None when no client started the turn, e.g. a scheduled one
+    client_id: str | None
     cancel: CancelToken
     config: Config
-    paths: PathGuard  # every path a tool touches goes through ``paths.check``
-    approvals: Approver | None = None  # None when there is no one to ask
-    approval_rules: ApprovalRules | None = None  # None: no saved rules apply
-    events: EventPublisher | None = None  # for tools that tell clients about a change
-    agent: AgentRef | None = None  # set when the turn is an agent's
+    paths: PathGuard
+    approvals: Approver | None = None
+    approval_rules: ApprovalRules | None = None
+    events: EventPublisher | None = None
+    agent: AgentRef | None = None
 
 
 class Tool[InputT: BaseModel](ABC):
@@ -131,7 +131,7 @@ class Tool[InputT: BaseModel](ABC):
     description: str
     input_model: type[InputT]
     default_policy: Policy = "ask"
-    config_tightens_only = False  # True: the config may make the policy stricter, never looser
+    config_tightens_only = False
 
     def label(self, params: InputT) -> str:
         """A short line for the UI, such as ``$ ls -la`` or ``~/notes.md``."""

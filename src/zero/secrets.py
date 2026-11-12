@@ -13,15 +13,13 @@ from pathlib import Path
 from zero.paths import home_dir
 from zero.providers.presets import PRESETS
 
-ENV_FILE_VAR = "ZERO_ENV_FILE"  # where tests point Zero at their own .env
+ENV_FILE_VAR = "ZERO_ENV_FILE"
 KEY_NAMES: dict[str, str] = {p.name: p.key_name for p in PRESETS.values() if p.key_name}
 MASK = "***"
-MIN_SECRET_CHARS = 8  # shorter values are not masked: they would hide ordinary words
+MIN_SECRET_CHARS = 8
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# The values last read from the .env file, with the file's state when they
-# were read. A cache of a file, re-read whenever the file changes.
 _cache: tuple[tuple[str, float, int], frozenset[str]] | None = None
 
 

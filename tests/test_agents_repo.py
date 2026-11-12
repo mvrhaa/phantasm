@@ -79,7 +79,7 @@ async def test_status_and_report(
         "All read.",
         False,
     )
-    assert again is not None and again.report == "All read."  # kept when not given
+    assert again is not None and again.report == "All read."
 
 
 async def test_agents_of_a_parent_and_the_active_ones(

@@ -177,7 +177,7 @@ def next_run(rule: Rule, now: datetime, zone: tzinfo) -> datetime | None:
             candidate = datetime.combine(day, rule.at, tzinfo=zone)
             if candidate > now:
                 return candidate.astimezone(UTC)
-    return None  # no days at all
+    return None
 
 
 def describe(rule: Rule, zone: tzinfo) -> str:

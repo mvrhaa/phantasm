@@ -37,9 +37,6 @@ def expressions(harness: Harness) -> list[tuple[str, str]]:
     return [(e.pose, e.mood) for e in harness.client.received if isinstance(e, Expression)]
 
 
-# --- ExpressionTool ----------------------------------------------------------
-
-
 def test_schema_lists_the_poses_and_moods_of_the_character() -> None:
     spec = ExpressionTool(CHARACTER).spec
 
@@ -103,9 +100,6 @@ def test_apply_rejects_what_the_character_cannot_show(
 
     assert str(error.value) == message
     assert tool.current is None
-
-
-# --- In a turn ---------------------------------------------------------------
 
 
 async def test_turn_with_a_character_offers_set_expression(harness: Harness) -> None:

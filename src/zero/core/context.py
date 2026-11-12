@@ -19,8 +19,12 @@ from zero.store.messages import StoredMessage
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 IMAGE_OMITTED = "[image omitted]"
-CHARS_PER_TOKEN = 3.5  # English and other ASCII text
-OTHER_CHARS_PER_TOKEN = 2.5  # Cyrillic and the rest: tokenizers spend more tokens on them
+NO_ANSWER = {
+    "cancelled": "[no answer: the user cancelled this turn]",
+    "error": "[no answer: this turn failed]",
+}
+CHARS_PER_TOKEN = 3.5
+OTHER_CHARS_PER_TOKEN = 2.5
 IMAGE_TOKENS = 1000
 
 CountFn = Callable[[Message], int]
@@ -200,6 +204,8 @@ def _to_message(stored: StoredMessage, keep_images: bool) -> Message:
         TextPart(text=IMAGE_OMITTED) if isinstance(part, ImagePart) and not keep_images else part
         for part in stored.content
     ]
+    if stored.role == "assistant" and not content and not stored.tool_calls:
+        content = [TextPart(text=NO_ANSWER.get(stored.status or "", NO_ANSWER["error"]))]
     return Message(
         role=stored.role,
         content=content,

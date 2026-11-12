@@ -63,7 +63,7 @@ async def graceful_stop(state: AppState, grace_s: float = SHUTDOWN_GRACE_S) -> N
     state.stopping = True
     logger.info("Shutting down: %d turns running", len(state.turns.active))
     await state.scheduler.stop()
-    await state.agent_runner.close()  # no agent notices start new turns from now on
+    await state.agent_runner.close()
     await state.turns.cancel_all(grace_s)
     for connection in state.connections.connections:
         await connection.close(CLOSE_GOING_AWAY, f"{APP_NAME} is shutting down")
@@ -137,8 +137,6 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             app.state.zero = None
             await db.close()
 
-    # The interactive docs and the OpenAPI schema are switched off: the service
-    # exposes only /health and the WebSocket.
     app = FastAPI(
         title=APP_NAME,
         version=__version__,

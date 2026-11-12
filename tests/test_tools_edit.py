@@ -55,9 +55,6 @@ def umask() -> int:
     return current
 
 
-# --- Diffs -------------------------------------------------------------------
-
-
 def test_diff_of_a_changed_file() -> None:
     diff = make_diff("~/a.txt", Target(Path("/a.txt"), "one\ntwo\nthree\n"), "one\n2\nthree\n")
 
@@ -86,7 +83,7 @@ def test_replacing_a_binary_file_says_so() -> None:
     diff = make_diff("~/x.bin", Target(Path("/x.bin"), None, binary=True), "text\n")
 
     assert diff.splitlines()[:2] == [
-        "Binary file ~/x.bin will be replaced with text.",
+        "~/x.bin is a binary file or not UTF-8 text; it will be replaced with UTF-8 text.",
         "--- ~/x.bin",
     ]
     assert diff_summary(diff) == "+1 -0"
@@ -94,9 +91,6 @@ def test_replacing_a_binary_file_says_so() -> None:
 
 def test_summary_ignores_headers() -> None:
     assert diff_summary("--- a\n+++ b\n@@ -1 +1 @@\n-x\n+y\n+z") == "+2 -1"
-
-
-# --- Writing -----------------------------------------------------------------
 
 
 async def test_new_file_is_created_with_its_folders(home: Path) -> None:
@@ -164,9 +158,6 @@ async def test_write_through_a_symlink_changes_its_target(home: Path) -> None:
 
     assert (home / "real.txt").read_text() == "new\n"
     assert (home / "link.txt").is_symlink()
-
-
-# --- Approval ----------------------------------------------------------------
 
 
 async def test_approval_shows_the_diff(home: Path) -> None:
@@ -271,9 +262,6 @@ async def test_read_file_set_to_ask_also_refuses_outside_paths_without_asking(ho
     assert approver.asked == []
 
 
-# --- edit_file ---------------------------------------------------------------
-
-
 async def edit(path: str, old: str, new: str, approver: FakeApprover | None = None) -> ToolResult:
     config = Config()
     ctx = ToolContext(
@@ -369,7 +357,7 @@ async def test_binary_file_cannot_be_edited(home: Path) -> None:
 
     assert (
         text_of(await edit("~/x.bin", "ab", "xy"))
-        == "~/x.bin is a binary file and cannot be edited."
+        == "~/x.bin is a binary file or not UTF-8 text and cannot be edited."
     )
 
 
@@ -419,9 +407,6 @@ async def test_edit_checks_the_file_again_after_approval(app_py: Path) -> None:
     assert result.is_error
     assert text_of(result).startswith("old was not found in ~/app.py")
     assert app_py.read_text() == "someone else rewrote this file\n"
-
-
-# --- Over the WebSocket ------------------------------------------------------
 
 
 def write_script(content: str) -> list[list[Any]]:

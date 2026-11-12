@@ -114,8 +114,6 @@ class SessionsRepo:
         await self._db.conn.commit()
         return cursor.rowcount > 0
 
-    # Keep this method last: inside the class body its name shadows the built-in
-    # ``list``, which would break ``list[...]`` annotations written after it.
     async def list(self, include_archived: bool = False) -> list[Session]:
         """Return sessions, most recently updated first."""
         where = "" if include_archived else "WHERE archived = 0"

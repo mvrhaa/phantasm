@@ -29,9 +29,6 @@ async def repo() -> AsyncIterator[SchedulesRepo]:
         yield SchedulesRepo(db)
 
 
-# --- SchedulerRunner ---------------------------------------------------------
-
-
 async def test_tick_starts_what_is_due_after_recording_the_run(
     repo: SchedulesRepo, frozen_clock: Any
 ) -> None:
@@ -53,7 +50,7 @@ async def test_tick_starts_what_is_due_after_recording_the_run(
     (stored,) = seen
     assert stored is not None
     assert (stored.id, stored.last_run_at, stored.enabled) == (soon.id, frozen_clock(), False)
-    assert await runner.tick() == []  # a one-off schedule runs once
+    assert await runner.tick() == []
 
 
 async def test_a_long_pause_runs_a_schedule_once(repo: SchedulesRepo, frozen_clock: Any) -> None:
@@ -64,7 +61,7 @@ async def test_a_long_pause_runs_a_schedule_once(repo: SchedulesRepo, frozen_clo
         runs.append(schedule.task)
 
     runner = SchedulerRunner(repo, record)
-    frozen_clock.advance(10 * 3600 + 60)  # ten runs were missed
+    frozen_clock.advance(10 * 3600 + 60)
 
     await runner.tick()
     await runner.tick()
@@ -112,9 +109,6 @@ async def test_the_loop_ticks_until_stopped(repo: SchedulesRepo, frozen_clock: A
     assert runs == ["hourly"]
 
 
-# --- Scheduled turns ---------------------------------------------------------
-
-
 def system_text(messages: list[Message]) -> str:
     return messages[0].content[0].text  # type: ignore[union-attr]
 
@@ -127,7 +121,7 @@ def read_until(ws: Any, event_type: str) -> list[dict[str, Any]]:
 
 
 def test_a_due_schedule_runs_a_turn_in_its_own_session(frozen_clock: Any) -> None:
-    provider = FakeProvider()  # echo
+    provider = FakeProvider()
     with TestClient(create_app(Config(), provider)) as client:
         state = get_state(client.app)  # type: ignore[arg-type]
         with client.websocket_connect(f"/ws?token={state.token}") as ws:

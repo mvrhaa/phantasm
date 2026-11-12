@@ -13,7 +13,7 @@ from zero.agents.types import AgentError, AgentProgress
 from zero.store.agents import Agent
 from zero.tools.base import Tool, ToolContext, ToolResult, error_result, text_result
 
-AGENT_TOOL_PREFIX = "agent_"  # agents get every tool except these
+AGENT_TOOL_PREFIX = "agent_"
 MAX_NAME_CHARS = 40
 MAX_TASK_CHARS = 8000
 MAX_MESSAGE_CHARS = 8000

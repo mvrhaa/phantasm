@@ -104,4 +104,4 @@ def test_a_fact_saved_in_one_session_is_known_in_the_next() -> None:
     first_session, second_session = provider.calls[0], provider.calls[2]
     assert "What you remember" not in system_text(first_session.messages)
     assert "- The user writes Python" in system_text(second_session.messages)
-    assert [m.role for m in second_session.messages] == ["system", "user"]  # a new session
+    assert [m.role for m in second_session.messages] == ["system", "user"]

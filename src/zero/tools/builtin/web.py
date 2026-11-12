@@ -49,7 +49,7 @@ async def resolve_host(host: str) -> list[str]:
 
 def is_internal(address: str) -> bool:
     """True for an address on this computer or a local network rather than the internet."""
-    ip = ipaddress.ip_address(address.split("%", 1)[0])  # drop an IPv6 zone such as %en0
+    ip = ipaddress.ip_address(address.split("%", 1)[0])
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
     return not ip.is_global or ip.is_multicast
@@ -115,7 +115,8 @@ async def _page(asked: str, response: httpx.Response, body: bytes) -> ToolResult
     if kind in _HTML_TYPES or (not kind and _looks_like_html(body)):
         title, text = await asyncio.to_thread(_extract_html, body, final, response.charset_encoding)
     elif kind.startswith(_TEXT_TYPES) or kind.endswith(("+json", "+xml")):
-        text = body.decode(response.charset_encoding or "utf-8", errors="replace")
+        decoded = _decoded(body, response.charset_encoding)
+        text = decoded if isinstance(decoded, str) else body.decode("utf-8", errors="replace")
     else:
         return error_result(
             f"{final} is {kind or 'of an unknown type'}, which web_fetch cannot read."

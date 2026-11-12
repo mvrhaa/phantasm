@@ -79,9 +79,9 @@ class AgentConfig(_Section):
 
     max_steps: int = 40
     max_steps_computer: int = 100
-    turn_timeout_s: int = 900
+    turn_timeout_s: int = Field(default=900, ge=1)
     history_token_budget: int = 60000
-    max_agents: int = Field(default=3, ge=1, le=20)  # agents at work at the same time
+    max_agents: int = Field(default=3, ge=1, le=20)
 
 
 class PermissionsConfig(_Section):
@@ -99,7 +99,6 @@ class PermissionsConfig(_Section):
     @field_validator("allowed_roots", "denied_paths")
     @classmethod
     def _paths_must_be_absolute(cls, value: list[str]) -> list[str]:
-        # A relative entry would depend on the service's working directory.
         if any(not (item.startswith("~") or Path(item).is_absolute()) for item in value):
             raise ValueError("every path must be absolute or start with ~")
         return value
@@ -155,7 +154,11 @@ def load_config(path: Path | None = None) -> Config:
         return config
 
     try:
-        config = Config.model_validate_json(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"Cannot read config file {path}: {type(exc).__name__}") from None
+    try:
+        config = Config.model_validate_json(text)
     except ValidationError as exc:
         raise ConfigError(f"Invalid config file {path}: {_describe_errors(exc)}") from None
 

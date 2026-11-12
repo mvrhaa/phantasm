@@ -46,9 +46,6 @@ def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
 
 
-# --- doctor ------------------------------------------------------------------
-
-
 def check_folders() -> list[Check]:
     """Every data folder exists and can be written, or does not exist yet."""
     checks = []
@@ -84,7 +81,7 @@ def check_database() -> Check:
     if not path.exists():
         return Check("ok", "database", "will be created on start")
     try:
-        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
             row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
     except sqlite3.Error as exc:
         return Check("fail", "database", f"{path} cannot be read: {exc}")
@@ -165,8 +162,6 @@ def doctor(probe: Callable[[str, int], object] | None = None) -> list[Check]:
     return checks
 
 
-# --- usage -------------------------------------------------------------------
-
 USAGE_SQL = (
     "SELECT provider, model, COUNT(*), SUM(1 - ok), SUM(input_tokens), SUM(output_tokens) "
     "FROM model_calls WHERE created_at >= ? GROUP BY provider, model ORDER BY provider, model"
@@ -179,10 +174,10 @@ def usage_since(since: datetime) -> list[tuple[str, str, int, int, int, int]] | 
     if not path.exists():
         return None
     try:
-        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
             return conn.execute(USAGE_SQL, (clock.to_iso(since),)).fetchall()
     except sqlite3.Error:
-        return None  # an older database without the table
+        return None
 
 
 def _usage() -> int:
@@ -203,9 +198,6 @@ def _usage() -> int:
                 f"{tokens_in} tokens in, {tokens_out} out"
             )
     return 0
-
-
-# --- The command -------------------------------------------------------------
 
 
 def _doctor(probe: Callable[[str, int], object] | None) -> int:

@@ -20,7 +20,7 @@ class Agent(BaseModel):
     id: str
     name: str
     parent_session_id: str
-    session_id: str | None  # None once its session is deleted
+    session_id: str | None
     task: str
     status: AgentStatus
     report: str | None
@@ -112,8 +112,6 @@ class AgentsRepo:
             rows = await cur.fetchall()
         return [_to_agent(row) for row in rows]
 
-    # Keep this method last: inside the class body its name shadows the built-in
-    # ``list``, which would break ``list[...]`` annotations written after it.
     async def list(self, parent_session_id: str) -> list[Agent]:
         """Every agent a session started, the oldest first."""
         async with self._db.conn.execute(

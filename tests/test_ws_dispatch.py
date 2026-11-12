@@ -114,7 +114,6 @@ def test_failing_handler_gives_internal_error_and_keeps_the_connection(
 def test_message_without_a_handler_is_answered_with_an_error(
     ws: WebSocketTestSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Every message type has a handler now, so one is taken away for the test.
     monkeypatch.delitem(handlers.HANDLERS, Ping)
     ws.send_json({"type": "ping", "id": "m1"})
 
@@ -150,7 +149,7 @@ def test_rejected_connection_is_never_registered(client: TestClient) -> None:
     manager = get_state(client.app).connections  # type: ignore[arg-type]
 
     with client.websocket_connect("/ws") as rejected:
-        with pytest.raises(Exception):  # noqa: B017 - any disconnect error will do
+        with pytest.raises(Exception):  # noqa: B017
             rejected.receive_text()
 
     assert manager.connections == []

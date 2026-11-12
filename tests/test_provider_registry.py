@@ -49,9 +49,6 @@ def test_unknown_option_is_not_configured() -> None:
         get_provider(ProviderConfig(options={"temperature": 0.2}))
 
 
-# --- Presets of the /chat/completions adapter ----------------------------------
-
-
 def with_key(line: str) -> None:
     env_file().write_text(line + "\n")
 
@@ -114,9 +111,6 @@ def test_the_pause_between_requests() -> None:
     assert isinstance(google, ChatCompletionsProvider) and google.min_interval_s == 2.0
     assert isinstance(eager, ChatCompletionsProvider) and eager.min_interval_s == 0
     assert get_provider(ProviderConfig(name="ollama")).min_interval_s == 0  # type: ignore[attr-defined]
-
-
-# --- The small model ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

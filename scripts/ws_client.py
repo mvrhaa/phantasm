@@ -86,7 +86,7 @@ async def main() -> None:
             message.setdefault("id", uuid.uuid4().hex[:8])
             print(">", json.dumps(message, ensure_ascii=False))
             await ws.send(json.dumps(message))
-        await asyncio.sleep(0.3)  # let the last answers arrive before closing
+        await asyncio.sleep(0.3)
         reader.cancel()
 
 

@@ -18,7 +18,7 @@ from zero.server.state import AppState
 
 PROBE_TIMEOUT_S = 2.0
 
-logger = logging.getLogger("zero.main")  # __name__ is "__main__" under ``python -m``
+logger = logging.getLogger("zero.main")
 
 
 class PortState(enum.Enum):
@@ -34,10 +34,9 @@ def probe_port(host: str, port: int, *, transport: httpx.BaseTransport | None = 
 
     ``transport`` exists so tests can answer the request without a network.
     """
-    netloc = f"[{host}]" if ":" in host else host  # IPv6 literals need brackets in a URL
+    netloc = f"[{host}]" if ":" in host else host
     url = f"http://{netloc}:{port}/health"
     try:
-        # trust_env=False: a proxy from the environment must not get this request.
         with httpx.Client(transport=transport, timeout=PROBE_TIMEOUT_S, trust_env=False) as client:
             response = client.get(url)
     except httpx.ConnectError:
@@ -99,7 +98,7 @@ def main() -> int:
         )
         return 1
 
-    get_or_create_token()  # make sure the token file exists before clients look for it
+    get_or_create_token()
 
     logger.info(
         "Starting %s %s on %s:%s, logging to %s", APP_NAME, __version__, host, port, log_path
@@ -109,7 +108,7 @@ def main() -> int:
             create_app(config),
             host=host,
             port=port,
-            log_config=None,  # uvicorn logs through our handlers instead of its own
+            log_config=None,
             access_log=False,
         )
     )

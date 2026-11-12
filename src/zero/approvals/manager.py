@@ -12,7 +12,7 @@ from zero.protocol.messages import AgentRef, ApprovalRequest, ApprovalResolved
 
 Decision = Literal["allow", "deny", "always"]
 
-WITHDRAWN_BY = "zero"  # by_client_id of an approval dropped because its turn ended
+WITHDRAWN_BY = "zero"
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,9 @@ class ApprovalAsk:
     tool: str
     label: str
     input: dict[str, Any] = field(default_factory=dict)
-    reason: str = ""  # why approval is needed
-    diff: str | None = None  # for changes to files
-    agent: AgentRef | None = None  # set when an agent asks
+    reason: str = ""
+    diff: str | None = None
+    agent: AgentRef | None = None
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ class ApprovalManager:
         """The turn ended before an answer: clients drop the card as denied."""
         pending = self._pending[approval_id]
         if pending.answered:
-            return  # an answer came at the same moment and was announced already
+            return
         pending.answered = True
         await self._events.publish(
             ApprovalResolved(
@@ -130,7 +130,7 @@ class ApprovalManager:
         if pending is None or pending.answered:
             logger.debug("Ignored an answer to approval %s", approval_id)
             return False
-        pending.answered = True  # set before any await, so a second answer cannot slip in
+        pending.answered = True
         await self._events.publish(
             ApprovalResolved(
                 session_id=pending.ask.session_id,
