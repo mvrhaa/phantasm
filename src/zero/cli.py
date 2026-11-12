@@ -24,7 +24,7 @@ from zero.__main__ import PortState, probe_port
 from zero.__main__ import main as serve
 from zero.config import Config, ConfigError, load_config
 from zero.paths import config_path, db_path, files_dir, home_dir, logs_dir, token_path
-from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
 from zero.secrets import KEY_NAMES, api_key, env_file, open_to_others
 from zero.server.auth import get_or_create_token
 from zero.store.db import MIGRATIONS_DIR
@@ -123,7 +123,10 @@ def check_provider(config: Config) -> Check:
         provider = get_provider(config.provider)
     except ProviderNotConfigured as exc:
         return Check("fail", "provider", str(exc))
-    return Check("ok", "provider", f"{provider.name}, model {config.provider.model}")
+    model = config.provider.model
+    small = small_model(config.provider)
+    extra = f", small model {small}" if small != model else ""
+    return Check("ok", "provider", f"{provider.name}, model {model}{extra}")
 
 
 def check_api_key(config: Config) -> Check:

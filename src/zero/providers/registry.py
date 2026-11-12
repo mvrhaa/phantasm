@@ -33,6 +33,15 @@ def get_provider(config: ProviderConfig) -> LLMProvider:
     return _preset_provider(preset, config.options)
 
 
+def small_model(config: ProviderConfig) -> str:
+    """The model for session titles and summaries: the config's choice, else the
+    preset's, else the main model."""
+    if config.small_model:
+        return config.small_model
+    preset = PRESETS.get(config.name)
+    return (preset.small_model if preset else None) or config.model
+
+
 def _preset_provider(preset: Preset, options: dict[str, Any]) -> ChatCompletionsProvider:
     unknown = sorted(set(options) - PRESET_OPTIONS)
     if unknown:

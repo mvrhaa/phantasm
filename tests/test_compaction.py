@@ -211,10 +211,15 @@ async def test_compact_summarizes_once_and_then_only_what_is_new(stores: Any) ->
 
 
 def turn_with(
-    harness: Harness, provider: Any, summaries: SummariesRepo | None, budget: int
+    harness: Harness,
+    provider: Any,
+    summaries: SummariesRepo | None,
+    budget: int,
+    small_model: str | None = None,
 ) -> Turn:
     config = Config()
     config.agent.history_token_budget = budget
+    config.provider.small_model = small_model
     return Turn(
         session_id=harness.session_id,
         text="what did I say first?",
@@ -278,3 +283,46 @@ async def test_without_summaries_the_history_is_just_cut(harness: Harness) -> No
     sent = provider.calls[0].messages
     assert "Earlier in this conversation" not in system_text(sent)
     assert len(sent) < 14
+
+
+class ByModel:
+    """Answers a summary request with "S" and a turn with "ok"; remembers each model asked."""
+
+    name = "by-model"
+
+    def __init__(self) -> None:
+        self.models: list[str] = []
+
+    async def stream(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        model: str,
+        *,
+        max_tokens: int = 4096,
+        cancel: CancelSignal,
+    ) -> Any:
+        self.models.append(model)
+        yield TextDelta(text="S" if not tools and len(messages) == 2 else "ok")
+
+    async def count_tokens(self, messages: list[Message], tools: list[ToolSpec]) -> int | None:
+        return None
+
+    def supports_images(self, model: str) -> bool:
+        return False
+
+
+async def test_the_summary_is_written_by_the_small_model(
+    harness: Harness, stores: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, summaries = stores
+    monkeypatch.setattr("zero.core.prompting.SUMMARY_RESERVE_TOKENS", 0)
+    await chat(
+        harness.messages, harness.session_id, *[(f"q{n} " * 30, f"a{n} " * 30) for n in range(6)]
+    )
+    provider = ByModel()
+    await turn_with(harness, provider, summaries, budget=60, small_model="small-1").run()
+
+    assert provider.models == ["small-1", "fake-1"]  # the summary first, then the turn
+    saved = await summaries.get(harness.session_id)
+    assert saved is not None and saved.text == "S"

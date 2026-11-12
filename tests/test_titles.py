@@ -286,3 +286,44 @@ def test_session_created_with_a_title_keeps_it() -> None:
         ws.send_json({"type": "ping", "id": "p1"})
 
         assert ws.receive_json() == {"type": "pong", "reply_to": "p1"}
+
+
+class ModelsSeen:
+    """Titles with "Trip to Rome", answers turns with "ok"; remembers each model asked."""
+
+    name = "models-seen"
+
+    def __init__(self) -> None:
+        self.models: list[str] = []
+
+    async def stream(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        model: str,
+        *,
+        max_tokens: int = 4096,
+        cancel: CancelSignal,
+    ) -> AsyncIterator[StreamEvent]:
+        self.models.append(model)
+        yield TextDelta(text="ok" if tools else "Trip to Rome")
+
+    async def count_tokens(self, messages: list[Message], tools: list[ToolSpec]) -> int | None:
+        return None
+
+    def supports_images(self, model: str) -> bool:
+        return False
+
+
+def test_the_title_is_written_by_the_small_model() -> None:
+    config = Config()
+    config.provider.small_model = "small-1"
+    provider = ModelsSeen()
+
+    with TestClient(create_app(config, provider)) as client, connect(client) as ws:
+        hello(ws)
+        send(ws, LONG_MESSAGE)
+        updated = ws.receive_json()
+
+    assert updated["session"]["title"] == "Trip to Rome"
+    assert provider.models == ["fake-1", "small-1"]  # the turn, then its title

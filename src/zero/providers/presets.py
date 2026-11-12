@@ -19,6 +19,7 @@ class Preset:
     stream_usage: bool  # whether to ask for token counts at the end of the stream
     thinking_tokens: int = 0  # added to max_tokens: the model's thinking counts against it
     min_interval_s: float = 0.0  # the least time between two requests, to stay under its limits
+    small_model: str | None = None  # for titles and summaries, unless the config names one
 
 
 PRESETS: dict[str, Preset] = {
@@ -33,6 +34,7 @@ PRESETS: dict[str, Preset] = {
             stream_usage=True,
             thinking_tokens=4096,
             min_interval_s=2.0,  # free Gemma: about 30 requests a minute
+            small_model="gemma-4-26b-a4b-it",  # 4B active parameters: quicker than the 31B
         ),
         Preset(
             "openrouter",

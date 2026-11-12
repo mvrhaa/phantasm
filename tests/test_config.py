@@ -12,7 +12,13 @@ from zero.paths import config_path
 
 SPEC_DEFAULTS = {
     "server": {"host": "127.0.0.1", "port": 47400},
-    "provider": {"name": "fake", "model": "fake-1", "options": {}, "history_token_budget": None},
+    "provider": {
+        "name": "fake",
+        "model": "fake-1",
+        "small_model": None,
+        "options": {},
+        "history_token_budget": None,
+    },
     "agent": {
         "max_steps": 40,
         "max_steps_computer": 100,

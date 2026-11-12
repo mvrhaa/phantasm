@@ -9,6 +9,7 @@ from zero.core.events import ReplyTo
 from zero.core.titles import title_new_session
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel
+from zero.providers.registry import small_model
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
 from zero.server.state import AppState
@@ -98,7 +99,7 @@ async def handle_message_send(
             session.id,
             message.text,
             provider=state.provider,
-            model=state.config.provider.model,
+            model=small_model(state.config.provider),
             sessions=state.sessions,
             events=state.events,
             usage=state.usage,

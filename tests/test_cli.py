@@ -10,6 +10,7 @@ import pytest
 from zero import cli
 from zero.__main__ import PortState
 from zero.paths import config_path, db_path, token_path
+from zero.secrets import env_file
 
 
 def run(
@@ -172,3 +173,17 @@ def test_doctor_lists_every_check(capsys: pytest.CaptureFixture[str]) -> None:
         "key",
         "ripgrep",
     ]
+
+
+def test_doctor_names_the_small_model_when_it_differs(capsys: pytest.CaptureFixture[str]) -> None:
+    env_file().write_text("GEMINI_API_KEY=AIza-test-0123456789\n")
+    config_path().write_text(
+        json.dumps({"provider": {"name": "google", "model": "gemma-4-31b-it"}})
+    )
+
+    _, output = run(capsys, "doctor")
+
+    line = next(line for line in output.splitlines() if line.split()[1] == "provider")
+    assert " ".join(line.split()) == (
+        "✓ provider google, model gemma-4-31b-it, small model gemma-4-26b-a4b-it"
+    )

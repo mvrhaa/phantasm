@@ -12,6 +12,7 @@ from zero.core.events import EventBus
 from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
 from zero.providers.base import LLMProvider, Message
+from zero.providers.registry import small_model
 from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source
 from zero.store.summaries import SummariesRepo
@@ -81,7 +82,7 @@ class PromptBuilder:
                 start,
                 summaries=self._summaries,
                 provider=self._provider,
-                model=self._config.provider.model,
+                model=small_model(self._config.provider),
                 events=self._events,
                 usage=self._usage,
             )

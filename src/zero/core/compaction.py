@@ -121,7 +121,7 @@ async def summarize(
             call = ModelCall(provider.name, model, "summary", session_id)
             text = await _ask_model(provider, model, previous, messages, call, usage)
     except (ProviderError, TimeoutError) as exc:
-        logger.warning("No summary from the model (%s); using a digest", type(exc).__name__)
+        logger.warning("No summary from the model (%s); using a digest", str(exc) or "timeout")
         return digest(previous, messages)
     return _cap(text) or digest(previous, messages)
 

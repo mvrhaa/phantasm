@@ -6,7 +6,7 @@ from zero.config import Config, ProviderConfig
 from zero.providers.base import LLMProvider
 from zero.providers.chat_completions import ChatCompletionsProvider
 from zero.providers.fake import FakeProvider
-from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
 from zero.secrets import env_file
 
 
@@ -114,3 +114,21 @@ def test_the_pause_between_requests() -> None:
     assert isinstance(google, ChatCompletionsProvider) and google.min_interval_s == 2.0
     assert isinstance(eager, ChatCompletionsProvider) and eager.min_interval_s == 0
     assert get_provider(ProviderConfig(name="ollama")).min_interval_s == 0  # type: ignore[attr-defined]
+
+
+# --- The small model ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (ProviderConfig(name="google", model="gemma-4-31b-it"), "gemma-4-26b-a4b-it"),
+        (ProviderConfig(name="google", model="x", small_model="tiny"), "tiny"),
+        (ProviderConfig(name="openrouter", model="some/model:free"), "some/model:free"),
+        (ProviderConfig(), "fake-1"),
+    ],
+)
+def test_the_small_model_comes_from_the_config_the_preset_or_the_main_model(
+    config: ProviderConfig, expected: str
+) -> None:
+    assert small_model(config) == expected

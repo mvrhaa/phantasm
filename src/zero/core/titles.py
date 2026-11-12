@@ -16,7 +16,7 @@ TITLE_WORDS = 6
 TITLE_MAX_CHARS = 80
 TITLE_INPUT_CHARS = 2000
 TITLE_MAX_TOKENS = 32
-TITLE_TIMEOUT_S = 15.0
+TITLE_TIMEOUT_S = 60.0  # the title comes after the turn, and Gemma thinks before it writes
 
 TITLE_PROMPT = (
     "Name the conversation that starts with the user's message below. "
@@ -82,7 +82,7 @@ async def make_title(
             call = ModelCall(provider.name, model, "title", session_id)
             raw = await _ask_model(provider, model, text, call, usage)
     except (ProviderError, TimeoutError) as exc:
-        logger.warning("No title from the model (%s); using the first words", type(exc).__name__)
+        logger.warning("No title from the model (%s); using the first words", str(exc) or "timeout")
         return fallback
     return clean_title(raw) or fallback
 
