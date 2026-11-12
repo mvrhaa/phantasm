@@ -10,6 +10,8 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from zero.agents.types import AgentError, AgentProgress
+from zero.approvals.manager import Answer, ApprovalAsk, Approver
+from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
 from zero.protocol.messages import (
@@ -65,6 +67,7 @@ class AgentRunner:
         turns: TurnManager,
         start_turn: StartAgentTurn,
         start_notice: StartNoticeTurn,
+        max_agents: int = 3,
     ) -> None:
         self._agents = agents
         self._sessions = sessions
@@ -73,6 +76,7 @@ class AgentRunner:
         self._turns = turns
         self._start_turn = start_turn
         self._start_notice = start_notice
+        self._max_agents = max_agents
         self._deliveries: set[asyncio.Task[None]] = set()
         self._closed = False
 
@@ -80,6 +84,12 @@ class AgentRunner:
         """Create the agent's session, store the agent and start its first turn on ``task``."""
         if await self._agents.by_session(parent_session_id) is not None:
             raise AgentError("an agent cannot start agents")
+        at_work = len(await self._agents.active())
+        if at_work >= self._max_agents:
+            raise AgentError(
+                f"{at_work} agents are already at work and the limit is {self._max_agents}; "
+                "wait for one to finish or stop one"
+            )
         session = await self._sessions.create(f"Agent: {' '.join(name.split())}")
         try:
             agent = await self._agents.add(name, parent_session_id, session.id, task)
@@ -167,6 +177,13 @@ class AgentRunner:
                 agent.parent_session_id, f"{_who(done)} has finished. Its report:\n{done.report}"
             )
 
+    async def waiting(self, agent_id: str, waiting: bool) -> None:
+        """An agent's turn starts or stops waiting for the user's approval."""
+        before, after = ("working", "waiting_user") if waiting else ("waiting_user", "working")
+        agent = await self._agents.get(agent_id)
+        if agent is not None and agent.status == before:  # a stopped agent stays stopped
+            await self._set(agent, after)
+
     async def recover(self) -> int:
         """Mark agents left at work by an earlier run as failed; returns how many."""
         stale = await self._agents.active()
@@ -212,3 +229,20 @@ class AgentRunner:
                 return  # the parent session was deleted meanwhile
             if await self._start_notice(session_id, text):
                 return
+
+
+class AgentApprovals:
+    """Approvals of an agent's turn: while one waits, the agent's status is ``waiting_user``."""
+
+    def __init__(self, approvals: Approver, runner: AgentRunner, agent_id: str) -> None:
+        self._approvals = approvals
+        self._runner = runner
+        self._agent_id = agent_id
+
+    async def request(self, ask: ApprovalAsk, cancel: CancelToken) -> Answer:
+        """Ask the user as usual, with the agent's status showing the wait."""
+        await self._runner.waiting(self._agent_id, True)
+        try:
+            return await self._approvals.request(ask, cancel)
+        finally:
+            await self._runner.waiting(self._agent_id, False)

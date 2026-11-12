@@ -8,7 +8,7 @@ from typing import Any, Literal, Protocol
 
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
-from zero.protocol.messages import ApprovalRequest, ApprovalResolved
+from zero.protocol.messages import AgentRef, ApprovalRequest, ApprovalResolved
 
 Decision = Literal["allow", "deny", "always"]
 
@@ -28,6 +28,7 @@ class ApprovalAsk:
     input: dict[str, Any] = field(default_factory=dict)
     reason: str = ""  # why approval is needed
     diff: str | None = None  # for changes to files
+    agent: AgentRef | None = None  # set when an agent asks
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class ApprovalManager:
                     input=ask.input,
                     reason=ask.reason,
                     diff=ask.diff,
+                    agent=ask.agent,
                 )
             )
             await asyncio.wait({future, cancelled}, return_when=asyncio.FIRST_COMPLETED)
@@ -116,6 +118,7 @@ class ApprovalManager:
                 approval_id=approval_id,
                 decision="deny",
                 by_client_id=WITHDRAWN_BY,
+                agent=pending.ask.agent,
             )
         )
 
@@ -135,6 +138,7 @@ class ApprovalManager:
                 approval_id=approval_id,
                 decision=decision,
                 by_client_id=by_client_id,
+                agent=pending.ask.agent,
             )
         )
         if not pending.future.done():

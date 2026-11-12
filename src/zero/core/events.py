@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from zero.protocol.messages import Envelope
+from zero.protocol.messages import AgentRef, Envelope, TurnEvent
 
 
 class Recipient(Protocol):
@@ -41,13 +41,23 @@ class ReplyTo:
 
 
 class EventBus:
-    """Delivers events to every connected client."""
+    """Delivers events to every connected client.
 
-    def __init__(self, audience: Audience) -> None:
+    A bus made by ``for_agent`` marks every turn event with that agent.
+    """
+
+    def __init__(self, audience: Audience, agent: AgentRef | None = None) -> None:
         self._audience = audience
+        self._agent = agent
+
+    def for_agent(self, agent: AgentRef) -> "EventBus":
+        """A bus to the same clients that marks the events of turns with ``agent``."""
+        return EventBus(self._audience, agent)
 
     async def publish(self, event: Envelope, *, reply: ReplyTo | None = None) -> None:
         """Send ``event`` to everyone; a dead connection does not stop the rest."""
+        if self._agent is not None and isinstance(event, TurnEvent) and event.agent is None:
+            event = event.model_copy(update={"agent": self._agent})
         answer = (
             event.model_copy(update={"reply_to": reply.message_id})
             if reply is not None and reply.message_id is not None

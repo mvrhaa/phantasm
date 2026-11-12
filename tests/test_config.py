@@ -18,6 +18,7 @@ SPEC_DEFAULTS = {
         "max_steps_computer": 100,
         "turn_timeout_s": 900,
         "history_token_budget": 60000,
+        "max_agents": 3,
     },
     "permissions": {
         "bypass_approvals": False,

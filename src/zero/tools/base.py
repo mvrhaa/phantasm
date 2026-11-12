@@ -11,7 +11,14 @@ from pydantic import BaseModel, ValidationError
 from zero.approvals.manager import ApprovalAsk, Approver
 from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.protocol.messages import ContentPart, Envelope, FilePart, ImagePart, TextPart
+from zero.protocol.messages import (
+    AgentRef,
+    ContentPart,
+    Envelope,
+    FilePart,
+    ImagePart,
+    TextPart,
+)
 from zero.providers.base import ToolCall, ToolSpec
 from zero.tools.permissions import PathGuard, decide
 
@@ -108,6 +115,7 @@ class ToolContext:
     approvals: Approver | None = None  # None when there is no one to ask
     approval_rules: ApprovalRules | None = None  # None: no saved rules apply
     events: EventPublisher | None = None  # for tools that tell clients about a change
+    agent: AgentRef | None = None  # set when the turn is an agent's
 
 
 class Tool[InputT: BaseModel](ABC):
@@ -286,6 +294,7 @@ class ToolRegistry:
                     input=call.input,
                     reason=why,
                     diff=preview.diff,
+                    agent=ctx.agent,
                 )
                 answer = await ctx.approvals.request(ask, ctx.cancel)
                 if answer.decision == "deny":

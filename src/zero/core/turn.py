@@ -131,6 +131,8 @@ class Turn:
         self.done = False  # set once everything is saved, just before turn.finished
         self.finished: TurnFinished | None = None  # the turn.finished it announced
         self.agent = agent
+        if agent is not None:
+            events = events.for_agent(agent)  # every event of this turn names the agent
         self._text = text
         self._source: Source = source
         self._client = client
@@ -174,6 +176,7 @@ class Turn:
             approvals=approvals,
             approval_rules=approval_rules,
             events=events,
+            agent=agent,
         )
         self._runner = ToolRunner(
             session_id=session_id,

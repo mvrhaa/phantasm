@@ -280,11 +280,22 @@ class ToolRun(BaseModel):
     created_at: datetime
 
 
+class AgentRef(BaseModel):
+    """Which agent something belongs to."""
+
+    id: str
+    name: str
+
+
 class TurnEvent(Envelope):
-    """Base of the events of a turn: all of them name the session and the turn."""
+    """Base of the events of a turn: all of them name the session and the turn.
+
+    ``agent`` is set on the events of an agent's turn, so clients can show who acts.
+    """
 
     session_id: str
     turn_id: str
+    agent: AgentRef | None = None
 
 
 # --- Zero -> client: handshake and service -----------------------------------
@@ -448,13 +459,6 @@ class SessionCompacted(Envelope):
     session_id: str
     summary: str
     until_message_id: str  # the last message the summary covers
-
-
-class AgentRef(BaseModel):
-    """Which agent something belongs to."""
-
-    id: str
-    name: str
 
 
 class AgentInfo(AgentRef):

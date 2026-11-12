@@ -3,6 +3,8 @@
 import logging
 from collections.abc import Sequence
 
+from zero.agents.runner import AgentApprovals
+from zero.approvals.manager import Approver
 from zero.core.events import ReplyTo
 from zero.core.turn import Turn
 from zero.protocol.messages import AgentRef, ClientInfo, FilePart, SessionCreated, SessionInfo
@@ -31,10 +33,11 @@ def make_turn(
     attachments: Sequence[FilePart] = (),
     agent: AgentRef | None = None,
     tools: ToolRegistry | None = None,
+    approvals: Approver | None = None,
 ) -> Turn:
     """A turn wired to everything the application has: tools, approvals, memory and so on.
 
-    ``tools`` replaces the shared registry, ``agent`` marks an agent's turn.
+    ``tools`` and ``approvals`` replace the shared ones, ``agent`` marks an agent's turn.
     """
     return Turn(
         session_id=session_id,
@@ -47,7 +50,7 @@ def make_turn(
         messages=state.messages,
         events=state.events,
         tools=tools if tools is not None else state.tools,
-        approvals=state.approvals,
+        approvals=approvals if approvals is not None else state.approvals,
         approval_rules=state.approval_rules,
         tool_runs=state.tool_runs,
         action_caller=state.actions,
@@ -89,8 +92,8 @@ async def start_scheduled_turn(state: AppState, schedule: Schedule) -> None:
 async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
     """Run ``text`` as a turn in the agent's session.
 
-    The agent has every tool but the ``agent_*`` ones, plus ``ask_parent``.
-
+    The agent has every tool but the ``agent_*`` ones, plus ``ask_parent``; while
+    one of its tools waits for the user's approval, its status is ``waiting_user``.
     The agent runner hears how the turn ended once ``turn.finished`` is out.
     """
     if state.provider is None or agent.session_id is None:
@@ -105,6 +108,7 @@ async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
         source="agent",
         agent=AgentRef(id=agent.id, name=agent.name),
         tools=state.tools.without(AGENT_TOOL_PREFIX).extended(agent_side_tools(state.agent_runner)),
+        approvals=AgentApprovals(state.approvals, state.agent_runner, agent.id),
     )
 
     async def report() -> None:

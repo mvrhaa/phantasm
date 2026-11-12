@@ -73,6 +73,7 @@ class AgentConfig(_Section):
     max_steps_computer: int = 100
     turn_timeout_s: int = 900
     history_token_budget: int = 60000
+    max_agents: int = Field(default=3, ge=1, le=20)  # agents at work at the same time
 
 
 class PermissionsConfig(_Section):

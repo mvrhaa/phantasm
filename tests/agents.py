@@ -58,7 +58,7 @@ class RunnerKit:
     A notice waits like a real one while ``turns`` runs a turn in its session.
     """
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, max_agents: int = 3) -> None:
         self.sessions = SessionsRepo(db)
         self.agents = AgentsRepo(db)
         self.messages = MessagesRepo(db)
@@ -84,6 +84,7 @@ class RunnerKit:
             turns=self.turns,
             start_turn=start_turn,
             start_notice=start_notice,
+            max_agents=max_agents,
         )
 
     @property

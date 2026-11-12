@@ -89,6 +89,7 @@ async def test_request_asks_every_client_and_returns_the_answer() -> None:
         "input": {"path": "~/a.txt"},
         "reason": "write_file is set to ask the user first",
         "diff": None,
+        "agent": None,
     }
     assert resolutions(client.received) == [
         ApprovalResolved(
