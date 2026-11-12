@@ -368,14 +368,15 @@ async def test_rg_is_stopped_at_the_match_limit(
 async def test_rg_is_stopped_when_time_is_up(
     fake_rg: FakeRg, project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(search, "SEARCH_TIMEOUT_S", 0.5)
+    # Long enough for the fake rg (a Python script) to start and print, even on a slow machine.
+    monkeypatch.setattr(search, "SEARCH_TIMEOUT_S", 2)
     fake_rg.write([match(project / "a.txt", 1, "TODO\n")], sleep_s=30)
 
     async with asyncio.timeout(10):
         result = await search_for("TODO", "~/project")
 
     assert text_of(result) == (
-        "a.txt:1: TODO\n[… search stopped after 0.5 s; narrow the path or glob]"
+        "a.txt:1: TODO\n[… search stopped after 2 s; narrow the path or glob]"
     )
 
 
