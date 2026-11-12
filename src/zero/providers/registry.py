@@ -10,7 +10,7 @@ from zero.providers.fake import FakeProvider
 from zero.providers.presets import PRESETS, Preset
 from zero.secrets import api_key, env_file
 
-PRESET_OPTIONS = {"images"}
+PRESET_OPTIONS = {"images", "min_interval_s"}
 
 
 class ProviderNotConfigured(Exception):
@@ -42,6 +42,11 @@ def _preset_provider(preset: Preset, options: dict[str, Any]) -> ChatCompletions
     images = options.get("images")
     if images is not None and not isinstance(images, bool):
         raise ProviderNotConfigured("provider option images must be true or false")
+    interval = options.get("min_interval_s")
+    if interval is not None and (
+        isinstance(interval, bool) or not isinstance(interval, int | float) or interval < 0
+    ):
+        raise ProviderNotConfigured("provider option min_interval_s must be a number of seconds")
     if preset.key_name and api_key(preset.name) is None:
         raise ProviderNotConfigured(f"{preset.key_name} is missing in {env_file()}")
-    return ChatCompletionsProvider(preset, images=images)
+    return ChatCompletionsProvider(preset, images=images, min_interval_s=interval)

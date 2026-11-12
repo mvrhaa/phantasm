@@ -9,12 +9,14 @@ goes nowhere but the request header: errors name the key, never its value.
 import asyncio
 import contextlib
 import json
+import re
 from collections.abc import AsyncIterator, Awaitable
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
 
-from zero import __version__
+from zero import __version__, clock
 from zero.providers.base import (
     CancelSignal,
     Message,
@@ -40,6 +42,7 @@ USER_AGENT = f"Zero/{__version__} (local assistant)"
 ERROR_TEXT_CHARS = 300
 RETRYABLE_STATUSES = frozenset({408, 425, 429})  # and every 5xx
 MALFORMED_CALL = "MALFORMED_FUNCTION_CALL"  # Google's finish reason for a broken tool call
+GOOGLE_DELAY = re.compile(r"(\d+(?:\.\d+)?)s")  # RetryInfo.retryDelay, e.g. "17s"
 
 _CANCELLED = object()
 _END = object()
@@ -48,8 +51,9 @@ _END = object()
 class ChatCompletionsProvider:
     """Talks to one provider of the ``/chat/completions`` format, chosen by its preset.
 
-    ``images`` overrides whether the model takes images; ``transport`` lets
-    tests answer instead of the network.
+    ``images`` and ``min_interval_s`` override the preset; ``transport`` lets
+    tests answer instead of the network. Requests start at least
+    ``min_interval_s`` apart, whoever sends them: turns, agents, titles.
     """
 
     def __init__(
@@ -57,12 +61,15 @@ class ChatCompletionsProvider:
         preset: Preset,
         *,
         images: bool | None = None,
+        min_interval_s: float | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.preset = preset
         self.name = preset.name
+        self.min_interval_s = preset.min_interval_s if min_interval_s is None else min_interval_s
         self._images = preset.images if images is None else images
         self._transport = transport
+        self._next_start = 0.0  # event loop time before which no request may start
 
     def supports_images(self, model: str) -> bool:
         """Tell whether the model takes images; set per preset, not per model."""
@@ -90,6 +97,8 @@ class ChatCompletionsProvider:
         body = self._body(messages, tools, model, max_tokens)
         waiter = asyncio.ensure_future(cancel.wait())
         try:
+            if not await self._take_slot(waiter):
+                return
             async with httpx.AsyncClient(transport=self._transport, timeout=TIMEOUT) as client:
                 request = client.build_request(
                     "POST", f"{self.preset.base_url}/chat/completions", json=body, headers=headers
@@ -102,7 +111,7 @@ class ChatCompletionsProvider:
                         raw = await _unless_cancelled(response.aread(), waiter)
                         if raw is _CANCELLED:
                             return
-                        raise _status_error(self.name, response.status_code, raw)
+                        raise _status_error(self.name, response, raw)
                     async for event in self._events(response, waiter):
                         yield event
                 finally:
@@ -114,6 +123,19 @@ class ChatCompletionsProvider:
             raise ProviderError(message, retryable=True) from None
         finally:
             waiter.cancel()
+
+    async def _take_slot(self, waiter: Awaitable[None]) -> bool:
+        """Wait until this request may start; False if the turn was cancelled meanwhile.
+
+        Each request books the next free moment at once, so requests sent
+        together start one interval apart, in the order they came.
+        """
+        now = asyncio.get_running_loop().time()
+        start = max(now, self._next_start)
+        self._next_start = start + self.min_interval_s
+        if start <= now:
+            return True
+        return await _unless_cancelled(asyncio.sleep(start - now), waiter) is not _CANCELLED
 
     def _headers(self) -> dict[str, str]:
         headers = {"User-Agent": USER_AGENT}
@@ -274,11 +296,36 @@ def _find_message(data: Any) -> str | None:
     return None
 
 
-def _status_error(provider: str, status: int, raw: bytes) -> ProviderError:
+def _status_error(provider: str, response: httpx.Response, raw: bytes) -> ProviderError:
+    status = response.status_code
     try:
         data: Any = json.loads(raw)
     except ValueError:
         data = raw.decode("utf-8", "replace")
     text = _error_text(data) if not isinstance(data, str) else _error_text({"message": data})
     retryable = status in RETRYABLE_STATUSES or status >= 500
-    return ProviderError(f"{provider} answered {status}: {text}", retryable=retryable)
+    retry_after = _retry_after(response.headers.get("retry-after"), data) if retryable else None
+    return ProviderError(
+        f"{provider} answered {status}: {text}", retryable=retryable, retry_after=retry_after
+    )
+
+
+def _retry_after(header: str | None, data: Any) -> float | None:
+    """How long the provider asked to wait: the Retry-After header (seconds or a
+    date), or the retryDelay Google puts into the error itself."""
+    if header:
+        with contextlib.suppress(ValueError):
+            return max(0.0, float(header))
+        with contextlib.suppress(TypeError, ValueError):
+            when = parsedate_to_datetime(header)
+            return max(0.0, (when - clock.now()).total_seconds())
+    if isinstance(data, list):
+        data = data[0] if data else None
+    error = data.get("error") if isinstance(data, dict) else None
+    details = error.get("details") if isinstance(error, dict) else None
+    for detail in details if isinstance(details, list) else []:
+        delay = detail.get("retryDelay") if isinstance(detail, dict) else None
+        match = GOOGLE_DELAY.fullmatch(delay) if isinstance(delay, str) else None
+        if match:
+            return float(match.group(1))
+    return None

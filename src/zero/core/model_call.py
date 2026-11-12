@@ -29,7 +29,8 @@ from zero.providers.base import (
 )
 from zero.store.usage import ModelCall, Purpose
 
-RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
+RETRY_DELAYS_S: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)  # free plans fail often
+MAX_RETRY_AFTER_S = 60.0  # a provider that wants a longer pause gets the error instead
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,9 @@ class ModelCaller:
 
     Text is published as it streams. A retryable failure is retried after
     each of ``retry_delays``, but only before any text went out: text sent to
-    clients cannot be taken back.
+    clients cannot be taken back. When the provider says how long to wait,
+    that wait is used instead, up to ``MAX_RETRY_AFTER_S``; a longer one ends
+    the turn with the error rather than leaving it hanging.
     """
 
     def __init__(
@@ -115,12 +118,13 @@ class ModelCaller:
             except ProviderError as exc:
                 if not exc.retryable or progress.step_text:
                     raise
+                wait = delay if exc.retry_after is None else exc.retry_after
+                if wait > MAX_RETRY_AFTER_S:
+                    raise
                 logger.warning(
-                    "Turn %s: retryable provider error, trying again in %.1f s",
-                    self._turn_id,
-                    delay,
+                    "Turn %s: trying again in %.1f s after: %s", self._turn_id, wait, exc.message
                 )
-                await self._pause(delay)
+                await self._pause(wait)
         return await self._stream(prompt, tools, progress)
 
     async def _stream(

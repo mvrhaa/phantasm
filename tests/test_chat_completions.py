@@ -9,11 +9,14 @@ import asyncio
 import json
 import os
 from collections.abc import AsyncIterator, Callable
+from datetime import timedelta
+from email.utils import format_datetime
 from typing import Any
 
 import httpx
 import pytest
 
+from tests.conftest import FrozenClock
 from zero.core.cancellation import CancelToken
 from zero.protocol.messages import TextPart
 from zero.providers.base import (
@@ -55,6 +58,8 @@ def keys() -> None:
 
 
 def provider(handler: Handler, preset: str = "google", **kwargs: Any) -> ChatCompletionsProvider:
+    """A provider answered by ``handler``; no pause between requests unless asked for."""
+    kwargs.setdefault("min_interval_s", 0)
     return ChatCompletionsProvider(
         PRESETS[preset], transport=httpx.MockTransport(handler), **kwargs
     )
@@ -421,3 +426,87 @@ async def test_cancel_in_the_middle_of_an_answer() -> None:
     await asyncio.wait_for(read(), timeout=2)
 
     assert events == [TextDelta(text="Hello")]
+
+
+# --- Limits of free plans ----------------------------------------------------------
+
+
+def test_each_preset_keeps_its_own_pace() -> None:
+    paces = {name: preset.min_interval_s for name, preset in PRESETS.items()}
+
+    assert paces == {"google": 2.0, "openrouter": 3.0, "mistral": 1.0, "ollama": 0.0}
+
+
+async def test_requests_start_an_interval_apart() -> None:
+    started: list[float] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        started.append(asyncio.get_running_loop().time())
+        return httpx.Response(200, content=sse(chunk("hi", finish="stop")))
+
+    p = provider(handle, min_interval_s=0.1)
+    await asyncio.gather(collect(p), collect(p), collect(p))  # say, a turn and two agents
+
+    assert len(started) == 3
+    assert started[1] - started[0] >= 0.09 and started[2] - started[1] >= 0.09
+
+
+async def test_waiting_for_a_slot_ends_on_cancel() -> None:
+    sent: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, content=sse(chunk("hi", finish="stop")))
+
+    p = provider(handle, min_interval_s=60)
+    await collect(p)
+    cancel = CancelToken()
+    asyncio.get_running_loop().call_later(0.05, cancel.cancel)
+
+    events = await asyncio.wait_for(collect(p, cancel=cancel), timeout=2)
+
+    assert events == [] and len(sent) == 1
+
+
+def rate_limited(body: bytes, headers: dict[str, str] | None = None) -> Handler:
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, content=body, headers=headers)
+
+    return handle
+
+
+GOOGLE_429 = json.dumps(
+    [
+        {
+            "error": {
+                "code": 429,
+                "message": "You exceeded your current quota. Please retry in 17.4s.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {"@type": "type.googleapis.com/google.rpc.QuotaFailure"},
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "17s"},
+                ],
+            }
+        }
+    ]
+).encode()
+
+
+async def test_google_says_how_long_to_wait_inside_the_error() -> None:
+    error = await failure(provider(rate_limited(GOOGLE_429)))
+
+    assert error.retryable and error.retry_after == 17.0
+    assert error.message == (
+        "google answered 429: You exceeded your current quota. Please retry in 17.4s."
+    )
+
+
+async def test_the_retry_after_header_in_seconds_or_as_a_date(frozen_clock: FrozenClock) -> None:
+    in_seconds = await failure(provider(rate_limited(b"{}", {"Retry-After": "7"})))
+    later = format_datetime(frozen_clock.current + timedelta(seconds=30), usegmt=True)
+    as_date = await failure(provider(rate_limited(b"{}", {"Retry-After": later})))
+    nonsense = await failure(provider(rate_limited(b"{}", {"Retry-After": "soon"})))
+    silent = await failure(provider(rate_limited(b"{}")))
+
+    assert (in_seconds.retry_after, as_date.retry_after) == (7.0, 30.0)
+    assert (nonsense.retry_after, silent.retry_after) == (None, None)

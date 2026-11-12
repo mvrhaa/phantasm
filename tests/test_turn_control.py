@@ -36,22 +36,22 @@ class BreaksAfterText(FakeProvider):
 
 
 async def test_retryable_failure_is_retried(harness: Harness) -> None:
-    provider = FakeProvider([[TextDelta(text="ok")]], fail_times=2)
+    provider = FakeProvider([[TextDelta(text="ok")]], fail_times=4)
 
     await harness.turn(provider).run()
 
-    assert len(provider.calls) == 3
+    assert len(provider.calls) == 5
     finished = harness.finished
     assert (finished.status, finished.text, finished.error) == ("ok", "ok", None)
     assert harness.types == ["turn.started", "text.delta", "turn.finished"]
 
 
-async def test_turn_gives_up_after_two_retries(harness: Harness) -> None:
-    provider = FakeProvider([[TextDelta(text="ok")]], fail_times=3)
+async def test_turn_gives_up_after_four_retries(harness: Harness) -> None:
+    provider = FakeProvider([[TextDelta(text="ok")]], fail_times=5)
 
     await harness.turn(provider).run()
 
-    assert len(provider.calls) == 3
+    assert len(provider.calls) == 5
     assert (harness.finished.status, harness.finished.error) == (
         "error",
         "FakeProvider simulated failure",
@@ -83,8 +83,44 @@ async def test_failure_after_text_is_not_retried(harness: Harness) -> None:
     assert (answer.status, text_of(answer)) == ("error", "Hel")
 
 
+class AsksToWait(FakeProvider):
+    """Fails once with a rate limit that says how long to wait, then answers."""
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__([[TextDelta(text="ok")]])
+        self.retry_after = retry_after
+        self.started: list[float] = []
+
+    async def stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[StreamEvent]:
+        self.started.append(asyncio.get_running_loop().time())
+        if len(self.started) == 1:
+            raise ProviderError("rate limited", retryable=True, retry_after=self.retry_after)
+        async for event in super().stream(*args, **kwargs):
+            yield event
+
+
+async def test_the_wait_the_provider_asks_for_is_kept(harness: Harness) -> None:
+    provider = AsksToWait(retry_after=0.2)
+
+    await harness.turn(provider).run()  # the harness itself does not wait between retries
+
+    first, second = provider.started
+    assert second - first >= 0.19
+    assert harness.finished.status == "ok"
+
+
+async def test_a_wait_longer_than_a_minute_ends_the_turn_at_once(harness: Harness) -> None:
+    provider = AsksToWait(retry_after=3600)
+
+    async with asyncio.timeout(1):
+        await harness.turn(provider).run()
+
+    assert len(provider.started) == 1
+    assert (harness.finished.status, harness.finished.error) == ("error", "rate limited")
+
+
 async def test_retry_waits_and_the_wait_ends_on_cancel(harness: Harness) -> None:
-    assert RETRY_DELAYS_S == (1.0, 4.0)
+    assert RETRY_DELAYS_S == (1.0, 2.0, 4.0, 8.0)
     provider = FakeProvider([[TextDelta(text="late")]], fail_times=1)
     turn = harness.turn(provider, retry_delays=RETRY_DELAYS_S)
 

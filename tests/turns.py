@@ -11,7 +11,7 @@ from zero.approvals.manager import Answer, ApprovalAsk, Approver, Decision
 from zero.config import Config
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
-from zero.core.model_call import UsageRecorder
+from zero.core.model_call import RETRY_DELAYS_S, UsageRecorder
 from zero.core.tool_runner import ToolRunRecorder
 from zero.core.turn import Turn
 from zero.protocol.messages import (
@@ -27,7 +27,7 @@ from zero.store.messages import MessagesRepo, StoredMessage
 from zero.store.sessions import SessionsRepo
 from zero.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
 
-NO_DELAYS = (0.0, 0.0)
+NO_DELAYS = tuple(0.0 for _ in RETRY_DELAYS_S)  # as many retries as in real turns, no waiting
 
 ToolFn = Callable[[Any, ToolContext], Awaitable[str]]
 

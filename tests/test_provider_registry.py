@@ -100,3 +100,17 @@ def test_options_of_a_preset() -> None:
         get_provider(ProviderConfig(name="google", options={"images": "yes"}))
 
     assert not plain.supports_images("gemma-4-31b-it")
+
+
+def test_the_pause_between_requests() -> None:
+    with_key("GEMINI_API_KEY=AIza-test-0123456789")
+
+    google = get_provider(ProviderConfig(name="google"))
+    eager = get_provider(ProviderConfig(name="google", options={"min_interval_s": 0}))
+    for bad in (-1, "2", True):
+        with pytest.raises(ProviderNotConfigured, match="min_interval_s must be a number"):
+            get_provider(ProviderConfig(name="google", options={"min_interval_s": bad}))
+
+    assert isinstance(google, ChatCompletionsProvider) and google.min_interval_s == 2.0
+    assert isinstance(eager, ChatCompletionsProvider) and eager.min_interval_s == 0
+    assert get_provider(ProviderConfig(name="ollama")).min_interval_s == 0  # type: ignore[attr-defined]

@@ -90,12 +90,18 @@ StreamEvent = Annotated[
 
 
 class ProviderError(Exception):
-    """A provider request failed. ``retryable`` tells whether trying again may help."""
+    """A provider request failed. ``retryable`` tells whether trying again may help.
 
-    def __init__(self, message: str, *, retryable: bool = False) -> None:
+    ``retry_after`` is how many seconds the provider asked to wait first, if it said.
+    """
+
+    def __init__(
+        self, message: str, *, retryable: bool = False, retry_after: float | None = None
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class CancelSignal(Protocol):
