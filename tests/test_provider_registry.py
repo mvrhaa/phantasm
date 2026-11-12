@@ -4,8 +4,10 @@ import pytest
 
 from zero.config import Config, ProviderConfig
 from zero.providers.base import LLMProvider
+from zero.providers.chat_completions import ChatCompletionsProvider
 from zero.providers.fake import FakeProvider
 from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.secrets import env_file
 
 
 def test_default_config_gives_the_fake_provider_in_echo_mode() -> None:
@@ -45,3 +47,56 @@ def test_unknown_provider_is_not_configured(name: str) -> None:
 def test_unknown_option_is_not_configured() -> None:
     with pytest.raises(ProviderNotConfigured, match="bad options"):
         get_provider(ProviderConfig(options={"temperature": 0.2}))
+
+
+# --- Presets of the /chat/completions adapter ----------------------------------
+
+
+def with_key(line: str) -> None:
+    env_file().write_text(line + "\n")
+
+
+def test_google_with_its_key_in_env() -> None:
+    with_key("GEMINI_API_KEY=AIza-test-0123456789")
+
+    provider = get_provider(ProviderConfig(name="google", model="gemma-4-31b-it"))
+
+    assert isinstance(provider, ChatCompletionsProvider)
+    assert isinstance(provider, LLMProvider)
+    assert provider.name == "google" and provider.supports_images("gemma-4-31b-it")
+
+
+@pytest.mark.parametrize(
+    ("name", "key_name"),
+    [
+        ("google", "GEMINI_API_KEY"),
+        ("openrouter", "OPENROUTER_API_KEY"),
+        ("mistral", "MISTRAL_API_KEY"),
+    ],
+)
+def test_a_missing_key_leaves_the_provider_not_configured(name: str, key_name: str) -> None:
+    with_key("SOME_OTHER_KEY=0123456789")
+
+    with pytest.raises(ProviderNotConfigured) as excinfo:
+        get_provider(ProviderConfig(name=name))
+
+    assert str(excinfo.value) == f"{key_name} is missing in {env_file()}"
+    assert excinfo.value.code == "provider_not_configured"
+
+
+def test_a_local_ollama_needs_no_key() -> None:
+    assert get_provider(ProviderConfig(name="ollama")).name == "ollama"
+
+
+def test_options_of_a_preset() -> None:
+    with_key("GEMINI_API_KEY=AIza-test-0123456789")
+
+    plain = get_provider(ProviderConfig(name="google", options={"images": False}))
+    with pytest.raises(
+        ProviderNotConfigured, match="unknown options for the google provider: base_url"
+    ):
+        get_provider(ProviderConfig(name="google", options={"base_url": "https://evil.example"}))
+    with pytest.raises(ProviderNotConfigured, match="images must be true or false"):
+        get_provider(ProviderConfig(name="google", options={"images": "yes"}))
+
+    assert not plain.supports_images("gemma-4-31b-it")

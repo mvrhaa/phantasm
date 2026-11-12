@@ -106,6 +106,10 @@ class CancelSignal(Protocol):
 
     def raise_if_cancelled(self) -> None: ...
 
+    async def wait(self) -> None:
+        """Return once the turn is cancelled; providers race their network waits against it."""
+        ...
+
 
 @runtime_checkable
 class LLMProvider(Protocol):

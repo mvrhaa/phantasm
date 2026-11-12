@@ -181,6 +181,13 @@ def test_doctor_reports_a_missing_or_present_key(capsys: pytest.CaptureFixture[s
     assert found == f"✓ key MISTRAL_API_KEY found in {path}"
 
 
+def test_doctor_names_the_key_of_the_chosen_preset(capsys: pytest.CaptureFixture[str]) -> None:
+    write_env("GEMINI_API_KEY=AIza-test-0123456789\n")
+
+    assert doctor_line(capsys, "google") == f"✓ key GEMINI_API_KEY found in {env_file()}"
+    assert doctor_line(capsys, "ollama") == "✓ key none needed for the ollama provider"
+
+
 def test_doctor_wants_the_file_private(capsys: pytest.CaptureFixture[str]) -> None:
     path = write_env(f"MISTRAL_API_KEY={KEY}\n", mode=0o644)
 

@@ -11,9 +11,10 @@ import stat
 from pathlib import Path
 
 from zero.paths import home_dir
+from zero.providers.presets import PRESETS
 
 ENV_FILE_VAR = "ZERO_ENV_FILE"  # where tests point Zero at their own .env
-KEY_NAMES: dict[str, str] = {"mistral": "MISTRAL_API_KEY"}
+KEY_NAMES: dict[str, str] = {p.name: p.key_name for p in PRESETS.values() if p.key_name}
 MASK = "***"
 MIN_SECRET_CHARS = 8  # shorter values are not masked: they would hide ordinary words
 
