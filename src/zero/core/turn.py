@@ -1,11 +1,8 @@
 """The agent loop: one turn from a user message to the final answer."""
 
-import asyncio
-import contextlib
 import logging
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from typing import Literal
 
 from zero.approvals.manager import Approver
@@ -13,6 +10,7 @@ from zero.config import Config
 from zero.core.cancellation import CancelToken, TurnCancelled
 from zero.core.events import EventBus, ReplyTo
 from zero.core.expression import EXPRESSION_TOOL, ExpressionTool
+from zero.core.model_call import RETRY_DELAYS_S, ModelCaller, Progress, UsageRecorder
 from zero.core.prompting import MemorySource, PromptBuilder
 from zero.core.tool_runner import ToolRunner, ToolRunRecorder
 from zero.protocol.messages import (
@@ -23,18 +21,12 @@ from zero.protocol.messages import (
     TextPart,
     TurnFinished,
     TurnStarted,
-    Usage,
 )
-from zero.protocol.messages import TextDelta as TextDeltaEvent
 from zero.providers.base import (
     LLMProvider,
     Message,
     ProviderError,
-    TextDelta,
     ToolCall,
-    ToolCallEvent,
-    ToolSpec,
-    UsageEvent,
 )
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
@@ -54,22 +46,12 @@ from zero.tools.client_actions import (
 )
 from zero.tools.permissions import PathGuard
 
-RETRY_DELAYS_S: tuple[float, ...] = (1.0, 4.0)
 NOT_RUN = "Not run: the user cancelled the turn."
 
 TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _Progress:
-    """What a turn has produced so far; survives a failure in the middle of a step."""
-
-    text: str = ""  # everything the model wrote during the turn, as streamed
-    step_text: str = ""  # what it wrote in the current step and is not saved yet
-    usage: Usage = field(default_factory=Usage)
 
 
 def _text_content(text: str) -> list[ContentPart]:
@@ -97,7 +79,7 @@ class Turn:
     ``action_caller`` reaches that client when the model calls one.
     ``memory`` gives the facts about the user that go into the system prompt;
     ``summaries`` lets a long history be compacted into a summary.
-    ``tool_runs`` keeps a record of the tool calls for the history.
+    ``tool_runs`` keeps a record of the tool calls for the history, ``usage`` of the model calls.
     ``agent`` is set when the turn is an agent's work: its prompt gets the agent's role.
     """
 
@@ -124,6 +106,7 @@ class Turn:
         attachments: Sequence[FilePart] = (),
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
+        usage: UsageRecorder | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -137,7 +120,6 @@ class Turn:
         self._source: Source = source
         self._client = client
         self._config = config
-        self._provider = provider
         self._sessions = sessions
         self._messages = messages
         self._events = events
@@ -161,9 +143,9 @@ class Turn:
             memory=memory,
             summaries=summaries,
             agent_name=agent.name if agent is not None else None,
+            usage=usage,
         )
         self._attachments = list(attachments)
-        self._retry_delays = tuple(retry_delays)
         character = client.character if client is not None else None
         self._expression = ExpressionTool(character) if character is not None else None
         self._tool_context = ToolContext(
@@ -177,6 +159,17 @@ class Turn:
             approval_rules=approval_rules,
             events=events,
             agent=agent,
+        )
+        self._model = ModelCaller(
+            provider=provider,
+            model=config.provider.model,
+            purpose="agent" if agent is not None else "turn",
+            session_id=session_id,
+            turn_id=self.id,
+            events=events,
+            cancel=self.cancel,
+            retry_delays=retry_delays,
+            usage=usage,
         )
         self._runner = ToolRunner(
             session_id=session_id,
@@ -203,7 +196,7 @@ class Turn:
             reply=self._reply,
         )
 
-        progress = _Progress()
+        progress = Progress()
         status: TurnStatus = "ok"
         error: str | None = None
         try:
@@ -243,7 +236,7 @@ class Turn:
         )
         await self._events.publish(self.finished)
 
-    async def _steps(self, progress: _Progress) -> bool:
+    async def _steps(self, progress: Progress) -> bool:
         """Call the model step by step until it answers without asking for tools.
 
         A step that has already written its answer and only sets the expression
@@ -262,7 +255,7 @@ class Turn:
         step = 1
         while step < self._step_limit():
             step += 1
-            calls = await self._call_model(prompt, specs, progress)
+            calls = await self._model.answer(prompt, specs, progress)
             if not calls:
                 return False
             answered = bool(progress.step_text)
@@ -270,7 +263,7 @@ class Turn:
             if answered and _only_expression(calls, results):
                 return False
 
-        ignored = await self._call_model(prompt, [], progress)
+        ignored = await self._model.answer(prompt, [], progress)
         if ignored:
             logger.warning(
                 "Turn %s: model asked for %d tools on the last step; ignored",
@@ -283,53 +276,8 @@ class Turn:
         agent = self._config.agent
         return max(agent.max_steps_computer if self._used_computer else agent.max_steps, 1)
 
-    async def _call_model(
-        self, prompt: list[Message], tools: list[ToolSpec], progress: _Progress
-    ) -> list[ToolCall]:
-        """Stream one answer, retrying a retryable failure that came before any text.
-
-        Text already sent to clients cannot be taken back, so a failure in the
-        middle of an answer ends the turn instead of streaming the answer twice.
-        """
-        for delay in self._retry_delays:
-            try:
-                return await self._stream_step(prompt, tools, progress)
-            except ProviderError as exc:
-                if not exc.retryable or progress.step_text:
-                    raise
-                logger.warning(
-                    "Turn %s: retryable provider error, trying again in %.1f s", self.id, delay
-                )
-                await self._pause(delay)
-        return await self._stream_step(prompt, tools, progress)
-
-    async def _stream_step(
-        self, prompt: list[Message], tools: list[ToolSpec], progress: _Progress
-    ) -> list[ToolCall]:
-        """Stream one answer of the model, publishing its text; return its tool calls."""
-        self.cancel.raise_if_cancelled()
-        calls: list[ToolCall] = []
-        stream = self._provider.stream(
-            prompt, tools, self._config.provider.model, cancel=self.cancel
-        )
-        async for event in stream:
-            if isinstance(event, TextDelta):
-                progress.text += event.text
-                progress.step_text += event.text
-                await self._events.publish(
-                    TextDeltaEvent(session_id=self.session_id, turn_id=self.id, delta=event.text)
-                )
-            elif isinstance(event, ToolCallEvent):
-                calls.append(event.call)
-            elif isinstance(event, UsageEvent):
-                progress.usage.input_tokens += event.input_tokens
-                progress.usage.output_tokens += event.output_tokens
-        # A provider may end its stream quietly on cancellation instead of raising.
-        self.cancel.raise_if_cancelled()
-        return calls
-
     async def _run_tools(
-        self, prompt: list[Message], calls: list[ToolCall], progress: _Progress
+        self, prompt: list[Message], calls: list[ToolCall], progress: Progress
     ) -> list[ToolResult]:
         """Run the calls one by one, add them with their results to the conversation.
 
@@ -385,9 +333,3 @@ class Turn:
             )
         self.cancel.raise_if_cancelled()
         return results
-
-    async def _pause(self, seconds: float) -> None:
-        """Sleep, but stop with ``TurnCancelled`` as soon as the turn is cancelled."""
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(self.cancel.wait(), timeout=seconds)
-        self.cancel.raise_if_cancelled()

@@ -70,6 +70,7 @@ async def test_tables_exist_after_migration(db: Database) -> None:
         "schedules",
         "session_summaries",
         "agents",
+        "model_calls",
     }
 
 

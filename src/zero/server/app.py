@@ -32,6 +32,7 @@ from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
 from zero.store.todo import TodoRepo
 from zero.store.tool_runs import ToolRunsRepo
+from zero.store.usage import UsageRepo
 from zero.tools.builtin import builtin_registry
 from zero.tools.client_actions import ActionBroker
 
@@ -118,6 +119,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 memory=memory,
                 schedules=schedules,
                 summaries=SummariesRepo(db),
+                usage=UsageRepo(db),
                 agents=agents,
                 agent_runner=agent_runner,
                 scheduler=SchedulerRunner(

@@ -13,11 +13,13 @@ from collections.abc import Sequence
 
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
+from zero.core.model_call import UsageRecorder, metered
 from zero.protocol.messages import SessionCompacted, TextPart
 from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
 from zero.providers.fake import FakeProvider
 from zero.store.messages import StoredMessage
 from zero.store.summaries import SummariesRepo
+from zero.store.usage import ModelCall
 
 SUMMARY_MAX_CHARS = 4000
 DIGEST_LINE_CHARS = 200
@@ -72,7 +74,12 @@ def digest(previous: str | None, messages: Sequence[StoredMessage]) -> str:
 
 
 async def _ask_model(
-    provider: LLMProvider, model: str, previous: str | None, messages: Sequence[StoredMessage]
+    provider: LLMProvider,
+    model: str,
+    previous: str | None,
+    messages: Sequence[StoredMessage],
+    call: ModelCall,
+    usage: UsageRecorder | None,
 ) -> str:
     earlier = f"Earlier summary:\n{previous}\n\n" if previous else ""
     request = [
@@ -83,8 +90,10 @@ async def _ask_model(
         ),
     ]
     parts = []
-    stream = provider.stream(
-        request, [], model, max_tokens=SUMMARY_MAX_TOKENS, cancel=CancelToken()
+    stream = metered(
+        provider.stream(request, [], model, max_tokens=SUMMARY_MAX_TOKENS, cancel=CancelToken()),
+        call,
+        usage,
     )
     async for event in stream:
         if isinstance(event, TextDelta):
@@ -93,14 +102,24 @@ async def _ask_model(
 
 
 async def summarize(
-    provider: LLMProvider, model: str, previous: str | None, messages: Sequence[StoredMessage]
+    provider: LLMProvider,
+    model: str,
+    previous: str | None,
+    messages: Sequence[StoredMessage],
+    *,
+    session_id: str | None = None,
+    usage: UsageRecorder | None = None,
 ) -> str:
-    """Fold ``messages`` into ``previous``; falls back to a digest if the model cannot help."""
+    """Fold ``messages`` into ``previous``; falls back to a digest if the model cannot help.
+
+    The model call goes into ``usage`` as a ``summary``.
+    """
     if isinstance(provider, FakeProvider):
         return digest(previous, messages)
     try:
         async with asyncio.timeout(SUMMARY_TIMEOUT_S):
-            text = await _ask_model(provider, model, previous, messages)
+            call = ModelCall(provider.name, model, "summary", session_id)
+            text = await _ask_model(provider, model, previous, messages, call, usage)
     except (ProviderError, TimeoutError) as exc:
         logger.warning("No summary from the model (%s); using a digest", type(exc).__name__)
         return digest(previous, messages)
@@ -116,6 +135,7 @@ async def compact(
     provider: LLMProvider,
     model: str,
     events: EventBus,
+    usage: UsageRecorder | None = None,
 ) -> str:
     """The summary of everything before ``stored[keep_from]``, brought up to date.
 
@@ -133,7 +153,7 @@ async def compact(
     else:
         new = list(dropped)
     previous = existing.text if existing is not None else None
-    text = await summarize(provider, model, previous, new)
+    text = await summarize(provider, model, previous, new, session_id=session_id, usage=usage)
     until = dropped[-1].id
     await summaries.save(session_id, text, until)
     await events.publish(

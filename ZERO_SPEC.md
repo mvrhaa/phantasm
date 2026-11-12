@@ -78,6 +78,7 @@ zero/
       errors.py              # коды ошибок
     core/
       turn.py                # agent loop (один «ход»)
+      model_call.py          # вызов модели: стрим ответа, ретраи, учёт каждого запроса
       context.py             # сборка промпта: system + память + история
       prompting.py           # промпт хода: память, история, саммари (этап 6)
       compaction.py          # сжатие старой истории в саммари (этап 6)
@@ -173,7 +174,7 @@ zero/
 - `python -m zero` (или `zero serve`) поднимает uvicorn на `127.0.0.1:<port>`.
 - Если порт занят другим экземпляром Zero (проверка через `GET /health`), процесс завершается с кодом 0 и сообщением «уже запущен».
 - При первом запуске генерируется `token` (32 байта, `secrets.token_urlsafe`) с правами `600`.
-- Команда `zero`: `serve` (то же, что `python -m zero`), `token` (показать токен), `doctor` (папки, конфиг, версия схемы БД, права токена, порт, провайдер, `rg`; ничего не создаёт и не меняет, код выхода 1 при проблемах), `config path`.
+- Команда `zero`: `serve` (то же, что `python -m zero`), `token` (показать токен), `doctor` (папки, конфиг, версия схемы БД, права токена, порт, провайдер, `rg`; ничего не создаёт и не меняет, код выхода 1 при проблемах), `config path`, `usage` (запросы и токены по провайдерам и моделям: сегодня с 00:00 UTC и за 30 дней; база открывается только на чтение).
 - Основной режим (этап 9): мозг запускает десктоп-приложение (живёт в строке меню, стартует при входе) как дочерний процесс `zero serve --parent-pid <pid>` и останавливает SIGTERM при выходе; мозг сам завершается, если процесс приложения исчез. LaunchAgent ниже — необязательный режим «всегда включено».
 - `scripts/install_launchagent.py` ставит `~/Library/LaunchAgents/local.zero.brain.plist` и загружает его через `launchctl bootstrap gui/<uid>`: `RunAtLoad`, `KeepAlive: {SuccessfulExit: false}` (перезапуск только после падения, штатный выход «уже запущен» не зацикливается), `PATH` из окружения установки, вывод в `~/Library/Logs/Zero`. Флаги `--uninstall` и `--print`.
 - Корректное завершение по SIGTERM/SIGINT (до того, как uvicorn рвёт соединения): новые `message.send` получают `error internal`, новые подключения закрываются с 1001, планировщик останавливается, все ходы отменяются и получают 5 с, чтобы закончиться штатно (потом обрываются). Ожидающие подтверждения отклоняются: клиенты получают `approval.resolved` с `decision: "deny"` и `by_client_id: "zero"`; ожидание `action.result` прекращается. Затем клиенты закрываются с кодом 1001, БД закрывается.
@@ -393,6 +394,7 @@ class LLMProvider(Protocol):
 - Каждый адаптер сам переводит `Message` и `ToolSpec` в формат своего API и обратно.
 - Ошибки адаптер переводит в `ProviderError(retryable: bool, message: str)`.
 - `providers/registry.py` выдаёт провайдер по `config.provider.name`. Неизвестное имя даёт `provider_not_configured`.
+- Каждый запрос к модели записывается в `model_calls`: провайдер, модель, назначение (`turn`, `agent`, `title`, `summary`), сессия, токены из `UsageEvent` и успех. Неудачные и отменённые запросы тоже пишутся: бесплатные тарифы ограничивают и число запросов. Ошибка записи не ломает ответ.
 
 ### 8.3 FakeProvider
 Нужен для разработки и **всех** тестов.
@@ -556,6 +558,10 @@ CREATE TABLE todos (id, session_id, number, text, status, created_at, updated_at
 CREATE TABLE schedules (id, task, rule_json, rule_text, timezone, next_run_at, last_run_at,
   enabled, created_at);            -- next_run_at NULL у отработавшего разового
 CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, updated_at);
+
+-- 0008_model_calls: каждый запрос к модели (без внешнего ключа: учёт переживает сессии)
+CREATE TABLE model_calls (id, provider, model, purpose, session_id, input_tokens,
+  output_tokens, ok, created_at);
 
 -- этап 7: 0007_agents
 CREATE TABLE agents (id, name, parent_session_id REFERENCES sessions ON DELETE CASCADE,

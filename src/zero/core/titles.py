@@ -5,10 +5,12 @@ import logging
 
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
+from zero.core.model_call import UsageRecorder, metered
 from zero.protocol.messages import SessionInfo, SessionUpdated, TextPart
 from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
 from zero.providers.fake import FakeProvider
 from zero.store.sessions import SessionsRepo
+from zero.store.usage import ModelCall
 
 TITLE_WORDS = 6
 TITLE_MAX_CHARS = 80
@@ -39,20 +41,33 @@ def clean_title(raw: str) -> str:
     return line[:TITLE_MAX_CHARS].rstrip()
 
 
-async def _ask_model(provider: LLMProvider, model: str, text: str) -> str:
+async def _ask_model(
+    provider: LLMProvider, model: str, text: str, call: ModelCall, usage: UsageRecorder | None
+) -> str:
     messages = [
         Message(role="system", content=[TextPart(text=TITLE_PROMPT)]),
         Message(role="user", content=[TextPart(text=text[:TITLE_INPUT_CHARS])]),
     ]
     parts = []
-    stream = provider.stream(messages, [], model, max_tokens=TITLE_MAX_TOKENS, cancel=CancelToken())
+    stream = metered(
+        provider.stream(messages, [], model, max_tokens=TITLE_MAX_TOKENS, cancel=CancelToken()),
+        call,
+        usage,
+    )
     async for event in stream:
         if isinstance(event, TextDelta):
             parts.append(event.text)
     return "".join(parts)
 
 
-async def make_title(provider: LLMProvider, model: str, text: str) -> str:
+async def make_title(
+    provider: LLMProvider,
+    model: str,
+    text: str,
+    *,
+    session_id: str | None = None,
+    usage: UsageRecorder | None = None,
+) -> str:
     """A short title for a conversation that starts with ``text``.
 
     FakeProvider cannot write titles, so its sessions get the first words of
@@ -64,7 +79,8 @@ async def make_title(provider: LLMProvider, model: str, text: str) -> str:
         return fallback
     try:
         async with asyncio.timeout(TITLE_TIMEOUT_S):
-            raw = await _ask_model(provider, model, text)
+            call = ModelCall(provider.name, model, "title", session_id)
+            raw = await _ask_model(provider, model, text, call, usage)
     except (ProviderError, TimeoutError) as exc:
         logger.warning("No title from the model (%s); using the first words", type(exc).__name__)
         return fallback
@@ -79,6 +95,7 @@ async def title_new_session(
     model: str,
     sessions: SessionsRepo,
     events: EventBus,
+    usage: UsageRecorder | None = None,
 ) -> None:
     """Title an untitled session after its first turn and tell every client.
 
@@ -88,7 +105,7 @@ async def title_new_session(
     session = await sessions.get(session_id)
     if session is None or session.title is not None:
         return
-    title = await make_title(provider, model, text)
+    title = await make_title(provider, model, text, session_id=session_id, usage=usage)
     if not title:
         return
     titled = await sessions.set_title_if_missing(session_id, title)

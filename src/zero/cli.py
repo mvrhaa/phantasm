@@ -3,6 +3,7 @@
 zero serve          start the service (the same as ``python -m zero``)
 zero token          show the local token clients connect with
 zero doctor         check folders, config, database, token, port and provider
+zero usage          how many model requests and tokens were used today and in 30 days
 zero config path    show where the config file is
 """
 
@@ -15,9 +16,10 @@ import sys
 from collections.abc import Callable, Sequence
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Literal
 
-from zero import APP_NAME, __version__
+from zero import APP_NAME, __version__, clock
 from zero.__main__ import PortState, probe_port
 from zero.__main__ import main as serve
 from zero.config import Config, ConfigError, load_config
@@ -143,6 +145,46 @@ def doctor(probe: Callable[[str, int], object] | None = None) -> list[Check]:
     return checks
 
 
+# --- usage -------------------------------------------------------------------
+
+USAGE_SQL = (
+    "SELECT provider, model, COUNT(*), SUM(1 - ok), SUM(input_tokens), SUM(output_tokens) "
+    "FROM model_calls WHERE created_at >= ? GROUP BY provider, model ORDER BY provider, model"
+)
+
+
+def usage_since(since: datetime) -> list[tuple[str, str, int, int, int, int]] | None:
+    """Requests, failures and tokens per provider and model; None if nothing is recorded."""
+    path = db_path()
+    if not path.exists():
+        return None
+    try:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+            return conn.execute(USAGE_SQL, (clock.to_iso(since),)).fetchall()
+    except sqlite3.Error:
+        return None  # an older database without the table
+
+
+def _usage() -> int:
+    now = clock.now()
+    periods = (
+        ("Today (since 00:00 UTC)", now.replace(hour=0, minute=0, second=0, microsecond=0)),
+        ("Last 30 days", now - timedelta(days=30)),
+    )
+    for title, since in periods:
+        rows = usage_since(since)
+        _say(f"{title}:")
+        if not rows:
+            _say("  no model calls")
+            continue
+        for provider, model, requests, failed, tokens_in, tokens_out in rows:
+            _say(
+                f"  {provider} / {model}: {requests} requests ({failed} failed), "
+                f"{tokens_in} tokens in, {tokens_out} out"
+            )
+    return 0
+
+
 # --- The command -------------------------------------------------------------
 
 
@@ -163,6 +205,7 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("serve", help="start the service")
     commands.add_parser("token", help="show the token clients connect with")
     commands.add_parser("doctor", help="check that everything is in order")
+    commands.add_parser("usage", help="model requests and tokens used lately")
     config = commands.add_parser("config", help="about the config file")
     config_commands = config.add_subparsers(dest="config_command", required=True)
     config_commands.add_parser("path", help="show where the config file is")
@@ -181,6 +224,8 @@ def main(
         return 0
     if arguments.command == "doctor":
         return _doctor(probe)
+    if arguments.command == "usage":
+        return _usage()
     _say(str(config_path()))
     return 0
 

@@ -9,6 +9,7 @@ from zero.core.attachments import prepare_for_model
 from zero.core.compaction import compact
 from zero.core.context import build_system_prompt, keep_from, to_history
 from zero.core.events import EventBus
+from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
 from zero.providers.base import LLMProvider, Message
 from zero.store.memory import Memory
@@ -49,6 +50,7 @@ class PromptBuilder:
         memory: MemorySource | None = None,
         summaries: SummariesRepo | None = None,
         agent_name: str | None = None,
+        usage: UsageRecorder | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -60,6 +62,7 @@ class PromptBuilder:
         self._memory = memory
         self._summaries = summaries
         self._agent_name = agent_name
+        self._usage = usage
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -80,6 +83,7 @@ class PromptBuilder:
                 provider=self._provider,
                 model=self._config.provider.model,
                 events=self._events,
+                usage=self._usage,
             )
         system = build_system_prompt(
             self._client,

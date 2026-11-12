@@ -101,6 +101,7 @@ async def handle_message_send(
             model=state.config.provider.model,
             sessions=state.sessions,
             events=state.events,
+            usage=state.usage,
         )
     state.turns.start(
         make_turn(

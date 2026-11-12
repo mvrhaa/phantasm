@@ -21,6 +21,7 @@ from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
 from zero.store.tool_runs import ToolRunsRepo
+from zero.store.usage import UsageRepo
 from zero.tools.base import ToolRegistry
 from zero.tools.client_actions import ActionBroker
 
@@ -45,6 +46,7 @@ class AppState:
     memory: MemoryRepo
     schedules: SchedulesRepo
     summaries: SummariesRepo
+    usage: UsageRepo  # every call to a model
     agents: AgentsRepo
     agent_runner: AgentRunner
     scheduler: SchedulerRunner
