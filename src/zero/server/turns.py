@@ -7,7 +7,7 @@ from zero.agents.runner import AgentApprovals
 from zero.approvals.manager import Approver
 from zero.core.events import ReplyTo
 from zero.core.turn import Turn
-from zero.protocol.messages import AgentRef, ClientInfo, FilePart, SessionCreated, SessionInfo
+from zero.protocol.messages import AgentRef, ClientInfo, FilePart, SessionCreated
 from zero.providers.base import LLMProvider
 from zero.server.state import AppState
 from zero.store.agents import Agent
@@ -77,9 +77,10 @@ async def start_scheduled_turn(state: AppState, schedule: Schedule) -> None:
     if session is None:
         task = schedule.task
         title = task if len(task) <= TITLE_CHARS else task[: TITLE_CHARS - 1] + "…"
-        session = await state.sessions.create(f"Scheduled: {title}", session_id=session_id)
-        info = SessionInfo(id=session.id, title=session.title, updated_at=session.updated_at)
-        await state.events.publish(SessionCreated(session=info))
+        session = await state.sessions.create(
+            f"Scheduled: {title}", session_id=session_id, kind="scheduled"
+        )
+        await state.events.publish(SessionCreated(session=session.info()))
     if state.turns.busy(session.id):
         logger.warning("Schedule %s skipped: its previous turn is still running", schedule.id)
         return

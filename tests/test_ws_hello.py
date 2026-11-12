@@ -67,7 +67,7 @@ def test_hello_ok_lists_sessions_newest_first(
 
     assert [s["id"] for s in sessions] == [newer.id, older.id]
     assert [s["title"] for s in sessions] == ["newer", "older"]
-    assert set(sessions[0]) == {"id", "title", "updated_at"}
+    assert set(sessions[0]) == {"id", "title", "updated_at", "kind"}
 
 
 def test_hello_stores_the_declaration_on_the_connection(

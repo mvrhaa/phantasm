@@ -6,7 +6,7 @@ import logging
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.model_call import UsageRecorder, metered
-from zero.protocol.messages import SessionInfo, SessionUpdated, TextPart
+from zero.protocol.messages import SessionUpdated, TextPart
 from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
 from zero.providers.fake import FakeProvider
 from zero.store.sessions import SessionsRepo
@@ -111,8 +111,4 @@ async def title_new_session(
     titled = await sessions.set_title_if_missing(session_id, title)
     if titled is None:
         return
-    await events.publish(
-        SessionUpdated(
-            session=SessionInfo(id=titled.id, title=titled.title, updated_at=titled.updated_at)
-        )
-    )
+    await events.publish(SessionUpdated(session=titled.info()))

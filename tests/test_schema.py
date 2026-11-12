@@ -118,7 +118,7 @@ async def test_migration_2_keeps_existing_tool_runs(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("table", "expected"),
     [
-        ("sessions", {"id", "title", "created_at", "updated_at", "archived"}),
+        ("sessions", {"id", "title", "created_at", "updated_at", "archived", "kind"}),
         (
             "messages",
             {

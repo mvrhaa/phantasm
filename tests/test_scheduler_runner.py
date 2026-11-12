@@ -148,6 +148,7 @@ def test_a_due_schedule_runs_a_turn_in_its_own_session(frozen_clock: Any) -> Non
         "id": f"scheduled-{schedule.id}",
         "title": "Scheduled: drink water",
         "updated_at": created["session"]["updated_at"],
+        "kind": "scheduled",
     }
     assert (started["type"], started["source"]) == ("turn.started", "scheduler")
     assert finished["text"] == "echo: drink water"

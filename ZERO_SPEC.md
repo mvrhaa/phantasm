@@ -266,7 +266,7 @@ Zero → клиент:
 | `expression` | `pose`, `mood` — можно слать посреди хода |
 | `file` | `call_id?`, `file: ContentPart file` — пользователю отдали файл (например, через `send_file`); клиент показывает его в чате |
 | `turn.finished` | `status: "ok"\|"error"\|"cancelled"\|"max_steps"`, `text` (весь текст хода: склейка всех `text.delta` без разделителей), `expression: {pose, mood}`, `usage: {input_tokens, output_tokens}`, `error?` |
-| `session.created` / `session.updated` / `session.deleted` | данные сессии |
+| `session.created` / `session.updated` / `session.deleted` | данные сессии: `{id, title, updated_at, kind}`, где `kind` — `chat` (разговор пользователя), `agent` или `scheduled`, чтобы клиент мог держать служебные сессии отдельно |
 | `todo.updated` | `session_id`, `items: [{number, text, status}]` — весь список после изменения (этап 6) |
 | `session.compacted` | `session_id`, `summary`, `until_message_id` — начало истории сжато в саммари (этап 6) |
 | `agent.updated` | `agent: {id, name, parent_session_id, session_id?, task, status, report?, created_at, updated_at}` — агент запущен или сменил статус (этап 7) |
@@ -558,6 +558,8 @@ CREATE TABLE todos (id, session_id, number, text, status, created_at, updated_at
 CREATE TABLE schedules (id, task, rule_json, rule_text, timezone, next_run_at, last_run_at,
   enabled, created_at);            -- next_run_at NULL у отработавшего разового
 CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, updated_at);
+
+-- 0009_session_kinds: sessions.kind TEXT NOT NULL DEFAULT 'chat' — chat | agent | scheduled
 
 -- 0008_model_calls: каждый запрос к модели (без внешнего ключа: учёт переживает сессии)
 CREATE TABLE model_calls (id, provider, model, purpose, session_id, input_tokens,

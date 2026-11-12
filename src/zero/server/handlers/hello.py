@@ -12,7 +12,7 @@ CLOSE_PROTOCOL_MISMATCH = 4400
 
 def session_info(session: Session) -> SessionInfo:
     """Convert a stored session into what clients are told about it."""
-    return SessionInfo(id=session.id, title=session.title, updated_at=session.updated_at)
+    return session.info()
 
 
 async def handle_hello(connection: Connection, message: Hello, state: AppState) -> None:

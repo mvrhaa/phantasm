@@ -7,6 +7,7 @@ import aiosqlite
 from pydantic import BaseModel
 
 from zero import clock
+from zero.protocol.messages import SessionInfo, SessionKind
 from zero.store.db import Database
 
 
@@ -18,6 +19,11 @@ class Session(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived: bool = False
+    kind: SessionKind = "chat"
+
+    def info(self) -> SessionInfo:
+        """What clients are told about this session."""
+        return SessionInfo(id=self.id, title=self.title, updated_at=self.updated_at, kind=self.kind)
 
 
 def _to_session(row: aiosqlite.Row) -> Session:
@@ -27,6 +33,7 @@ def _to_session(row: aiosqlite.Row) -> Session:
         created_at=clock.from_iso(row["created_at"]),
         updated_at=clock.from_iso(row["updated_at"]),
         archived=bool(row["archived"]),
+        kind=row["kind"],
     )
 
 
@@ -36,19 +43,29 @@ class SessionsRepo:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    async def create(self, title: str | None = None, *, session_id: str | None = None) -> Session:
+    async def create(
+        self,
+        title: str | None = None,
+        *,
+        session_id: str | None = None,
+        kind: SessionKind = "chat",
+    ) -> Session:
         """Create a session, optionally with a title, and return it.
 
         The id is a new UUID unless ``session_id`` names one, as the scheduler
-        does for the session of a schedule.
+        does for the session of a schedule. ``kind`` says what the session is for.
         """
         now = clock.now()
         session = Session(
-            id=session_id or str(uuid.uuid4()), title=title, created_at=now, updated_at=now
+            id=session_id or str(uuid.uuid4()),
+            title=title,
+            created_at=now,
+            updated_at=now,
+            kind=kind,
         )
         await self._db.conn.execute(
-            "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (session.id, session.title, clock.to_iso(now), clock.to_iso(now)),
+            "INSERT INTO sessions (id, title, created_at, updated_at, kind) VALUES (?, ?, ?, ?, ?)",
+            (session.id, session.title, clock.to_iso(now), clock.to_iso(now), kind),
         )
         await self._db.conn.commit()
         return session

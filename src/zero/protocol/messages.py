@@ -219,12 +219,19 @@ ClientMessage = Annotated[
 # --- Zero -> client: shared pieces -------------------------------------------
 
 
+SessionKind = Literal["chat", "agent", "scheduled"]
+
+
 class SessionInfo(BaseModel):
-    """What clients are told about a session."""
+    """What clients are told about a session.
+
+    ``kind`` keeps the user's chats apart from the sessions of agents and schedules.
+    """
 
     id: str
     title: str | None = None
     updated_at: datetime
+    kind: SessionKind = "chat"
 
 
 class ExpressionState(BaseModel):

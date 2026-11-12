@@ -20,7 +20,6 @@ from zero.protocol.messages import (
     AgentUpdated,
     SessionCreated,
     SessionDeleted,
-    SessionInfo,
     TextPart,
     TurnFinished,
 )
@@ -91,14 +90,13 @@ class AgentRunner:
                 f"{at_work} agents are already at work and the limit is {self._max_agents}; "
                 "wait for one to finish or stop one"
             )
-        session = await self._sessions.create(f"Agent: {' '.join(name.split())}")
+        session = await self._sessions.create(f"Agent: {' '.join(name.split())}", kind="agent")
         try:
             agent = await self._agents.add(name, parent_session_id, session.id, task)
         except ValueError as exc:
             await self._sessions.delete(session.id)
             raise AgentError(str(exc)) from exc
-        info = SessionInfo(id=session.id, title=session.title, updated_at=session.updated_at)
-        await self._events.publish(SessionCreated(session=info))
+        await self._events.publish(SessionCreated(session=session.info()))
         await self._announce(agent)
         logger.info("Agent %s (%s) started by session %s", agent.id, agent.name, parent_session_id)
         await self._start_turn(agent, agent.task)
