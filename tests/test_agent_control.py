@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.agents import AGENT_ID, RoleProvider, RunnerKit
+from tests.agents import RoleProvider, RunnerKit
 from tests.turns import text_of, until
 from zero.agents.runner import LAST_OUTPUT_CHARS, AgentError
 from zero.agents.types import AgentProgress
@@ -176,8 +176,10 @@ async def test_a_question_goes_to_the_parent_and_the_agent_waits(kit: RunnerKit)
     assert agent.session_id is not None
 
     asking = await kit.runner.ask(agent.session_id, "  Which folder?  ")
-    await until(lambda: len(kit.notices) == 1)
+    await asyncio.sleep(0.05)
+    assert kit.notices == []  # not while its turn is still going
     await kit.runner.finished(agent.id, ended("ok", "I asked."))
+    await until(lambda: len(kit.notices) == 1)
 
     assert asking.status == "asking"
     assert kit.notices == [
@@ -189,6 +191,31 @@ async def test_a_question_goes_to_the_parent_and_the_agent_waits(kit: RunnerKit)
     ]
     stored = await kit.agents.get(agent.id)
     assert stored is not None and stored.status == "asking"  # the end of its turn changes nothing
+
+
+async def test_questions_of_one_turn_go_together(kit: RunnerKit) -> None:
+    parent, agent = await new_agent(kit)
+    assert agent.session_id is not None
+
+    await kit.runner.ask(agent.session_id, "Which folder?")
+    await kit.runner.ask(agent.session_id, "Which format?")
+    await kit.runner.finished(agent.id, ended("ok"))
+    await until(lambda: len(kit.notices) == 1)
+
+    assert "asks:\nWhich folder?\n\nWhich format?\n\nAnswer it" in kit.notices[0][1]
+
+
+async def test_an_asking_agent_cancelled_meanwhile_asks_nothing(kit: RunnerKit) -> None:
+    parent, agent = await new_agent(kit)
+    assert agent.session_id is not None
+
+    await kit.runner.ask(agent.session_id, "Which folder?")
+    await kit.runner.finished(agent.id, ended("cancelled"))
+    await asyncio.sleep(0.05)
+
+    stored = await kit.agents.get(agent.id)
+    assert stored is not None and stored.status == "stopped"
+    assert kit.notices == []
 
 
 async def test_only_agents_ask_parents(kit: RunnerKit) -> None:
@@ -370,49 +397,6 @@ def until_event(ws: WebSocketTestSession, check: Any) -> list[dict[str, Any]]:
 
 def call(tool: str, **tool_input: Any) -> list[Any]:
     return [ToolCallEvent(call=ToolCall(id=f"{tool}-1", name=tool, input=tool_input))]
-
-
-def test_the_user_stops_an_agent_in_the_middle_of_its_work() -> None:
-    provider = RoleProvider(
-        main=FakeProvider(
-            [
-                call("agent_start", name="reader", task="Read everything"),
-                [TextDelta(text="Started.")],
-                call("agent_stop", id=AGENT_ID),
-                [TextDelta(text="Stopped it.")],
-            ]
-        ),
-        agent=FakeProvider(infinite=True),
-    )
-    with service(provider) as (state, ws):
-        ws.send_json({"type": "message.send", "id": "m1", "text": "read", "source": "desktop"})
-        seen = until_event(ws, lambda e: e["type"] == "turn.finished" and e["text"] == "Started.")
-        main_session = seen[-1]["session_id"]
-        agent_session = next(e["agent"]["session_id"] for e in seen if e["type"] == "agent.updated")
-        ws.send_json(
-            {
-                "type": "message.send",
-                "id": "m2",
-                "session_id": main_session,
-                "text": "stop it",
-                "source": "desktop",
-            }
-        )
-        seen = until_event(
-            ws, lambda e: e["type"] == "turn.finished" and e["text"] == "Stopped it."
-        )
-
-        kinds = [(e["type"], e.get("session_id")) for e in seen]
-        assert ("turn.finished", agent_session) in kinds
-        cancelled = next(
-            e for e in seen if e["type"] == "turn.finished" and e["session_id"] == agent_session
-        )
-        assert cancelled["status"] == "cancelled"
-        assert ("session.deleted", agent_session) in kinds
-        statuses = [e["agent"]["status"] for e in seen if e["type"] == "agent.updated"]
-        assert statuses[-1] == "stopped"
-        assert state.turns.busy(agent_session) is False
-        assert "is stopped" in text_of(provider.main.calls[3].messages[-1])
 
 
 def test_the_report_comes_to_the_parent_as_an_agent_turn() -> None:

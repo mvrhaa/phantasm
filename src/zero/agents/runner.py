@@ -78,6 +78,7 @@ class AgentRunner:
         self._start_notice = start_notice
         self._max_agents = max_agents
         self._deliveries: set[asyncio.Task[None]] = set()
+        self._questions: dict[str, list[str]] = {}  # asked during a turn that is not over yet
         self._closed = False
 
     async def start(self, name: str, task: str, parent_session_id: str) -> Agent:
@@ -144,29 +145,37 @@ class AgentRunner:
         return stopped
 
     async def ask(self, session_id: str, question: str) -> Agent:
-        """An agent asks the session that started it; the answer comes as an ``agent_message``."""
+        """An agent asks the session that started it; the answer comes as an ``agent_message``.
+
+        The question goes out once the agent's turn is over, so the agent is
+        free to take the answer as soon as the parent sees the question.
+        """
         agent = await self._agents.by_session(session_id)
         if agent is None:
             raise AgentError("only agents can ask the conversation that started them")
-        asking = await self._set(agent, "asking")
-        self._deliver(
-            agent.parent_session_id,
-            f"{_who(agent)} asks:\n{question.strip()}\n\n"
-            "Answer it with agent_message, or ask the user first if only they know.",
-        )
-        return asking
+        self._questions.setdefault(agent.id, []).append(question.strip())
+        return await self._set(agent, "asking")
 
     async def finished(self, agent_id: str, result: TurnFinished | None) -> None:
-        """Record how an agent's turn ended and tell its parent about a report or a failure.
+        """Record how an agent's turn ended and tell its parent what it has to say.
 
-        Only a working agent changes here: one that asked a question keeps
-        waiting for the answer, and one that was stopped stays stopped.
+        That is its questions if it asked any (it keeps waiting for the answer),
+        otherwise its report or its failure. A stopped agent stays stopped.
         """
+        questions = self._questions.pop(agent_id, [])
         agent = await self._agents.get(agent_id)
-        if agent is None or agent.status != "working":
+        if agent is None or agent.status not in ("working", "asking"):
             return
-        if result is not None and result.status == "cancelled":
+        cancelled = result is not None and result.status == "cancelled"
+        if cancelled:
             await self._set(agent, "stopped")
+        elif agent.status == "asking":
+            if questions:
+                self._deliver(
+                    agent.parent_session_id,
+                    f"{_who(agent)} asks:\n" + "\n\n".join(questions) + "\n\n"
+                    "Answer it with agent_message, or ask the user first if only they know.",
+                )
         elif result is None or result.status == "error":
             error = (result.error if result is not None else None) or "internal error"
             failed = await self._set(agent, "failed", error)
