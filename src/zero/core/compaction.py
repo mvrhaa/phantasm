@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
-from zero.core.model_call import UsageRecorder, metered
+from zero.core.model_call import RETRY_DELAYS_S, UsageRecorder, metered, with_retries
 from zero.protocol.messages import SessionCompacted, TextPart
 from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
 from zero.providers.fake import FakeProvider
@@ -109,17 +109,23 @@ async def summarize(
     *,
     session_id: str | None = None,
     usage: UsageRecorder | None = None,
+    retry_delays: Sequence[float] = RETRY_DELAYS_S,
 ) -> str:
     """Fold ``messages`` into ``previous``; falls back to a digest if the model cannot help.
 
-    The model call goes into ``usage`` as a ``summary``.
+    A failure worth retrying is retried like in a turn, within the time limit.
+    Every model call goes into ``usage`` as a ``summary``.
     """
     if isinstance(provider, FakeProvider):
         return digest(previous, messages)
+
+    async def attempt() -> str:
+        call = ModelCall(provider.name, model, "summary", session_id)
+        return await _ask_model(provider, model, previous, messages, call, usage)
+
     try:
         async with asyncio.timeout(SUMMARY_TIMEOUT_S):
-            call = ModelCall(provider.name, model, "summary", session_id)
-            text = await _ask_model(provider, model, previous, messages, call, usage)
+            text = await with_retries(attempt, retry_delays)
     except (ProviderError, TimeoutError) as exc:
         logger.warning("No summary from the model (%s); using a digest", str(exc) or "timeout")
         return digest(previous, messages)

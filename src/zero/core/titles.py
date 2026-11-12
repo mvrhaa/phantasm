@@ -2,10 +2,11 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
-from zero.core.model_call import UsageRecorder, metered
+from zero.core.model_call import RETRY_DELAYS_S, UsageRecorder, metered, with_retries
 from zero.protocol.messages import SessionUpdated, TextPart
 from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
 from zero.providers.fake import FakeProvider
@@ -67,20 +68,26 @@ async def make_title(
     *,
     session_id: str | None = None,
     usage: UsageRecorder | None = None,
+    retry_delays: Sequence[float] = RETRY_DELAYS_S,
 ) -> str:
     """A short title for a conversation that starts with ``text``.
 
     FakeProvider cannot write titles, so its sessions get the first words of
-    the message. The same words are used when a real model fails, takes too
-    long or answers with nothing. An empty message gives an empty title.
+    the message. The same words are used when a real model fails (after the
+    same retries as a turn), takes too long or answers with nothing. An empty
+    message gives an empty title.
     """
     fallback = first_words(text)
     if isinstance(provider, FakeProvider) or not fallback:
         return fallback
+
+    async def attempt() -> str:
+        call = ModelCall(provider.name, model, "title", session_id)
+        return await _ask_model(provider, model, text, call, usage)
+
     try:
         async with asyncio.timeout(TITLE_TIMEOUT_S):
-            call = ModelCall(provider.name, model, "title", session_id)
-            raw = await _ask_model(provider, model, text, call, usage)
+            raw = await with_retries(attempt, retry_delays)
     except (ProviderError, TimeoutError) as exc:
         logger.warning("No title from the model (%s); using the first words", str(exc) or "timeout")
         return fallback

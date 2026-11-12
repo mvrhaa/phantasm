@@ -8,7 +8,7 @@ day and Zero has to know how much it has used.
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -33,6 +33,33 @@ RETRY_DELAYS_S: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)  # free plans fail ofte
 MAX_RETRY_AFTER_S = 60.0  # a provider that wants a longer pause gets the error instead
 
 logger = logging.getLogger(__name__)
+
+
+def retry_wait(exc: ProviderError, delay: float) -> float | None:
+    """How long to wait before trying again after ``exc``, or None to give up.
+
+    The provider's own word wins over ``delay``; a wait longer than
+    ``MAX_RETRY_AFTER_S`` is not worth sitting through.
+    """
+    if not exc.retryable:
+        return None
+    wait = delay if exc.retry_after is None else exc.retry_after
+    return None if wait > MAX_RETRY_AFTER_S else wait
+
+
+async def with_retries[T](attempt: Callable[[], Awaitable[T]], delays: Sequence[float]) -> T:
+    """Run ``attempt``, and again after each of ``delays`` while it fails in a way
+    worth retrying. For requests nobody watches as they stream: titles, summaries."""
+    for delay in delays:
+        try:
+            return await attempt()
+        except ProviderError as exc:
+            wait = retry_wait(exc, delay)
+            if wait is None:
+                raise
+            logger.info("Trying again in %.1f s after: %s", wait, exc.message)
+            await asyncio.sleep(wait)
+    return await attempt()
 
 
 class UsageRecorder(Protocol):
@@ -116,10 +143,8 @@ class ModelCaller:
             try:
                 return await self._stream(prompt, tools, progress)
             except ProviderError as exc:
-                if not exc.retryable or progress.step_text:
-                    raise
-                wait = delay if exc.retry_after is None else exc.retry_after
-                if wait > MAX_RETRY_AFTER_S:
+                wait = retry_wait(exc, delay)
+                if wait is None or progress.step_text:
                     raise
                 logger.warning(
                     "Turn %s: trying again in %.1f s after: %s", self._turn_id, wait, exc.message

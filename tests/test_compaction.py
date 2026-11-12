@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.turns import Audience, Harness, RecordingClient, text_of
+from tests.turns import NO_DELAYS, Audience, Harness, RecordingClient, text_of
 from zero.config import Config
 from zero.core import compaction
 from zero.core.compaction import compact, digest, summarize, transcript
@@ -151,9 +151,35 @@ async def test_digest_when_the_model_cannot_help(stores: Any, writer: Writer) ->
     session = await sessions.create()
     await chat(messages, session.id, ("hi", "hello"))
 
-    assert await summarize(writer, "m", None, await messages.list(session.id)) == (
-        "User: hi\nAssistant: hello"
+    stored = await messages.list(session.id)
+
+    summary = await summarize(writer, "m", None, stored, retry_delays=NO_DELAYS)
+
+    assert summary == "User: hi\nAssistant: hello"
+
+
+class FailsFirst(Writer):
+    """A Writer whose first answer is a failure worth retrying."""
+
+    async def stream(self, *args: Any, **kwargs: Any) -> Any:
+        if not self.requests:
+            self.requests.append([])
+            raise ProviderError("google answered 500", retryable=True)
+        async for event in super().stream(*args, **kwargs):
+            yield event
+
+
+async def test_the_summary_is_retried_like_a_turn(stores: Any) -> None:
+    sessions, messages, _ = stores
+    session = await sessions.create()
+    await chat(messages, session.id, ("hi", "hello"))
+    writer = FailsFirst("Said hello.")
+
+    summary = await summarize(
+        writer, "m", None, await messages.list(session.id), retry_delays=NO_DELAYS
     )
+
+    assert summary == "Said hello." and len(writer.requests) == 2
 
 
 # --- The cut -----------------------------------------------------------------

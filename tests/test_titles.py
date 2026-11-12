@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.turns import Harness, text_of
+from tests.turns import NO_DELAYS, Harness, text_of
 from zero.config import Config
 from zero.core import titles
 from zero.core.titles import (
@@ -31,6 +31,7 @@ from zero.providers.base import (
 from zero.providers.fake import FakeProvider
 from zero.server.app import create_app
 from zero.server.state import get_state
+from zero.store.usage import ModelCall
 
 LONG_MESSAGE = "plan a trip to Rome next spring with three friends"
 
@@ -147,7 +148,51 @@ async def test_only_the_start_of_a_long_message_is_sent() -> None:
     ids=["provider error", "no answer", "blank answer"],
 )
 async def test_first_words_are_the_fallback(provider: TitleWriter) -> None:
-    assert await make_title(provider, "model-x", LONG_MESSAGE) == "plan a trip to Rome next"
+    title = await make_title(provider, "model-x", LONG_MESSAGE, retry_delays=NO_DELAYS)
+
+    assert title == "plan a trip to Rome next"
+
+
+class Flaky(TitleWriter):
+    """Fails ``times`` times with ``error``, then writes its title."""
+
+    def __init__(self, title: str, times: int, error: ProviderError) -> None:
+        super().__init__(title)
+        self.times = times
+        self.failure = error
+
+    async def stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[StreamEvent]:
+        if self.times:
+            self.times -= 1
+            raise self.failure
+        async for event in super().stream(*args, **kwargs):
+            yield event
+
+
+class Calls:
+    def __init__(self) -> None:
+        self.ok: list[bool] = []
+
+    async def record(self, call: ModelCall) -> None:
+        self.ok.append(call.ok)
+
+
+async def test_a_failure_worth_retrying_is_retried_like_in_a_turn() -> None:
+    provider = Flaky("Trip to Rome", times=2, error=ProviderError("500", retryable=True))
+    calls = Calls()
+
+    title = await make_title(provider, "model-x", LONG_MESSAGE, usage=calls, retry_delays=NO_DELAYS)
+
+    assert title == "Trip to Rome"
+    assert calls.ok == [False, False, True]  # every attempt is counted
+
+
+async def test_a_final_failure_is_not_retried() -> None:
+    provider = Flaky("Trip to Rome", times=1, error=ProviderError("bad key"))
+
+    title = await make_title(provider, "model-x", LONG_MESSAGE, retry_delays=NO_DELAYS)
+
+    assert title == "plan a trip to Rome next" and provider.times == 0
 
 
 async def test_slow_model_falls_back_to_the_first_words(monkeypatch: pytest.MonkeyPatch) -> None:
