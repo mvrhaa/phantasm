@@ -169,5 +169,6 @@ def test_doctor_lists_every_check(capsys: pytest.CaptureFixture[str]) -> None:
         "token",
         "port",
         "provider",
+        "key",
         "ripgrep",
     ]

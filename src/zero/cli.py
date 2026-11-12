@@ -2,7 +2,7 @@
 
 zero serve          start the service (the same as ``python -m zero``)
 zero token          show the local token clients connect with
-zero doctor         check folders, config, database, token, port and provider
+zero doctor         check folders, config, database, token, port, provider and API key
 zero usage          how many model requests and tokens were used today and in 30 days
 zero config path    show where the config file is
 """
@@ -25,6 +25,7 @@ from zero.__main__ import main as serve
 from zero.config import Config, ConfigError, load_config
 from zero.paths import config_path, db_path, files_dir, home_dir, logs_dir, token_path
 from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.secrets import KEY_NAMES, api_key, env_file, open_to_others
 from zero.server.auth import get_or_create_token
 from zero.store.db import MIGRATIONS_DIR
 
@@ -125,6 +126,22 @@ def check_provider(config: Config) -> Check:
     return Check("ok", "provider", f"{provider.name}, model {config.provider.model}")
 
 
+def check_api_key(config: Config) -> Check:
+    """The provider's key is in the .env file, and only its owner can read the file.
+
+    The key itself is never shown.
+    """
+    path = env_file()
+    if open_to_others(path):
+        return Check("fail", "key", f"{path} can be read by others; run chmod 600 on it")
+    name = KEY_NAMES.get(config.provider.name)
+    if name is None:
+        return Check("ok", "key", f"none needed for the {config.provider.name} provider")
+    if api_key(config.provider.name) is None:
+        return Check("fail", "key", f"{name} is missing in {path}")
+    return Check("ok", "key", f"{name} found in {path}")
+
+
 def check_ripgrep() -> Check:
     """ripgrep makes search_files faster; without it a Python search is used."""
     found = shutil.which("rg")
@@ -140,7 +157,7 @@ def doctor(probe: Callable[[str, int], object] | None = None) -> list[Check]:
     config_check, config = check_config()
     checks += [config_check, check_database(), check_token()]
     if config is not None:
-        checks += [check_port(config, probe), check_provider(config)]
+        checks += [check_port(config, probe), check_provider(config), check_api_key(config)]
     checks.append(check_ripgrep())
     return checks
 

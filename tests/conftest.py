@@ -18,8 +18,12 @@ from zero.store.sessions import SessionsRepo
 
 @pytest.fixture(autouse=True)
 def zero_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point ZERO_HOME at a temporary directory so tests never touch real app data."""
+    """Point ZERO_HOME at a temporary directory so tests never touch real app data.
+
+    The .env file moves next to it, so no test ever reads the real API keys.
+    """
     monkeypatch.setenv("ZERO_HOME", str(tmp_path))
+    monkeypatch.setenv("ZERO_ENV_FILE", str(tmp_path.parent / f"{tmp_path.name}.env"))
     return tmp_path
 
 

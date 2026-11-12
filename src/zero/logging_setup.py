@@ -8,6 +8,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from zero.paths import logs_dir
+from zero.secrets import mask_secrets
 
 LOG_ENV = "ZERO_LOG"
 LOG_FILE_NAME = "zero.log"
@@ -31,12 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 class RedactTokenFilter(logging.Filter):
-    """Hide the access token when a URL with ``?token=`` gets logged."""
+    """Hide the access token in URLs with ``?token=`` and every API key from the .env file."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
-        if "token=" in message.lower():
-            record.msg = _TOKEN_IN_URL.sub(r"\1***", message)
+        cleaned = mask_secrets(message)
+        if "token=" in cleaned.lower():
+            cleaned = _TOKEN_IN_URL.sub(r"\1***", cleaned)
+        if cleaned != message:
+            record.msg = cleaned
             record.args = None
         return True
 

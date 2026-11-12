@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Self
 
 from zero.config import PermissionsConfig, Policy
+from zero.secrets import env_file
 
 _RELATIVE_HINT = "use an absolute path or one that starts with ~"
 
@@ -65,8 +66,11 @@ class PathGuard:
 
     @classmethod
     def from_config(cls, permissions: PermissionsConfig) -> Self:
-        """The guard described by the ``permissions`` section of the config."""
-        return cls(permissions.allowed_roots, permissions.denied_paths)
+        """The guard described by the ``permissions`` section of the config.
+
+        The .env file with the API keys is always denied, whatever the config says.
+        """
+        return cls(permissions.allowed_roots, [*permissions.denied_paths, env_file()])
 
     def check(self, raw: str | Path) -> Path:
         """Return the resolved path if tools may use it, otherwise raise ``PathDenied``.

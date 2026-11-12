@@ -115,7 +115,7 @@ class Config(_Section):
     @classmethod
     def _secrets_must_be_empty(cls, value: dict[str, Any]) -> dict[str, Any]:
         if value:
-            raise ValueError("secrets is reserved and must stay empty; keys belong in the Keychain")
+            raise ValueError("secrets is reserved and must stay empty; API keys belong in .env")
         return value
 
 

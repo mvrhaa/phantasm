@@ -20,6 +20,7 @@ from zero.protocol.messages import (
     TextPart,
 )
 from zero.providers.base import ToolCall, ToolSpec
+from zero.secrets import mask_secrets
 from zero.tools.permissions import PathGuard, decide
 
 MAX_OUTPUT_CHARS = 30_000
@@ -168,8 +169,11 @@ def truncate_text(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
 
 
 def _truncated(result: ToolResult) -> ToolResult:
+    """The result cut to size, with any API key from the .env file masked."""
     content: list[ContentPart] = [
-        TextPart(text=truncate_text(part.text)) if isinstance(part, TextPart) else part
+        TextPart(text=truncate_text(mask_secrets(part.text)))
+        if isinstance(part, TextPart)
+        else part
         for part in result.content
     ]
     return replace(result, content=content)
@@ -306,5 +310,6 @@ class ToolRegistry:
             return cancelled_result()
         except Exception as exc:
             logger.warning("Tool %s failed: %s", call.name, type(exc).__name__)
-            return error_result(f"Tool {call.name!r} failed: {str(exc) or type(exc).__name__}")
+            reason = mask_secrets(str(exc)) or type(exc).__name__
+            return error_result(f"Tool {call.name!r} failed: {reason}")
         return _truncated(result)
