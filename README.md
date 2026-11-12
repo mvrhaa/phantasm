@@ -2,17 +2,36 @@
 
 Зеро (Zero) — локальный «мозг» ИИ-компаньона для macOS. Это фоновый Python-сервис на `127.0.0.1`, к которому по WebSocket подключаются клиенты («тела»). Мозг ведёт agent loop, владеет сессиями, памятью, инструментами и подтверждениями.
 
-Проект в разработке. Текущий этап смотри в [ROADMAP.md](ROADMAP.md) и `git log`.
+Версия 0.1.0: протокол, инструменты с подтверждениями, память, расписания, фоновые агенты и реальная модель — Gemma 4 через Google AI Studio. Дальше по плану — уведомления и Telegram (M9 в [ROADMAP.md](ROADMAP.md)).
 
 ## Документы
 
 - [ZERO_SPEC.md](ZERO_SPEC.md) — спецификация: архитектура, протокол, форматы.
 - [ROADMAP.md](ROADMAP.md) — порядок работы: 75 коммитов, 9 майлстоунов.
+- [docs/protocol.md](docs/protocol.md) — справочник протокола для клиентов: все сообщения с полями и примерами.
 
 ## Требования
 
 - macOS
 - [uv](https://docs.astral.sh/uv/) — Python 3.12 он поставит сам
+
+## Установка
+
+```bash
+git clone https://github.com/mvrhaa/zero && cd zero
+uv sync              # Python 3.12 и зависимости
+uv run zero doctor   # всё ли на месте
+```
+
+## Модель
+
+Провайдер и модель задаются в `config.json` (`uv run zero config path` покажет, где он):
+
+```json
+"provider": { "name": "google", "model": "gemma-4-31b-it" }
+```
+
+Пресеты: `google`, `openrouter`, `mistral`, `ollama`. Заголовки сессий и саммари пишет лёгкая модель `small_model` (у `google` по умолчанию `gemma-4-26b-a4b-it`). Без настройки работает `fake` — эхо для разработки и тестов.
 
 ## Команды
 
@@ -23,6 +42,7 @@ curl 127.0.0.1:47400/health                           # проверка, что
 uv run python scripts/ws_client.py                    # ручной клиент протокола (нужен запущенный сервис)
 uv run pytest -q                                      # тесты
 uv run ruff check . && uv run ruff format --check .   # линт и формат
+uv run python scripts/gen_protocol_docs.py            # пересобрать docs/protocol.md
 ```
 
 ## Команда `zero`
@@ -33,6 +53,7 @@ uv run ruff check . && uv run ruff format --check .   # линт и формат
 uv run zero serve          # запуск сервиса (то же, что python -m zero)
 uv run zero token          # показать токен для клиентов
 uv run zero doctor         # проверить папки, конфиг, БД, токен, порт и провайдер
+uv run zero usage          # сколько запросов и токенов ушло на модель
 uv run zero config path    # где лежит config.json
 ```
 
