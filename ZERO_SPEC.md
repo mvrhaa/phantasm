@@ -96,7 +96,7 @@ zero/
         memory.py            # memory_save, memory_search, memory_delete
         todo.py              # todo_* (этап 6)
         schedule.py          # schedule_* (этап 6)
-        agents.py            # agent_* (этап 7)
+        agents.py            # agent_* и ask_parent (этап 7)
       client_actions.py      # прокси для действий, объявленных клиентом
       permissions.py         # политики allow/ask/deny, sandbox путей
     approvals/
@@ -111,7 +111,7 @@ zero/
       todo.py, schedules.py, summaries.py   # этап 6
     scheduler/               # этап 6: rules.py (разбор «когда»), runner.py (фоновый запуск)
     gateways/telegram.py     # этап 9: Telegram-бот (телефон и уведомления)
-    agents/                  # этап 7
+    agents/                  # этап 7: runner.py (запуск, сообщения, остановка, доставка), types.py
   tests/
     conftest.py
     test_protocol.py
@@ -268,6 +268,9 @@ Zero → клиент:
 | `session.created` / `session.updated` / `session.deleted` | данные сессии |
 | `todo.updated` | `session_id`, `items: [{number, text, status}]` — весь список после изменения (этап 6) |
 | `session.compacted` | `session_id`, `summary`, `until_message_id` — начало истории сжато в саммари (этап 6) |
+| `agent.updated` | `agent: {id, name, parent_session_id, session_id?, task, status, report?, created_at, updated_at}` — агент запущен или сменил статус (этап 7) |
+
+События хода агента (включая `approval.request` и `approval.resolved`) несут `agent: {id, name}`, чтобы клиент показал, кто действует и кто спрашивает. У обычных ходов этого поля нет.
 | `error` | `code`, `message`, `reply_to?` |
 
 ### 6.5 ContentPart
@@ -446,6 +449,11 @@ class ToolResult:
 | `schedule_create(task, when, timezone?)` | allow | `when`: `in 2m`, `at 2026-11-12T15:30`, `every 30m` (не чаще раза в минуту), `daily at 09:00`, `every mon,wed at 09:00`, `every weekdays at 08:30`. Пояс по умолчанию — пояс компьютера; недельные правила держат местное время при переходе на летнее. |
 | `schedule_list()` | allow | Расписания с ближайшим запуском |
 | `schedule_delete(id)` | ask | Удалить расписание |
+| `agent_start(name, task)` | allow | Запустить агента (этап 7). Агент видит только `task`. |
+| `agent_message(id, text)` | allow | Ответ, поправка или новая работа агенту своей сессии; занятому агенту — ошибка |
+| `agent_status(id)` | allow | Статус, число шагов, последний вывод, отчёт |
+| `agent_stop(id)` | allow | Отменить работу и удалить сессию агента; запись и отчёт остаются |
+| `ask_parent(question)` | allow | Только у агентов: вопрос сессии, которая их запустила |
 
 ### 9.3 Действия клиента
 - Каждое `action` из `hello` превращается в инструмент с тем же именем, описанием и схемой.
@@ -548,6 +556,11 @@ CREATE TABLE todos (id, session_id, number, text, status, created_at, updated_at
 CREATE TABLE schedules (id, task, rule_json, rule_text, timezone, next_run_at, last_run_at,
   enabled, created_at);            -- next_run_at NULL у отработавшего разового
 CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, updated_at);
+
+-- этап 7: 0007_agents
+CREATE TABLE agents (id, name, parent_session_id REFERENCES sessions ON DELETE CASCADE,
+  session_id UNIQUE REFERENCES sessions ON DELETE SET NULL, task, status, report,
+  created_at, updated_at);   -- status: working | asking | waiting_user | done | failed | stopped
 ```
 - Время хранится в ISO-8601 UTC. Id — UUID4 (или UUIDv7 для сортируемости).
 - Схема меняется только новыми файлами миграций. `0002_tool_runs_own_id.sql` дала `tool_runs` собственный `id`: `call_id` придумывает модель, и он может повторяться между ходами.
@@ -604,6 +617,10 @@ CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, 
 
 ### Этап 7 — агенты
 - `agent_start(task)`, `agent_message`, `agent_status`, `agent_stop`. Агент — это отдельная сессия с тем же набором инструментов, собственным контекстом (только задача) и своим ходом в фоне. Его подтверждения идут пользователю с пометкой имени агента. Вопросы агента идут родительской модели.
+- Сессия агента называется `Agent: <name>`. В системном промпте блок `# Your role` после окружения; ход идёт с `source: "agent"`. Инструменты — все, кроме `agent_*`, плюс `ask_parent`: агенты не запускают агентов (это проверяется и в раннере).
+- Статусы: `working` — ход идёт; `waiting_user` — ход ждёт подтверждения пользователя; `asking` — агент задал вопрос и ждёт ответа; `done` (отчёт — последний текст хода), `failed` (отчёт — ошибка), `stopped`. Управлять можно только агентами своей сессии.
+- Всё, что агент говорит родителю, приходит в родительскую сессию сообщением пользователя с `source: "agent"` и запускает там ход, как только сессия свободна: «Agent '<name>' (id …) asks: …», «… has finished. Its report: …», «… failed: …». Вопросы уходят после конца хода агента, чтобы он был свободен принять ответ. Пока сервис останавливается, такие ходы не начинаются.
+- Одновременно не больше `agent.max_agents` (по умолчанию 3) незавершённых агентов (`working`, `asking`, `waiting_user`). После перезапуска незавершённые агенты помечаются `failed`.
 
 ### Этап 8 — реальные провайдеры (по команде пользователя)
 - Адаптеры поверх `LLMProvider`, ключи в Keychain, выбор провайдера и модели в конфиге.
