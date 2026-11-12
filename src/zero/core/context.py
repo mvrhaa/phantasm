@@ -19,7 +19,8 @@ from zero.store.messages import StoredMessage
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 IMAGE_OMITTED = "[image omitted]"
-CHARS_PER_TOKEN = 3.5
+CHARS_PER_TOKEN = 3.5  # English and other ASCII text
+OTHER_CHARS_PER_TOKEN = 2.5  # Cyrillic and the rest: tokenizers spend more tokens on them
 IMAGE_TOKENS = 1000
 
 CountFn = Callable[[Message], int]
@@ -167,20 +168,31 @@ def build_system_prompt(
     return "\n\n".join(block for block in blocks if block)
 
 
+def text_tokens(text: str) -> float:
+    """Rough size of a text in tokens.
+
+    Non-ASCII letters, Cyrillic among them, cost a tokenizer more than English
+    ones, so they count for more. The estimate errs on the large side: a
+    shorter history is a smaller harm than a prompt the model cannot take.
+    """
+    ascii_chars = len(text.encode("ascii", "ignore"))
+    return ascii_chars / CHARS_PER_TOKEN + (len(text) - ascii_chars) / OTHER_CHARS_PER_TOKEN
+
+
 def estimate_tokens(message: Message) -> int:
     """Rough size of a message in tokens, for providers that cannot count."""
-    chars = 0
+    tokens = 0.0
     images = 0
     for part in message.content:
         if isinstance(part, TextPart):
-            chars += len(part.text)
+            tokens += text_tokens(part.text)
         elif isinstance(part, ImagePart):
             images += 1
         elif isinstance(part, FilePart):
-            chars += len(part.name) + len(part.path)
+            tokens += text_tokens(part.name + part.path)
     for call in message.tool_calls:
-        chars += len(call.name) + len(call.model_dump_json())
-    return math.ceil(chars / CHARS_PER_TOKEN) + images * IMAGE_TOKENS
+        tokens += text_tokens(call.name + call.model_dump_json())
+    return math.ceil(tokens) + images * IMAGE_TOKENS
 
 
 def _to_message(stored: StoredMessage, keep_images: bool) -> Message:

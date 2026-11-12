@@ -29,7 +29,8 @@ class MemorySource(Protocol):
 class PromptBuilder:
     """Puts together what one turn sends to the model.
 
-    The history that fits ``history_token_budget`` goes in as messages. If it
+    The history that fits the model's budget goes in as messages (the
+    provider's ``history_token_budget``, else the agent default). If it
     does not all fit and ``summaries`` is given, the dropped start of the
     conversation is summarized (see ``compact``) and the summary joins the
     system prompt; some of the budget is kept free for it.
@@ -64,7 +65,9 @@ class PromptBuilder:
         """The system prompt followed by the history, ready for the provider."""
         memories = await self._memory.top(PROMPT_MEMORIES) if self._memory is not None else []
         stored = await self._messages.list(self._session_id, limit=HISTORY_FETCH_LIMIT)
-        budget = self._config.agent.history_token_budget
+        budget = self._config.provider.history_token_budget or (
+            self._config.agent.history_token_budget
+        )
         start = keep_from(stored, budget)
         summary = None
         if start > 0 and self._summaries is not None:

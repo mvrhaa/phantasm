@@ -59,11 +59,16 @@ class ServerConfig(_Section):
 
 
 class ProviderConfig(_Section):
-    """Which LLM provider and model to use."""
+    """Which LLM provider and model to use.
+
+    ``history_token_budget`` sets how much history this model gets; without it
+    ``agent.history_token_budget`` applies.
+    """
 
     name: str = "fake"
     model: str = "fake-1"
     options: dict[str, Any] = Field(default_factory=dict)
+    history_token_budget: int | None = Field(default=None, ge=1000)
 
 
 class AgentConfig(_Section):
