@@ -20,6 +20,8 @@ async def handle_hello(connection: Connection, message: Hello, state: AppState) 
 
     A client that speaks another protocol version gets ``protocol_mismatch``
     and is disconnected. A repeated ``hello`` replaces the earlier declaration.
+    After its first ``hello`` a client gets the approvals that still wait for an
+    answer, so a card asked before it connected is not lost.
     """
     if message.protocol != PROTOCOL_VERSION:
         await connection.send(
@@ -32,6 +34,7 @@ async def handle_hello(connection: Connection, message: Hello, state: AppState) 
         await connection.close(CLOSE_PROTOCOL_MISMATCH, "protocol mismatch")
         return
 
+    first = connection.hello is None
     connection.hello = message.client
     sessions = await state.sessions.list()
     await connection.send(
@@ -42,3 +45,6 @@ async def handle_hello(connection: Connection, message: Hello, state: AppState) 
             sessions=[session_info(session) for session in sessions],
         )
     )
+    if first:
+        for request in state.approvals.open_requests:
+            await connection.send(request)

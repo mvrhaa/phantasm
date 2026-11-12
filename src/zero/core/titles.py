@@ -8,8 +8,7 @@ from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.model_call import RETRY_DELAYS_S, UsageRecorder, metered, with_retries
 from zero.protocol.messages import SessionUpdated, TextPart
-from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
-from zero.providers.fake import FakeProvider
+from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta, writes_prose
 from zero.store.sessions import SessionsRepo
 from zero.store.usage import ModelCall
 
@@ -78,7 +77,7 @@ async def make_title(
     message gives an empty title.
     """
     fallback = first_words(text)
-    if isinstance(provider, FakeProvider) or not fallback:
+    if not writes_prose(provider) or not fallback:
         return fallback
 
     async def attempt() -> str:

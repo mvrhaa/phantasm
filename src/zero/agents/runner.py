@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 
 from zero.agents.types import AgentError, AgentProgress
 from zero.approvals.manager import Answer, ApprovalAsk, Approver
+from zero.core.attachments import remove_files
 from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.turn_manager import TurnManager
@@ -134,7 +135,9 @@ class AgentRunner:
         if agent.active:
             agent = await self._set(agent, "stopped")
         await self._turns.stop_session(agent.session_id)
+        files = await self._messages.file_paths(agent.session_id)
         await self._sessions.delete(agent.session_id)
+        await remove_files(files)
         await self._events.publish(SessionDeleted(session_id=agent.session_id))
         stopped = await self._agents.get(agent.id)
         assert stopped is not None

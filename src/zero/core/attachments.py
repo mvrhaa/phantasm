@@ -10,6 +10,8 @@ text note with the path, so the model can read the file with a tool if needed.
 import asyncio
 import base64
 import binascii
+import contextlib
+import shutil
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -88,6 +90,58 @@ def save_attachments(attachments: Sequence[Attachment], guard: PathGuard) -> lis
         path.write_bytes(data)
         parts.append(FilePart(name=path.name, path=str(path), mime=_mime(attachment, data)))
     return parts
+
+
+_EXTENSIONS = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+
+
+def _image_to_file(part: ImagePart) -> ContentPart:
+    try:
+        data = base64.b64decode(part.data_b64, validate=True)
+    except (binascii.Error, ValueError):
+        return TextPart(text="[an image that could not be read]")
+    folder = files_dir() / str(uuid.uuid4())
+    folder.mkdir(parents=True)
+    path = folder / f"image.{_EXTENSIONS.get(part.mime, 'bin')}"
+    path.write_bytes(data)
+    return FilePart(name=path.name, path=str(path), mime=part.mime)
+
+
+def _images_to_files(content: Sequence[ContentPart]) -> list[ContentPart]:
+    return [_image_to_file(part) if isinstance(part, ImagePart) else part for part in content]
+
+
+async def images_to_files(content: Sequence[ContentPart]) -> list[ContentPart]:
+    """Content as it is kept in the history: every inline image saved to ``files_dir()``.
+
+    The image becomes a file part that points at the saved copy, so the
+    database never holds base64. Content without images comes back as it is.
+    """
+    if not any(isinstance(part, ImagePart) for part in content):
+        return list(content)
+    return await asyncio.to_thread(_images_to_files, content)
+
+
+def _remove_folders(paths: Sequence[str]) -> int:
+    root = files_dir().resolve()
+    removed = 0
+    for raw in paths:
+        with contextlib.suppress(OSError):
+            folder = Path(raw).resolve().parent
+            if folder.parent == root and folder.is_dir():
+                shutil.rmtree(folder)
+                removed += 1
+    return removed
+
+
+async def remove_files(paths: Sequence[str]) -> int:
+    """Delete the folders in ``files_dir()`` that hold these files; other paths are left alone.
+
+    Returns how many folders were removed.
+    """
+    if not paths:
+        return 0
+    return await asyncio.to_thread(_remove_folders, paths)
 
 
 def _is_image(part: FilePart) -> bool:

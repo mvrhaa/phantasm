@@ -53,6 +53,20 @@ class _Pending:
     answered: bool = False
 
 
+def _request(approval_id: str, ask: ApprovalAsk) -> ApprovalRequest:
+    return ApprovalRequest(
+        session_id=ask.session_id,
+        turn_id=ask.turn_id,
+        approval_id=approval_id,
+        tool=ask.tool,
+        label=ask.label,
+        input=ask.input,
+        reason=ask.reason,
+        diff=ask.diff,
+        agent=ask.agent,
+    )
+
+
 class ApprovalManager:
     """Keeps the approvals that wait for an answer.
 
@@ -71,6 +85,15 @@ class ApprovalManager:
         """Approvals that have not been answered yet."""
         return [pending.ask for pending in self._pending.values() if not pending.answered]
 
+    @property
+    def open_requests(self) -> list[ApprovalRequest]:
+        """The ``approval.request`` of every approval that still waits, for a late client."""
+        return [
+            _request(approval_id, pending.ask)
+            for approval_id, pending in self._pending.items()
+            if not pending.answered
+        ]
+
     async def request(self, ask: ApprovalAsk, cancel: CancelToken) -> Answer:
         """Ask every client and return the first answer.
 
@@ -83,19 +106,7 @@ class ApprovalManager:
         self._pending[approval_id] = _Pending(ask, future)
         cancelled = asyncio.ensure_future(cancel.wait())
         try:
-            await self._events.publish(
-                ApprovalRequest(
-                    session_id=ask.session_id,
-                    turn_id=ask.turn_id,
-                    approval_id=approval_id,
-                    tool=ask.tool,
-                    label=ask.label,
-                    input=ask.input,
-                    reason=ask.reason,
-                    diff=ask.diff,
-                    agent=ask.agent,
-                )
-            )
+            await self._events.publish(_request(approval_id, ask))
             await asyncio.wait({future, cancelled}, return_when=asyncio.FIRST_COMPLETED)
             if cancel.cancelled:
                 await self._withdraw(approval_id)

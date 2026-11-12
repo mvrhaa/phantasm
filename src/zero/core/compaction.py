@@ -15,8 +15,7 @@ from zero.core.cancellation import CancelToken
 from zero.core.events import EventBus
 from zero.core.model_call import RETRY_DELAYS_S, UsageRecorder, metered, with_retries
 from zero.protocol.messages import SessionCompacted, TextPart
-from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta
-from zero.providers.fake import FakeProvider
+from zero.providers.base import LLMProvider, Message, ProviderError, TextDelta, writes_prose
 from zero.store.messages import StoredMessage
 from zero.store.summaries import SummariesRepo
 from zero.store.usage import ModelCall
@@ -118,7 +117,7 @@ async def summarize(
     A failure worth retrying is retried like in a turn, within the time limit.
     Every model call goes into ``usage`` as a ``summary``.
     """
-    if isinstance(provider, FakeProvider):
+    if not writes_prose(provider):
         return digest(previous, messages)
 
     token = cancel or CancelToken()

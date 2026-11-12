@@ -1,5 +1,6 @@
 """Handlers of session management and history requests."""
 
+from zero.core.attachments import remove_files
 from zero.core.events import ReplyTo
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import (
@@ -73,16 +74,19 @@ async def handle_session_delete(
 ) -> None:
     """Delete a session with its history and announce it to everyone.
 
-    Its running turn is cancelled first and the agents it started go with it.
+    Its running turn is cancelled first and the agents it started go with it;
+    the files kept for its messages are removed.
     """
     if await state.sessions.get(message.session_id) is None:
         await _not_found(connection, message.session_id, message.id)
         return
     await state.agent_runner.session_closing(message.session_id)
     await state.turns.stop_session(message.session_id)
+    files = await state.messages.file_paths(message.session_id)
     if not await state.sessions.delete(message.session_id):
         await _not_found(connection, message.session_id, message.id)
         return
+    await remove_files(files)
     await _announce(connection, state, SessionDeleted(session_id=message.session_id), message.id)
 
 

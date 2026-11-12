@@ -9,20 +9,26 @@ import pytest
 
 from tests.turns import FuncTool, Harness, NoInput, registry, until
 from zero import clock
+from zero.approvals.manager import ApprovalAsk, ApprovalManager
 from zero.config import Config, ConfigError, load_config
+from zero.core.attachments import images_to_files, remove_files
 from zero.core.cancellation import CancelToken
 from zero.core.context import NO_ANSWER, to_history
-from zero.core.prompting import _from_first_turn
-from zero.core.turn import IMAGE_UNSEEN
+from zero.core.prompting import HISTORY_FETCH_LIMIT, PromptBuilder, _first_user
+from zero.core.turn import IMAGE_UNSEEN, _keep_latest_images
 from zero.logging_setup import RedactingFormatter, RedactTokenFilter
-from zero.paths import db_path
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
+from zero.paths import db_path, files_dir
+from zero.protocol.messages import FilePart, ImagePart, TextPart
+from zero.providers.base import Message, TextDelta, ToolCall, ToolCallEvent, writes_prose
 from zero.providers.chat_format import wire_messages
 from zero.providers.fake import FakeProvider
+from zero.scheduler.rules import parse_rule, zone_named
+from zero.scheduler.runner import MIN_PAUSE_S, SchedulerRunner
 from zero.store.db import Database
 from zero.store.messages import StoredMessage
+from zero.store.schedules import SchedulesRepo
 from zero.store.sessions import SessionsRepo
+from zero.store.summaries import SummariesRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import Tool, ToolContext, ToolResult
 from zero.tools.builtin import builtin_registry
@@ -97,8 +103,8 @@ async def test_search_files_skips_secret_files_in_a_folder(tmp_path: Path) -> No
 def test_a_cut_off_history_starts_with_a_user_message() -> None:
     page = [stored(1, "tool", "result"), stored(2, "user", "hi"), stored(3, "assistant", "hello")]
 
-    assert [message.id for message in _from_first_turn(page)] == ["2", "3"]
-    assert _from_first_turn([stored(1, "tool", "result")]) == []
+    assert _first_user(page) == 1
+    assert _first_user([stored(1, "tool", "result")]) == 1
 
 
 def test_an_empty_answer_of_a_broken_turn_is_not_sent_empty() -> None:
@@ -174,7 +180,10 @@ async def test_a_model_without_sight_gets_a_note_instead_of_a_tool_image(
 
     sent = provider.calls[1].messages[-1]
     assert sent.content == [TextPart(text=IMAGE_UNSEEN)]
-    assert isinstance((await harness.stored())[2].content[0], ImagePart)
+    kept = (await harness.stored())[2].content[0]
+    assert isinstance(kept, FilePart) and kept.mime == "image/png"
+    assert Path(kept.path).read_bytes().startswith(b"\x89PNG")
+    assert Path(kept.path).parent.parent == files_dir()
 
 
 def test_secrets_in_a_traceback_are_masked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,3 +264,96 @@ def test_deleting_a_session_stops_its_turn_first() -> None:
         assert [e["status"] for e in finished] == ["cancelled"]
         assert seen[-1]["reply_to"] == "d"
         assert state.turns.active == []
+
+
+async def test_files_of_a_session_are_found_and_removed(harness: Harness) -> None:
+    kept = await images_to_files([ImagePart(mime="image/png", data_b64="iVBORw0KGgo=")])
+    outside = files_dir().parent / "notes.txt"
+    outside.write_text("mine", encoding="utf-8")
+    parts = [*kept, FilePart(name="notes.txt", path=str(outside))]
+    await harness.messages.append(harness.session_id, "tool", parts, tool_call_id="c1")
+
+    paths = await harness.messages.file_paths(harness.session_id)
+
+    assert sorted(paths) == sorted(part.path for part in parts)  # type: ignore[union-attr]
+    assert await remove_files(paths) == 1
+    assert not Path(kept[0].path).parent.exists()  # type: ignore[union-attr]
+    assert outside.exists()
+
+
+def test_only_the_latest_tool_images_stay_in_the_prompt() -> None:
+    image = ImagePart(mime="image/png", data_b64="iVBORw0KGgo=")
+    prompt = [
+        Message(role="tool", content=[image, TextPart(text=str(n))], tool_call_id="c")
+        for n in range(4)
+    ]
+
+    _keep_latest_images(prompt, keep=2)
+
+    assert [type(m.content[0]) for m in prompt] == [TextPart, TextPart, ImagePart, ImagePart]
+    assert [m.content[1] for m in prompt] == [TextPart(text=str(n)) for n in range(4)]
+
+
+async def test_messages_before_the_window_are_summarized(harness: Harness) -> None:
+    for number in range(HISTORY_FETCH_LIMIT // 2 + 2):
+        await harness.messages.append(harness.session_id, "user", [TextPart(text=f"q{number}")])
+        await harness.messages.append(
+            harness.session_id, "assistant", [TextPart(text=f"a{number}")]
+        )
+    async with Database(db_path()) as db:
+        summaries = SummariesRepo(db)
+        builder = PromptBuilder(
+            session_id=harness.session_id,
+            client=None,
+            source="desktop",
+            config=Config(),
+            provider=FakeProvider(),
+            messages=harness.messages,
+            events=harness.bus,
+            summaries=summaries,
+        )
+
+        prompt = await builder.build()
+        summary = await summaries.get(harness.session_id)
+
+    assert prompt[1].role == "user"
+    assert summary is not None and "User: q0" in summary.text
+    assert "# Earlier in this conversation" in text_of(prompt[0])
+
+
+async def test_a_late_client_can_be_given_the_open_approvals(harness: Harness) -> None:
+    manager = ApprovalManager(harness.bus)
+    ask = ApprovalAsk(session_id="s", turn_id="t", tool="run_command", label="$ ls")
+    waiting = asyncio.create_task(manager.request(ask, CancelToken()))
+    await until(lambda: bool(manager.waiting))
+
+    (request,) = manager.open_requests
+    assert request.tool == "run_command" and request.label == "$ ls"
+    assert await manager.respond(request.approval_id, "allow", by_client_id="late")
+    assert (await waiting).by_client_id == "late"
+    assert manager.open_requests == []
+
+
+async def test_the_scheduler_wakes_up_for_the_next_schedule(frozen_clock: object) -> None:
+    async with Database(db_path()) as db:
+        await db.migrate()
+        schedules = SchedulesRepo(db)
+
+        async def start(_: object) -> None:
+            return None
+
+        runner = SchedulerRunner(schedules, start, tick_s=30.0)
+        assert await runner._pause() == 30.0
+
+        zone = zone_named("UTC")
+        await schedules.add("ping", parse_rule("in 1m", clock.now(), zone), "in 1m", "UTC")
+        frozen_clock.advance(50)  # type: ignore[attr-defined]
+        assert await runner._pause() == 10.0
+
+        frozen_clock.advance(20)  # type: ignore[attr-defined]
+        assert await runner._pause() == MIN_PAUSE_S
+
+
+def test_the_fake_provider_says_it_cannot_write_titles() -> None:
+    assert writes_prose(FakeProvider()) is False
+    assert writes_prose(object()) is True

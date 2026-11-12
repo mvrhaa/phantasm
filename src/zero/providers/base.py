@@ -111,6 +111,11 @@ class CancelSignal(Protocol):
         ...
 
 
+def writes_prose(provider: object) -> bool:
+    """False for a provider that cannot write a title or a summary (it says so itself)."""
+    return bool(getattr(provider, "writes_prose", True))
+
+
 @runtime_checkable
 class LLMProvider(Protocol):
     """The interface every provider adapter implements."""

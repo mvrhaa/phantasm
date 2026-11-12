@@ -63,6 +63,7 @@ class FakeProvider:
     """
 
     name = "fake"
+    writes_prose = False
 
     def __init__(
         self,

@@ -8,7 +8,9 @@ from typing import Literal
 
 from zero.approvals.manager import Approver
 from zero.config import Config
+from zero.core.attachments import images_to_files
 from zero.core.cancellation import CancelToken, TurnCancelled
+from zero.core.context import IMAGE_OMITTED
 from zero.core.events import EventBus, ReplyTo
 from zero.core.expression import EXPRESSION_TOOL, ExpressionTool
 from zero.core.model_call import RETRY_DELAYS_S, ModelCaller, Progress, UsageRecorder
@@ -50,6 +52,7 @@ from zero.tools.permissions import PathGuard
 
 NOT_RUN = "Not run: the user cancelled the turn."
 IMAGE_UNSEEN = "[an image; this model cannot see images]"
+MAX_TOOL_IMAGES = 5
 
 TurnStatus = Literal["ok", "error", "cancelled", "max_steps"]
 
@@ -67,6 +70,28 @@ def _only_expression(calls: list[ToolCall], results: list[ToolResult]) -> bool:
         call.name == EXPRESSION_TOOL and not result.is_error
         for call, result in zip(calls, results, strict=True)
     )
+
+
+def _keep_latest_images(prompt: list[Message], keep: int = MAX_TOOL_IMAGES) -> None:
+    """Leave only the latest ``keep`` images of tool results in the prompt.
+
+    A turn that looks at the screen step after step would otherwise send
+    every screenshot again with every request.
+    """
+    left = keep
+    for index in range(len(prompt) - 1, -1, -1):
+        message = prompt[index]
+        if message.role != "tool" or not any(isinstance(p, ImagePart) for p in message.content):
+            continue
+        content: list[ContentPart] = []
+        for part in reversed(message.content):
+            if isinstance(part, ImagePart):
+                if left > 0:
+                    left -= 1
+                else:
+                    part = TextPart(text=IMAGE_OMITTED)
+            content.append(part)
+        prompt[index] = message.model_copy(update={"content": content[::-1]})
 
 
 class Turn:
@@ -349,7 +374,7 @@ class Turn:
             await self._messages.append(
                 self.session_id,
                 "tool",
-                result.content,
+                await images_to_files(result.content),
                 turn_id=self.id,
                 tool_call_id=call.id,
                 is_error=result.is_error,
@@ -364,5 +389,6 @@ class Turn:
                     is_error=result.is_error,
                 )
             )
+        _keep_latest_images(prompt)
         self.cancel.raise_if_cancelled()
         return results

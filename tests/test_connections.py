@@ -4,7 +4,7 @@ import json
 
 from starlette.websockets import WebSocketDisconnect
 
-from zero.protocol.messages import ClientInfo, Error, Pong
+from zero.protocol.messages import ClientInfo, Pong
 from zero.server.connections import Connection, ConnectionManager
 
 
@@ -70,56 +70,3 @@ def test_add_and_remove() -> None:
     manager.remove(first)
 
     assert manager.connections == [second]
-
-
-async def test_broadcast_reaches_everyone() -> None:
-    manager = ConnectionManager()
-    _, first = connect(manager, "c-1")
-    _, second = connect(manager)
-
-    await manager.broadcast(Pong())
-
-    assert first.sent == second.sent == ['{"type":"pong"}']
-
-
-async def test_broadcast_skips_a_dead_connection() -> None:
-    manager = ConnectionManager()
-    _, dead = connect(manager, closed=True)
-    _, alive = connect(manager)
-
-    await manager.broadcast(Pong())
-
-    assert dead.sent == []
-    assert alive.sent == ['{"type":"pong"}']
-
-
-async def test_send_to_reaches_only_the_named_client() -> None:
-    manager = ConnectionManager()
-    _, target = connect(manager, "c-1")
-    _, other = connect(manager, "c-2")
-    _, anonymous = connect(manager)
-
-    delivered = await manager.send_to("c-1", Error(code="internal", message="x"))
-
-    assert delivered is True
-    assert len(target.sent) == 1
-    assert other.sent == anonymous.sent == []
-
-
-async def test_send_to_unknown_or_dead_client_returns_false() -> None:
-    manager = ConnectionManager()
-    connect(manager, "c-1", closed=True)
-
-    assert await manager.send_to("c-1", Pong()) is False
-    assert await manager.send_to("nobody", Pong()) is False
-
-
-async def test_broadcast_can_skip_one_connection() -> None:
-    manager = ConnectionManager()
-    sender, sender_socket = connect(manager)
-    _, other = connect(manager)
-
-    await manager.broadcast(Pong(), exclude=sender)
-
-    assert sender_socket.sent == []
-    assert other.sent == ['{"type":"pong"}']

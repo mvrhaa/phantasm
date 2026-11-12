@@ -98,6 +98,14 @@ class SchedulesRepo:
             rows = await cursor.fetchall()
         return [_to_schedule(row) for row in rows]
 
+    async def next_due(self) -> datetime | None:
+        """When the earliest enabled schedule runs next; None if nothing is planned."""
+        async with self._db.conn.execute(
+            "SELECT MIN(next_run_at) FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL"
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _time(row[0]) if row else None
+
     async def mark_run(self, schedule_id: str, ran_at: datetime) -> Schedule | None:
         """Record a run and work out the next one; a schedule with no next run is turned off."""
         schedule = await self.get(schedule_id)

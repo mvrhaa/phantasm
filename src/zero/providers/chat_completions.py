@@ -70,6 +70,7 @@ class ChatCompletionsProvider:
         self._images = preset.images if images is None else images
         self._transport = transport
         self._next_start = 0.0
+        self._client: httpx.AsyncClient | None = None
 
     def supports_images(self, model: str) -> bool:
         """Tell whether the model takes images; set per preset, not per model."""
@@ -99,23 +100,23 @@ class ChatCompletionsProvider:
         try:
             if not await self._take_slot(waiter):
                 return
-            async with httpx.AsyncClient(transport=self._transport, timeout=TIMEOUT) as client:
-                request = client.build_request(
-                    "POST", f"{self.preset.base_url}/chat/completions", json=body, headers=headers
-                )
-                response = await _unless_cancelled(client.send(request, stream=True), waiter)
-                if response is _CANCELLED:
-                    return
-                try:
-                    if response.status_code != 200:
-                        raw = await _unless_cancelled(response.aread(), waiter)
-                        if raw is _CANCELLED:
-                            return
-                        raise _status_error(self.name, response, raw)
-                    async for event in self._events(response, waiter):
-                        yield event
-                finally:
-                    await response.aclose()
+            client = self._http()
+            request = client.build_request(
+                "POST", f"{self.preset.base_url}/chat/completions", json=body, headers=headers
+            )
+            response = await _unless_cancelled(client.send(request, stream=True), waiter)
+            if response is _CANCELLED:
+                return
+            try:
+                if response.status_code != 200:
+                    raw = await _unless_cancelled(response.aread(), waiter)
+                    if raw is _CANCELLED:
+                        return
+                    raise _status_error(self.name, response, raw)
+                async for event in self._events(response, waiter):
+                    yield event
+            finally:
+                await response.aclose()
         except httpx.TimeoutException:
             raise ProviderError(f"{self.name} did not answer in time", retryable=True) from None
         except httpx.HTTPError as exc:
@@ -123,6 +124,18 @@ class ChatCompletionsProvider:
             raise ProviderError(message, retryable=True) from None
         finally:
             waiter.cancel()
+
+    def _http(self) -> httpx.AsyncClient:
+        """One client for every request, so the connection to the provider is reused."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(transport=self._transport, timeout=TIMEOUT)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the connections to the provider; the next request opens new ones."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def _take_slot(self, waiter: Awaitable[None]) -> bool:
         """Wait until this request may start; False if the turn was cancelled meanwhile.

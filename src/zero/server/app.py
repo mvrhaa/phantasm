@@ -133,6 +133,9 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             finally:
                 await graceful_stop(state)
                 await state.turns.shutdown()
+                close = getattr(state.provider, "aclose", None)
+                if close is not None:
+                    await close()
         finally:
             app.state.zero = None
             await db.close()

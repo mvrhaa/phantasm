@@ -108,6 +108,17 @@ class MessagesRepo:
         await self._db.conn.commit()
         return message
 
+    async def file_paths(self, session_id: str) -> list[str]:
+        """Paths of every file part in the messages of a session."""
+        async with self._db.conn.execute(
+            "SELECT json_extract(part.value, '$.path') AS path "
+            "FROM messages, json_each(messages.content_json) AS part "
+            "WHERE messages.session_id = ? AND json_extract(part.value, '$.type') = 'file'",
+            (session_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [row["path"] for row in rows if row["path"]]
+
     async def list(
         self, session_id: str, before: str | None = None, limit: int = 50
     ) -> list[StoredMessage]:

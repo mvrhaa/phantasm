@@ -9,6 +9,7 @@ from zero import clock
 from zero.store.schedules import Schedule, SchedulesRepo
 
 TICK_S = 30.0
+MIN_PAUSE_S = 0.5
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,18 @@ class SchedulerRunner:
                 await self.tick()
             except Exception:
                 logger.exception("The scheduler could not check its schedules")
-            await asyncio.sleep(self._tick_s)
+            await asyncio.sleep(await self._pause())
+
+    async def _pause(self) -> float:
+        """Seconds until the next check: a tick, or less if a schedule is due sooner."""
+        try:
+            upcoming = await self._schedules.next_due()
+        except Exception:
+            return self._tick_s
+        if upcoming is None:
+            return self._tick_s
+        wait = (upcoming - clock.now()).total_seconds()
+        return min(self._tick_s, max(wait, MIN_PAUSE_S))
 
     def start(self) -> None:
         """Begin checking in the background."""
