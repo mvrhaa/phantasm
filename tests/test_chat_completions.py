@@ -419,7 +419,13 @@ async def test_cancel_in_the_middle_of_an_answer() -> None:
 def test_each_preset_keeps_its_own_pace() -> None:
     paces = {name: preset.min_interval_s for name, preset in PRESETS.items()}
 
-    assert paces == {"google": 2.0, "openrouter": 3.0, "mistral": 1.0, "ollama": 0.0}
+    assert paces == {
+        "google": 2.0,
+        "groq": 2.0,
+        "openrouter": 3.0,
+        "mistral": 1.0,
+        "ollama": 0.0,
+    }
 
 
 async def test_requests_start_an_interval_apart() -> None:

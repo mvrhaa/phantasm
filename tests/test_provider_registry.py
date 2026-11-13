@@ -69,6 +69,7 @@ def test_google_with_its_key_in_env() -> None:
         ("google", "GEMINI_API_KEY"),
         ("openrouter", "OPENROUTER_API_KEY"),
         ("mistral", "MISTRAL_API_KEY"),
+        ("groq", "GROQ_API_KEY"),
     ],
 )
 def test_a_missing_key_leaves_the_provider_not_configured(name: str, key_name: str) -> None:
@@ -79,6 +80,20 @@ def test_a_missing_key_leaves_the_provider_not_configured(name: str, key_name: s
 
     assert str(excinfo.value) == f"{key_name} is missing in {env_file()}"
     assert excinfo.value.code == "provider_not_configured"
+
+
+def test_groq_with_its_key_in_env() -> None:
+    with_key("GROQ_API_KEY=gsk-test-0123456789")
+
+    provider = get_provider(ProviderConfig(name="groq", model="openai/gpt-oss-120b"))
+
+    assert isinstance(provider, ChatCompletionsProvider)
+    assert provider.name == "groq"
+    assert provider.preset.base_url == "https://api.groq.com/openai/v1"
+    assert provider.min_interval_s == 2.0
+    assert not provider.supports_images("openai/gpt-oss-120b")
+    groq = ProviderConfig(name="groq", model="openai/gpt-oss-120b")
+    assert small_model(groq) == "openai/gpt-oss-20b"
 
 
 def test_a_local_ollama_needs_no_key() -> None:
