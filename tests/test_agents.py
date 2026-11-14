@@ -249,7 +249,7 @@ def test_agent_role_follows_the_environment() -> None:
 
     prompt = build_system_prompt(None, "agent", ["likes tea"], now=now, agent_name="reader")
 
-    assert prompt.index("# Environment") < prompt.index("# Your role") < prompt.index("tea")
+    assert prompt.index("# Environment") < prompt.index("# Your role") < prompt.index("likes tea")
     assert "You are reader, an agent" in prompt
     assert "# Your role" not in build_system_prompt(None, "desktop", now=now)
 

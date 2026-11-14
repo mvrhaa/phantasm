@@ -2,9 +2,11 @@
 
 import math
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from pathlib import Path
 
+import zero
 from zero.protocol.messages import (
     Character,
     ClientInfo,
@@ -59,6 +61,35 @@ def _environment(client: ClientInfo | None, source: str) -> str | None:
     if not lines:
         return None
     return "\n".join(["# Environment", "", *lines])
+
+
+@dataclass(frozen=True)
+class Computer:
+    """Facts about the computer the model needs to find its way around."""
+
+    home: Path
+    own_code: Path | None
+    allowed_roots: Sequence[str]
+
+    @classmethod
+    def detect(cls, allowed_roots: Sequence[str]) -> "Computer":
+        """This computer: the home folder and the checkout Zero runs from, if it runs from one."""
+        root = Path(zero.__file__).resolve().parents[2]
+        own_code = root if (root / "pyproject.toml").is_file() else None
+        return cls(home=Path.home(), own_code=own_code, allowed_roots=list(allowed_roots))
+
+
+def _computer(computer: Computer) -> str:
+    lines = [
+        "# Computer",
+        "",
+        f"- Home folder: {computer.home}. Commands run there unless you give them another cwd.",
+    ]
+    if computer.own_code is not None:
+        lines.append(f"- Your own code (Zero, this brain): {computer.own_code}")
+    roots = ", ".join(computer.allowed_roots)
+    lines.append(f"- You may read and work with files in: {roots}")
+    return "\n".join(lines)
 
 
 def _agent_role(name: str) -> str:
@@ -148,12 +179,13 @@ def build_system_prompt(
     tz: tzinfo | None = None,
     summary: str | None = None,
     agent_name: str | None = None,
+    computer: Computer | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
     Stable blocks come first so providers can cache the prefix: base rules,
-    persona, environment, expression rules, memory, a summary of the start of a
-    long conversation, and the current time last because it always changes.
+    persona, environment, the computer, expression rules, memory, a summary of the
+    start of a long conversation, and the current time last because it always changes.
     Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     ``agent_name`` turns the prompt into an agent's: its role follows the environment.
@@ -163,6 +195,7 @@ def build_system_prompt(
         _base_rules(),
         _persona(character) if character else None,
         _environment(client, source),
+        _computer(computer) if computer else None,
         _agent_role(agent_name) if agent_name else None,
         _expression(character) if character else None,
         _memories(memories) if memories else None,

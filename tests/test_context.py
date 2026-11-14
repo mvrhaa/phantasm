@@ -1,10 +1,11 @@
 """Tests for zero.core.context."""
 
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
-from zero.core.context import PROMPTS_DIR, build_system_prompt
+from zero.core.context import PROMPTS_DIR, Computer, build_system_prompt
 from zero.protocol.messages import Character, ClientInfo
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -165,3 +166,41 @@ def test_only_the_time_block_changes_between_turns() -> None:
     stable = first[: first.index("# Current time")]
     assert later.startswith(stable)
     assert first != later
+
+
+def test_base_rules_prefer_the_file_tools_and_a_narrow_search() -> None:
+    text = prompt()
+
+    assert "# Looking at files" in text
+    assert "list_dir, read_file and search_files" in text
+    assert "Never scan the whole home folder" in text
+
+
+def test_computer_block_names_home_own_code_and_access() -> None:
+    computer = Computer(home=Path("/Users/u"), own_code=Path("/Users/u/zero"), allowed_roots=["~"])
+
+    text = build_system_prompt(CLIENT, "desktop", now=NOW, tz=PRAGUE, computer=computer)
+
+    assert "# Computer" in text
+    assert "Home folder: /Users/u. Commands run there unless you give them another cwd." in text
+    assert "Your own code (Zero, this brain): /Users/u/zero" in text
+    assert "You may read and work with files in: ~" in text
+    assert text.index("# Environment") < text.index("# Computer") < text.index("# Expression")
+
+
+def test_computer_block_without_own_code() -> None:
+    computer = Computer(home=Path("/Users/u"), own_code=None, allowed_roots=["~", "/Volumes/Data"])
+
+    text = build_system_prompt(None, "desktop", now=NOW, tz=PRAGUE, computer=computer)
+
+    assert "Your own code" not in text
+    assert "You may read and work with files in: ~, /Volumes/Data" in text
+
+
+def test_the_computer_is_found() -> None:
+    computer = Computer.detect(allowed_roots=["~"])
+
+    assert computer.home == Path.home()
+    assert computer.own_code is not None
+    assert (computer.own_code / "pyproject.toml").is_file()
+    assert (computer.own_code / "src" / "zero").is_dir()

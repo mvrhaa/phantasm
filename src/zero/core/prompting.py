@@ -8,7 +8,7 @@ from zero.config import Config
 from zero.core.attachments import prepare_for_model
 from zero.core.cancellation import CancelToken
 from zero.core.compaction import compact
-from zero.core.context import build_system_prompt, keep_from, to_history
+from zero.core.context import Computer, build_system_prompt, keep_from, to_history
 from zero.core.events import EventBus
 from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
@@ -113,6 +113,7 @@ class PromptBuilder:
             now=clock.now(),
             summary=summary,
             agent_name=self._agent_name,
+            computer=Computer.detect(self._config.permissions.allowed_roots),
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),
