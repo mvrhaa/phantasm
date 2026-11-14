@@ -354,6 +354,7 @@ async def test_a_malformed_tool_call_is_tried_again_after_its_tokens_are_counted
             events.append(event)
 
     assert excinfo.value.retryable
+    assert excinfo.value.retry_after == 0
     assert events == [UsageEvent(input_tokens=30, output_tokens=275)]
 
 

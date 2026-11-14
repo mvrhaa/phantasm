@@ -4,7 +4,7 @@ import base64
 from datetime import UTC, datetime
 from typing import Any
 
-from tests.test_turn_text import connected, history, running, send, until_finished
+from tests.test_turn_text import HELLO, connected, history, running, send, until_finished
 from zero.config import Config
 from zero.core.context import build_system_prompt
 from zero.protocol.messages import ImagePart, TextPart
@@ -137,3 +137,45 @@ def test_command_block_sits_after_the_summary() -> None:
 
     assert text.index("# Earlier in this conversation") < text.index("# Command")
     assert text.index("# Command") < text.index("# Current time")
+
+
+def test_a_turn_without_tools_is_told_to_answer_in_text() -> None:
+    provider = FakeProvider([[TextDelta(text="ok")]])
+    with running(provider, small_config()) as (client, state), connected(client, state) as ws:
+        send(ws, "hi", command=QUICK)
+        until_finished(ws)
+
+    text = system_text(provider.calls[0])
+    assert "You have no tools in this turn" in text
+    assert "# Expression" not in text
+    assert "set_expression" not in text
+
+
+def test_a_turn_with_tools_keeps_the_expression_rules() -> None:
+    provider = FakeProvider([[TextDelta(text="ok")]])
+    with running(provider, small_config()) as (client, state), connected(client, state) as ws:
+        send(ws, "hi", command={"name": "Do", "instructions": "Act."})
+        until_finished(ws)
+
+    text = system_text(provider.calls[0])
+    assert "# Expression" in text
+    assert "You have no tools in this turn" not in text
+
+
+def test_a_character_without_expressions_gets_no_expression_tool() -> None:
+    provider = FakeProvider([[TextDelta(text="ok")]])
+    character = {"name": "Zero", "persona": "Calm."}
+    plain = {**HELLO, "client": {**HELLO["client"], "character": character}}
+    with running(provider) as (client, state):
+        with client.websocket_connect(f"/ws?token={state.token}") as ws:
+            ws.send_json(plain)
+            assert ws.receive_json()["type"] == "hello.ok"
+            send(ws, "hi")
+            finished = until_finished(ws)[-1]
+
+    (call,) = provider.calls
+    assert "set_expression" not in [tool.name for tool in call.tools]
+    assert "# Expression" not in system_text(call)
+    assert "Calm." in system_text(call)
+    assert finished["status"] == "ok"
+    assert finished.get("expression") is None

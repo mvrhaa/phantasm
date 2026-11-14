@@ -418,7 +418,7 @@ def test_invalid_client_message_is_rejected(data: dict[str, Any]) -> None:
     ],
     ids=["no-poses", "no-moods", "no-name"],
 )
-def test_character_needs_a_name_poses_and_moods(character: dict[str, Any]) -> None:
+def test_character_needs_a_name_and_poses_with_moods(character: dict[str, Any]) -> None:
     hello = {
         "type": "hello",
         "protocol": 1,
@@ -427,6 +427,19 @@ def test_character_needs_a_name_poses_and_moods(character: dict[str, Any]) -> No
 
     with pytest.raises(ValidationError):
         client_message.validate_python(hello)
+
+
+def test_character_may_show_no_expressions() -> None:
+    hello = {
+        "type": "hello",
+        "protocol": 1,
+        "client": {"app": "cli", "client_id": "c-1", "character": {"name": "Zero"}},
+    }
+
+    parsed = client_message.validate_python(hello)
+
+    assert parsed.client.character is not None
+    assert not parsed.client.character.expressive
 
 
 @pytest.mark.parametrize(

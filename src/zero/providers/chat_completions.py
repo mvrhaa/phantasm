@@ -284,7 +284,11 @@ def _usage(usage: dict[str, Any]) -> UsageEvent:
 def _check_finish(provider: str, finish: str | None) -> None:
     """Raise if the answer ended in a failure: a broken tool call or a provider-side
     error is worth another try, a content filter is not."""
-    if finish and (MALFORMED_CALL in finish or finish == "error"):
+    if finish and MALFORMED_CALL in finish:
+        raise ProviderError(
+            f"{provider} could not finish the answer ({finish})", retryable=True, retry_after=0
+        )
+    if finish == "error":
         raise ProviderError(f"{provider} could not finish the answer ({finish})", retryable=True)
     if finish == "content_filter":
         raise ProviderError(f"{provider} blocked the answer with its content filter")

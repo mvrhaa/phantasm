@@ -55,12 +55,27 @@ ContentPart = Annotated[TextPart | ImagePart | FilePart, Field(discriminator="ty
 
 
 class Character(BaseModel):
-    """The character a client shows: its persona and what it can express."""
+    """The character a client shows: its persona and what it can express.
+
+    Without poses and moods the character shows no expressions: the model gets no
+    ``set_expression`` and answers in one step.
+    """
 
     name: str
     persona: str = ""
-    poses: list[str] = Field(min_length=1)
-    moods: list[str] = Field(min_length=1)
+    poses: list[str] = Field(default_factory=list)
+    moods: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> "Character":
+        if bool(self.poses) != bool(self.moods):
+            raise ValueError("poses and moods go together: give both or neither")
+        return self
+
+    @property
+    def expressive(self) -> bool:
+        """Whether the client can show an expression at all."""
+        return bool(self.poses)
 
 
 class ActionDecl(BaseModel):

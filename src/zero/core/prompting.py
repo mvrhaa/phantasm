@@ -63,6 +63,7 @@ class PromptBuilder:
         cancel: CancelToken | None = None,
         command: str | None = None,
         model: str | None = None,
+        tools: bool = True,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -77,6 +78,7 @@ class PromptBuilder:
         self._usage = usage
         self._cancel = cancel
         self._command = command
+        self._tools = tools
         self._model = model or config.provider.model
 
     async def build(self) -> list[Message]:
@@ -119,6 +121,7 @@ class PromptBuilder:
             agent_name=self._agent_name,
             computer=Computer.detect(self._config.permissions.allowed_roots),
             command=self._command,
+            tools=self._tools,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),

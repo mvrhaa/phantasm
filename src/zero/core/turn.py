@@ -151,6 +151,7 @@ class Turn:
             events = events.for_agent(agent)
         self._text = text
         self._command = command
+        has_tools = command is None or command.tools == "all"
         model = (
             small_model(config.provider)
             if command is not None and command.model == "small"
@@ -188,10 +189,15 @@ class Turn:
             cancel=self.cancel,
             command=command.instructions if command is not None else None,
             model=model,
+            tools=has_tools,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None
-        self._expression = ExpressionTool(character) if character is not None else None
+        self._expression = (
+            ExpressionTool(character)
+            if character is not None and character.expressive and has_tools
+            else None
+        )
         self._tool_context = ToolContext(
             session_id=session_id,
             turn_id=self.id,

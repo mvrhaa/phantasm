@@ -899,14 +899,14 @@ How a client introduces itself in `hello`.
 
 ### Character
 
-The character a client shows: its persona and what it can express.
+The character a client shows: its persona and what it can express. Without poses and moods the character shows no expressions: the model gets no `set_expression` and answers in one step.
 
 | Field | Type | Default |
 |---|---|---|
 | `name` | string | required |
 | `persona` | string | `""` |
-| `poses` | array of string | required |
-| `moods` | array of string | required |
+| `poses` | array of string | `[]` |
+| `moods` | array of string | `[]` |
 
 ### ActionDecl
 

@@ -154,8 +154,12 @@ def _summary(summary: str) -> str:
     )
 
 
-def _command(instructions: str) -> str:
-    return "\n".join(["# Command", instructions.strip()])
+NO_TOOLS = "You have no tools in this turn: answer in text only and do not call any function."
+
+
+def _command(instructions: str | None, tools: bool) -> str | None:
+    lines = [line for line in [(instructions or "").strip(), "" if tools else NO_TOOLS] if line]
+    return "\n".join(["# Command", *lines]) if lines else None
 
 
 def _time(now: datetime, tz: tzinfo | None) -> str:
@@ -185,6 +189,7 @@ def build_system_prompt(
     agent_name: str | None = None,
     computer: Computer | None = None,
     command: str | None = None,
+    tools: bool = True,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
@@ -192,6 +197,7 @@ def build_system_prompt(
     persona, environment, the computer, expression rules, memory, a summary of the
     start of a long conversation, the instructions of a command sent with this
     turn's message, and the current time last because it always changes.
+    Without ``tools`` the model is told so and gets no expression rules.
     Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     ``agent_name`` turns the prompt into an agent's: its role follows the environment.
@@ -203,10 +209,10 @@ def build_system_prompt(
         _environment(client, source),
         _computer(computer) if computer else None,
         _agent_role(agent_name) if agent_name else None,
-        _expression(character) if character else None,
+        _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,
         _summary(summary) if summary else None,
-        _command(command) if command and command.strip() else None,
+        _command(command, tools),
         _time(now, tz),
     ]
     return "\n\n".join(block for block in blocks if block)
