@@ -28,7 +28,7 @@ uv run zero doctor   # всё ли на месте
 Провайдер и модель задаются в `config.json` (`uv run zero config path` покажет, где он):
 
 ```json
-"provider": { "name": "google", "model": "gemma-4-31b-it" }
+"provider": { "name": "google", "model": "gemini-3.5-flash-lite", "small_model": "gemini-3.5-flash-lite" }
 ```
 
 Пресеты: `google`, `openrouter`, `mistral`, `ollama`. Заголовки сессий и саммари пишет лёгкая модель `small_model` (у `google` по умолчанию `gemma-4-26b-a4b-it`). Без настройки работает `fake` — эхо для разработки и тестов.
