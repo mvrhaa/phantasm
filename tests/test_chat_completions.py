@@ -263,9 +263,58 @@ async def test_a_tool_call_ends_the_step_even_when_google_says_stop() -> None:
     events = await collect(provider(answering(body)), tools=[WEATHER])
 
     expected = ToolCall(
-        id="call_14755307676125612924", name="get_weather", input={"city": "Prague"}
+        id="call_14755307676125612924",
+        name="get_weather",
+        input={"city": "Prague"},
+        extra={"google": {"thought_signature": "c2lnbmF0dXJl"}},
     )
     assert events == [ToolCallEvent(call=expected), StopEvent(reason="tool_use")]
+
+
+SIGNED_STEP = [
+    *MESSAGES,
+    Message(
+        role="assistant",
+        tool_calls=[
+            ToolCall(
+                id="call_1",
+                name="get_weather",
+                input={"city": "Prague"},
+                extra={"google": {"thought_signature": "c2lnbmF0dXJl"}},
+            )
+        ],
+    ),
+    Message(role="tool", tool_call_id="call_1", content=[TextPart(text="+3, rain")]),
+]
+
+
+async def _sent_tool_call(preset: str) -> dict[str, Any]:
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=sse(chunk("Rain.", finish="stop"), "[DONE]"))
+
+    p = provider(handle, preset)
+    async for _ in p.stream(
+        SIGNED_STEP, [WEATHER], "gemini-3.5-flash-lite", max_tokens=1000, cancel=CancelToken()
+    ):
+        pass
+    (request,) = seen
+    (assistant,) = [m for m in json.loads(request.content)["messages"] if m.get("tool_calls")]
+    return assistant["tool_calls"][0]
+
+
+async def test_google_gets_its_thought_signatures_back() -> None:
+    call = await _sent_tool_call("google")
+
+    assert call["extra_content"] == {"google": {"thought_signature": "c2lnbmF0dXJl"}}
+
+
+async def test_other_providers_never_get_the_extra_of_a_call() -> None:
+    call = await _sent_tool_call("mistral")
+
+    assert "extra_content" not in call
 
 
 async def test_fragments_of_calls_across_chunks() -> None:

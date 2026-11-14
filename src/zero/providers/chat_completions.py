@@ -164,7 +164,7 @@ class ChatCompletionsProvider:
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
-            "messages": wire_messages(messages),
+            "messages": wire_messages(messages, echo_extra=self.preset.echo_call_extra),
             "stream": True,
             "max_tokens": max_tokens + self.preset.thinking_tokens,
         }

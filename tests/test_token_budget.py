@@ -30,14 +30,23 @@ def test_a_russian_message_is_estimated_larger_than_an_english_one() -> None:
     assert russian == 269
 
 
+def test_a_thought_signature_does_not_count() -> None:
+    call = ToolCall(id="c1", name="read_file", input={"path": "~/notes.md"})
+    signed = call.model_copy(update={"extra": {"google": {"thought_signature": "x" * 4000}}})
+
+    plain_size = estimate_tokens(Message(role="assistant", tool_calls=[call]))
+    signed_size = estimate_tokens(Message(role="assistant", tool_calls=[signed]))
+
+    assert signed_size == plain_size
+
+
 def test_tool_calls_count_by_the_same_rule() -> None:
     call = ToolCall(id="c", name="write_file", input={"content": "ж" * 50})
     message = Message(role="assistant", content=[], tool_calls=[call])
 
-    assert estimate_tokens(message) == pytest.approx(
-        text_tokens(call.name + call.model_dump_json()), abs=1
-    )
-    assert estimate_tokens(message) > len(call.name + call.model_dump_json()) / 3.5
+    dumped = call.model_dump_json(exclude={"extra"})
+    assert estimate_tokens(message) == pytest.approx(text_tokens(call.name + dumped), abs=1)
+    assert estimate_tokens(message) > len(call.name + dumped) / 3.5
 
 
 async def stored_turns(harness: Harness, count: int, chars: int) -> None:

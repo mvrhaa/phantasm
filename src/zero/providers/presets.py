@@ -20,6 +20,7 @@ class Preset:
     thinking_tokens: int = 0
     min_interval_s: float = 0.0
     small_model: str | None = None
+    echo_call_extra: bool = False
 
 
 PRESETS: dict[str, Preset] = {
@@ -34,6 +35,7 @@ PRESETS: dict[str, Preset] = {
             thinking_tokens=4096,
             min_interval_s=2.0,
             small_model="gemma-4-26b-a4b-it",
+            echo_call_extra=True,
         ),
         Preset(
             "groq",

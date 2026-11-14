@@ -195,7 +195,7 @@ def estimate_tokens(message: Message) -> int:
         elif isinstance(part, FilePart):
             tokens += text_tokens(part.name + part.path)
     for call in message.tool_calls:
-        tokens += text_tokens(call.name + call.model_dump_json())
+        tokens += text_tokens(call.name + call.model_dump_json(exclude={"extra"}))
     return math.ceil(tokens) + images * IMAGE_TOKENS
 
 

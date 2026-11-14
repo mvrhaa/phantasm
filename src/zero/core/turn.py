@@ -363,7 +363,7 @@ class Turn:
             "assistant",
             assistant.content,
             turn_id=self.id,
-            tool_calls=[call.model_dump() for call in calls],
+            tool_calls=[call.model_dump(exclude_none=True) for call in calls],
             status="ok",
             source=self._source,
         )

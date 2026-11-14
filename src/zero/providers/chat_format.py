@@ -53,20 +53,21 @@ def _with_images(text: str, images: list[dict[str, Any]]) -> str | list[dict[str
     return [{"type": "text", "text": text}, *images] if text else images
 
 
-def _assistant(message: Message) -> dict[str, Any]:
+def _wire_call(call: ToolCall, echo_extra: bool) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "id": wire_id(call.id),
+        "type": "function",
+        "function": {"name": call.name, "arguments": json.dumps(call.input, ensure_ascii=False)},
+    }
+    if echo_extra and call.extra:
+        entry["extra_content"] = call.extra
+    return entry
+
+
+def _assistant(message: Message, echo_extra: bool) -> dict[str, Any]:
     entry: dict[str, Any] = {"role": "assistant", "content": _text(message) or None}
     if message.tool_calls:
-        entry["tool_calls"] = [
-            {
-                "id": wire_id(call.id),
-                "type": "function",
-                "function": {
-                    "name": call.name,
-                    "arguments": json.dumps(call.input, ensure_ascii=False),
-                },
-            }
-            for call in message.tool_calls
-        ]
+        entry["tool_calls"] = [_wire_call(call, echo_extra) for call in message.tool_calls]
     elif entry["content"] is None:
         entry["content"] = ""
     return entry
@@ -80,11 +81,12 @@ def _tool_result(message: Message) -> dict[str, Any]:
     return {"role": "tool", "tool_call_id": wire_id(message.tool_call_id or ""), "content": text}
 
 
-def wire_messages(messages: list[Message]) -> list[dict[str, Any]]:
+def wire_messages(messages: list[Message], *, echo_extra: bool = False) -> list[dict[str, Any]]:
     """The conversation in the ``/chat/completions`` format.
 
     A tool result there holds text only, so the images tools returned travel
-    in one user message right after the results of that step.
+    in one user message right after the results of that step. ``echo_extra``
+    sends each tool call's ``extra`` back, for the provider that attached it.
     """
     wire: list[dict[str, Any]] = []
     held_images: list[dict[str, Any]] = []
@@ -96,7 +98,7 @@ def wire_messages(messages: list[Message]) -> list[dict[str, Any]]:
             wire.append(_tool_result(message))
             held_images += _images(message)
         elif message.role == "assistant":
-            wire.append(_assistant(message))
+            wire.append(_assistant(message, echo_extra))
         elif message.role == "user":
             wire.append({"role": "user", "content": _with_images(_text(message), _images(message))})
         else:
@@ -126,6 +128,7 @@ class _CallParts:
         self.id = ""
         self.name = ""
         self.arguments = ""
+        self.extra: dict[str, Any] | None = None
 
 
 class ToolCallAssembler:
@@ -152,6 +155,9 @@ class ToolCallAssembler:
         parts.id = parts.id or call_id
         function = delta.get("function") or {}
         parts.name = parts.name or function.get("name") or ""
+        extra = delta.get("extra_content")
+        if isinstance(extra, dict):
+            parts.extra = {**(parts.extra or {}), **extra}
         arguments = function.get("arguments")
         if isinstance(arguments, str):
             parts.arguments += arguments
@@ -173,7 +179,7 @@ class ToolCallAssembler:
                     f"the model sent broken arguments for {parts.name}", retryable=True
                 )
             call_id = parts.id or uuid.uuid4().hex[:9]
-            result.append(ToolCall(id=call_id, name=parts.name, input=arguments))
+            result.append(ToolCall(id=call_id, name=parts.name, input=arguments, extra=parts.extra))
         return result
 
 

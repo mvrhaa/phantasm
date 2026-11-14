@@ -13,11 +13,16 @@ from zero.protocol.messages import ContentPart
 
 
 class ToolCall(BaseModel):
-    """A request from the model to run a tool."""
+    """A request from the model to run a tool.
+
+    ``extra`` is what the provider attached to the call and wants back with it:
+    Gemini 3 refuses the next step without the call's thought signature.
+    """
 
     id: str
     name: str
     input: dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] | None = None
 
 
 class ToolSpec(BaseModel):
