@@ -38,16 +38,6 @@ PRESETS: dict[str, Preset] = {
             echo_call_extra=True,
         ),
         Preset(
-            "groq",
-            "https://api.groq.com/openai/v1",
-            "GROQ_API_KEY",
-            images=False,
-            stream_usage=False,
-            thinking_tokens=2048,
-            min_interval_s=2.0,
-            small_model="openai/gpt-oss-20b",
-        ),
-        Preset(
             "openrouter",
             "https://openrouter.ai/api/v1",
             "OPENROUTER_API_KEY",

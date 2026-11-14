@@ -31,7 +31,7 @@ uv run zero doctor   # всё ли на месте
 "provider": { "name": "google", "model": "gemma-4-31b-it" }
 ```
 
-Пресеты: `google`, `groq`, `openrouter`, `mistral`, `ollama`. Заголовки сессий и саммари пишет лёгкая модель `small_model` (у `google` по умолчанию `gemma-4-26b-a4b-it`). Без настройки работает `fake` — эхо для разработки и тестов.
+Пресеты: `google`, `openrouter`, `mistral`, `ollama`. Заголовки сессий и саммари пишет лёгкая модель `small_model` (у `google` по умолчанию `gemma-4-26b-a4b-it`). Без настройки работает `fake` — эхо для разработки и тестов.
 
 ## Команды
 

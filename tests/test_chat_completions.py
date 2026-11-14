@@ -470,7 +470,6 @@ def test_each_preset_keeps_its_own_pace() -> None:
 
     assert paces == {
         "google": 2.0,
-        "groq": 2.0,
         "openrouter": 3.0,
         "mistral": 1.0,
         "ollama": 0.0,
