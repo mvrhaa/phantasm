@@ -107,6 +107,19 @@ class Attachment(BaseModel):
         return self
 
 
+class MessageCommand(BaseModel):
+    """How to run one turn: extra instructions, whether the model gets tools, which model.
+
+    The instructions go into the system prompt of this turn only; ``name`` is kept with
+    the user's message so a client can label it in the history.
+    """
+
+    name: str
+    instructions: str = ""
+    tools: Literal["all", "none"] = "all"
+    model: Literal["main", "small"] = "main"
+
+
 class MessageSend(Envelope):
     """A user message; starts a turn. Without ``session_id`` a session is created."""
 
@@ -115,6 +128,7 @@ class MessageSend(Envelope):
     text: str
     attachments: list[Attachment] = Field(default_factory=list)
     source: Literal["desktop", "phone"]
+    command: MessageCommand | None = None
 
 
 class TurnCancel(Envelope):
@@ -242,6 +256,7 @@ class HistoryMessage(BaseModel):
     content: list[ContentPart]
     status: Literal["ok", "cancelled", "error"] | None = None
     source: Literal["desktop", "phone", "scheduler", "agent"] | None = None
+    command: str | None = None
     created_at: datetime
 
 

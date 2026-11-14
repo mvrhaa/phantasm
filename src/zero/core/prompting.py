@@ -61,6 +61,8 @@ class PromptBuilder:
         agent_name: str | None = None,
         usage: UsageRecorder | None = None,
         cancel: CancelToken | None = None,
+        command: str | None = None,
+        model: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -74,6 +76,8 @@ class PromptBuilder:
         self._agent_name = agent_name
         self._usage = usage
         self._cancel = cancel
+        self._command = command
+        self._model = model or config.provider.model
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -114,10 +118,11 @@ class PromptBuilder:
             summary=summary,
             agent_name=self._agent_name,
             computer=Computer.detect(self._config.permissions.allowed_roots),
+            command=self._command,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),
             *to_history(stored[start:]),
         ]
-        can_see = self._provider.supports_images(self._config.provider.model)
+        can_see = self._provider.supports_images(self._model)
         return await prepare_for_model(prompt, can_see)

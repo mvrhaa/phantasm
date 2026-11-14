@@ -108,6 +108,7 @@ async def handle_history_get(connection: Connection, message: HistoryGet, state:
             content=item.content,
             status=item.status,
             source=item.source,
+            command=item.command,
             created_at=item.created_at,
         )
         for item in stored

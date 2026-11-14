@@ -244,7 +244,7 @@ Zero → клиент:
 
 | type | Поля | Ответ / эффект |
 |---|---|---|
-| `message.send` | `session_id?`, `text`, `attachments?: [{name, mime, data_b64 \| path}]`, `source: "desktop"\|"phone"` | `turn.started`, затем поток событий хода. Без `session_id` создаётся новая сессия. Вложения копируются в `files/` и хранятся как `ContentPart file` с путём (не base64); `path` проходит PathGuard, лимит 100 MB. Плохое вложение даёт `error invalid_message`, ход не начинается. В модель картинка уходит только из текущего сообщения (если модель видит картинки и картинка до 5 MB), остальные файлы — короткой текстовой заметкой с путём. |
+| `message.send` | `session_id?`, `text`, `attachments?: [{name, mime, data_b64 \| path}]`, `source: "desktop"\|"phone"`, `command?: {name, instructions?, tools?: "all"\|"none", model?: "main"\|"small"}` | `turn.started`, затем поток событий хода. Без `session_id` создаётся новая сессия. Вложения копируются в `files/` и хранятся как `ContentPart file` с путём (не base64); `path` проходит PathGuard, лимит 100 MB. Плохое вложение даёт `error invalid_message`, ход не начинается. В модель картинка уходит только из текущего сообщения (если модель видит картинки и картинка до 5 MB), остальные файлы — короткой текстовой заметкой с путём. Команда (`command`) настраивает только этот ход (§7.2): её `instructions` идут блоком `# Command` в системный промпт, `tools: "none"` — модель не получает инструментов (и `set_expression`), `model: "small"` — ход идёт на `provider.small_model`; `name` сохраняется у сообщения и возвращается в `history.ok`. При пустом тексте и вложениях текстовой части у сообщения нет: провайдеры не принимают пустой текст. |
 | `turn.cancel` | `turn_id` | Ход отменяется (раздел 7.4), приходит `turn.finished` со `status: "cancelled"` |
 | `approval.respond` | `approval_id`, `decision: "allow"\|"deny"\|"always"`, `note?` | Ход продолжается |
 | `action.result` | `call_id`, `ok: bool`, `content: [ContentPart]`, `error?` | Результат действия клиента возвращается в agent loop |
@@ -333,7 +333,9 @@ on message.send:
 4. Компьютер: домашняя папка (там же по умолчанию выполняются команды), где лежит код самого Zero, если он запущен из своей папки, и папки из `permissions.allowed_roots`. Без этого модель не знает, где искать «код Зеро», и прочёсывает всю домашнюю папку.
 5. Правила выражения: список поз и настроений, как их выбирать (раздел 10).
 6. Память: топ-N фактов (раздел 11).
-7. Текущие дата, время и часовой пояс (последним, потому что это меняется).
+7. Саммари начала длинной переписки (`# Earlier in this conversation`, раздел 7.3).
+8. Команда сообщения: `# Command` с `instructions` из `message.send.command` — только в ходе этого сообщения.
+9. Текущие дата, время и часовой пояс (последним, потому что это меняется).
 
 ### 7.3 История и контекст
 - История хранится полностью в БД, включая вызовы инструментов.
@@ -534,6 +536,7 @@ CREATE TABLE messages (
   is_error INTEGER NOT NULL DEFAULT 0,
   status TEXT,                     -- ok | cancelled | error
   source TEXT,                     -- desktop | phone | scheduler | agent
+  command TEXT,                    -- 0011: имя команды из message.send.command
   created_at TEXT NOT NULL
 );
 CREATE INDEX idx_messages_session ON messages(session_id, created_at);
@@ -573,6 +576,7 @@ CREATE TABLE schedules (id, task, rule_json, rule_text, timezone, next_run_at, l
 CREATE TABLE session_summaries (session_id PRIMARY KEY, text, until_message_id, updated_at);
 
 -- 0009_session_kinds: sessions.kind TEXT NOT NULL DEFAULT 'chat' — chat | agent | scheduled
+-- 0011_message_command: messages.command TEXT — имя команды, с которой пришло сообщение
 
 -- 0008_model_calls: каждый запрос к модели (без внешнего ключа: учёт переживает сессии)
 CREATE TABLE model_calls (id, provider, model, purpose, session_id, input_tokens,

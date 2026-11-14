@@ -135,6 +135,7 @@ async def test_migration_2_keeps_existing_tool_runs(tmp_path: Path) -> None:
                 "is_error",
                 "status",
                 "source",
+                "command",
                 "created_at",
             },
         ),

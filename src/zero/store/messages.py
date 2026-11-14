@@ -32,6 +32,7 @@ class StoredMessage(BaseModel):
     is_error: bool = False
     status: Status | None = None
     source: Source | None = None
+    command: str | None = None
     created_at: datetime
 
 
@@ -47,6 +48,7 @@ def _to_message(row: aiosqlite.Row) -> StoredMessage:
         is_error=bool(row["is_error"]),
         status=row["status"],
         source=row["source"],
+        command=row["command"],
         created_at=clock.from_iso(row["created_at"]),
     )
 
@@ -69,6 +71,7 @@ class MessagesRepo:
         is_error: bool = False,
         status: Status | None = None,
         source: Source | None = None,
+        command: str | None = None,
     ) -> StoredMessage:
         """Add a message to the end of a session and return it.
 
@@ -85,12 +88,13 @@ class MessagesRepo:
             is_error=is_error,
             status=status,
             source=source,
+            command=command,
             created_at=clock.now(),
         )
         await self._db.conn.execute(
             "INSERT INTO messages (id, session_id, turn_id, role, content_json, tool_calls_json, "
-            "tool_call_id, is_error, status, source, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "tool_call_id, is_error, status, source, command, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message.id,
                 message.session_id,
@@ -102,6 +106,7 @@ class MessagesRepo:
                 int(message.is_error),
                 message.status,
                 message.source,
+                message.command,
                 clock.to_iso(message.created_at),
             ),
         )

@@ -79,6 +79,7 @@ A user message; starts a turn. Without `session_id` a session is created.
 | `text` | string | required |
 | `attachments` | array of [Attachment](#attachment) | `[]` |
 | `source` | `"desktop"` \| `"phone"` | required |
+| `command` | [MessageCommand](#messagecommand) | `null` |
 
 ```json
 {
@@ -930,6 +931,17 @@ A file sent along with a user message, either inline or as a local path.
 | `data_b64` | string | `null` |
 | `path` | string | `null` |
 
+### MessageCommand
+
+How to run one turn: extra instructions, whether the model gets tools, which model. The instructions go into the system prompt of this turn only; `name` is kept with the user's message so a client can label it in the history.
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `instructions` | string | `""` |
+| `tools` | `"all"` \| `"none"` | `"all"` |
+| `model` | `"main"` \| `"small"` | `"main"` |
+
 ### SessionInfo
 
 What clients are told about a session. `kind` keeps the user's chats apart from the sessions of agents and schedules.
@@ -978,6 +990,7 @@ A stored message as returned by `history.ok`.
 | `content` | array of [ContentPart](#contentpart) | required |
 | `status` | `"ok"` \| `"cancelled"` \| `"error"` | `null` |
 | `source` | `"desktop"` \| `"phone"` \| `"scheduler"` \| `"agent"` | `null` |
+| `command` | string | `null` |
 | `created_at` | ISO 8601 time | required |
 
 ### ToolRun

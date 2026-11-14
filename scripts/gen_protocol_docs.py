@@ -200,6 +200,7 @@ SHARED: list[type[BaseModel]] = [
     m.Character,
     m.ActionDecl,
     m.Attachment,
+    m.MessageCommand,
     m.SessionInfo,
     m.AgentRef,
     m.AgentInfo,

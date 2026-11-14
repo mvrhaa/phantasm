@@ -7,7 +7,7 @@ from zero.agents.runner import AgentApprovals
 from zero.approvals.manager import Approver
 from zero.core.events import ReplyTo
 from zero.core.turn import Turn
-from zero.protocol.messages import AgentRef, ClientInfo, FilePart, SessionCreated
+from zero.protocol.messages import AgentRef, ClientInfo, FilePart, MessageCommand, SessionCreated
 from zero.providers.base import LLMProvider
 from zero.server.state import AppState
 from zero.store.agents import Agent
@@ -34,10 +34,12 @@ def make_turn(
     agent: AgentRef | None = None,
     tools: ToolRegistry | None = None,
     approvals: Approver | None = None,
+    command: MessageCommand | None = None,
 ) -> Turn:
     """A turn wired to everything the application has: tools, approvals, memory and so on.
 
-    ``tools`` and ``approvals`` replace the shared ones, ``agent`` marks an agent's turn.
+    ``tools`` and ``approvals`` replace the shared ones, ``agent`` marks an agent's turn,
+    ``command`` came with the user's message.
     """
     return Turn(
         session_id=session_id,
@@ -60,6 +62,7 @@ def make_turn(
         agent=agent,
         attachments=attachments,
         reply=reply,
+        command=command,
     )
 
 

@@ -104,7 +104,7 @@ async def handle_message_send(
         after = partial(
             title_new_session,
             session.id,
-            message.text,
+            message.text or (message.command.name if message.command is not None else ""),
             provider=state.provider,
             model=small_model(state.config.provider),
             sessions=state.sessions,
@@ -121,6 +121,7 @@ async def handle_message_send(
             client=connection.hello,
             reply=ReplyTo(connection.id, message.id),
             attachments=attachments,
+            command=message.command,
         ),
         after=after,
     )

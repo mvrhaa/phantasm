@@ -154,6 +154,10 @@ def _summary(summary: str) -> str:
     )
 
 
+def _command(instructions: str) -> str:
+    return "\n".join(["# Command", instructions.strip()])
+
+
 def _time(now: datetime, tz: tzinfo | None) -> str:
     local = now.astimezone(tz)
     offset = local.strftime("%z")
@@ -180,12 +184,14 @@ def build_system_prompt(
     summary: str | None = None,
     agent_name: str | None = None,
     computer: Computer | None = None,
+    command: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
     Stable blocks come first so providers can cache the prefix: base rules,
     persona, environment, the computer, expression rules, memory, a summary of the
-    start of a long conversation, and the current time last because it always changes.
+    start of a long conversation, the instructions of a command sent with this
+    turn's message, and the current time last because it always changes.
     Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     ``agent_name`` turns the prompt into an agent's: its role follows the environment.
@@ -200,6 +206,7 @@ def build_system_prompt(
         _expression(character) if character else None,
         _memories(memories) if memories else None,
         _summary(summary) if summary else None,
+        _command(command) if command and command.strip() else None,
         _time(now, tz),
     ]
     return "\n\n".join(block for block in blocks if block)

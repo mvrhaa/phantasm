@@ -22,6 +22,7 @@ from zero.protocol.messages import (
     ContentPart,
     FilePart,
     ImagePart,
+    MessageCommand,
     TextPart,
     TurnFinished,
     TurnStarted,
@@ -32,6 +33,7 @@ from zero.providers.base import (
     ProviderError,
     ToolCall,
 )
+from zero.providers.registry import small_model
 from zero.store.messages import MessagesRepo, Source
 from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
@@ -109,6 +111,8 @@ class Turn:
     ``summaries`` lets a long history be compacted into a summary.
     ``tool_runs`` keeps a record of the tool calls for the history, ``usage`` of the model calls.
     ``agent`` is set when the turn is an agent's work: its prompt gets the agent's role.
+    ``command`` came with the user's message: its instructions join this turn's
+    system prompt, and it can take the tools away or run the turn on the small model.
     """
 
     def __init__(
@@ -135,6 +139,7 @@ class Turn:
         reply: ReplyTo | None = None,
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
         usage: UsageRecorder | None = None,
+        command: MessageCommand | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -145,6 +150,12 @@ class Turn:
         if agent is not None:
             events = events.for_agent(agent)
         self._text = text
+        self._command = command
+        model = (
+            small_model(config.provider)
+            if command is not None and command.model == "small"
+            else config.provider.model
+        )
         self._source: Source = source
         self._client = client
         self._config = config
@@ -160,7 +171,7 @@ class Turn:
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
         self._used_computer = False
         self._timed_out = False
-        self._can_see_images = provider.supports_images(config.provider.model)
+        self._can_see_images = provider.supports_images(model)
         self._reply = reply
         self._prompts = PromptBuilder(
             session_id=session_id,
@@ -175,6 +186,8 @@ class Turn:
             agent_name=agent.name if agent is not None else None,
             usage=usage,
             cancel=self.cancel,
+            command=command.instructions if command is not None else None,
+            model=model,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None
@@ -193,7 +206,7 @@ class Turn:
         )
         self._model = ModelCaller(
             provider=provider,
-            model=config.provider.model,
+            model=model,
             purpose="agent" if agent is not None else "turn",
             session_id=session_id,
             turn_id=self.id,
@@ -224,13 +237,15 @@ class Turn:
         limit = self._config.agent.turn_timeout_s
         timer = asyncio.get_running_loop().call_later(limit, self._time_out)
         try:
+            text = [TextPart(text=self._text)] if self._text or not self._attachments else []
             await self._messages.append(
                 self.session_id,
                 "user",
-                [TextPart(text=self._text), *self._attachments],
+                [*text, *self._attachments],
                 turn_id=self.id,
                 status="ok",
                 source=self._source,
+                command=self._command.name if self._command is not None else None,
             )
             await self._events.publish(
                 TurnStarted(session_id=self.session_id, turn_id=self.id, source=self._source),
@@ -298,9 +313,11 @@ class Turn:
         the model has to sum up. Returns True when the limit was reached.
         """
         prompt = await self._prompts.build()
-        specs = self._tools.specs()
-        if self._expression is not None:
-            specs.append(self._expression.spec)
+        specs = []
+        if self._command is None or self._command.tools == "all":
+            specs = self._tools.specs()
+            if self._expression is not None:
+                specs.append(self._expression.spec)
 
         step = 1
         while step < self._step_limit():
