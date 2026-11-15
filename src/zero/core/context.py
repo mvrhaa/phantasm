@@ -28,6 +28,10 @@ NO_ANSWER = {
 CHARS_PER_TOKEN = 3.5
 OTHER_CHARS_PER_TOKEN = 2.5
 IMAGE_TOKENS = 1000
+# Past this share of the history budget, old tool results give way to a short note.
+CLEAR_AT = 0.5
+CLEAR_MIN_CHARS = 400
+CLEARED = "[old result of {tool} cleared to save space; call it again if you need it]"
 
 CountFn = Callable[[Message], int]
 
@@ -274,6 +278,53 @@ def _split_into_turns(messages: Sequence[StoredMessage]) -> list[list[StoredMess
             turns.append([])
         turns[-1].append(message)
     return turns
+
+
+def _text_length(message: StoredMessage) -> int:
+    return sum(len(part.text) for part in message.content if isinstance(part, TextPart))
+
+
+def clear_old_results(
+    messages: Sequence[StoredMessage], budget: int, count_fn: CountFn = estimate_tokens
+) -> list[StoredMessage]:
+    """The history with old tool results replaced by a note while it is over half the budget.
+
+    The lightest way to make room, before turns drop out into the summary:
+    results are cleared oldest first until the history fits into half of
+    ``budget``. The latest turn, errors (they keep the model from repeating a
+    mistake) and short results stay. Ids and order do not change, so indexes
+    into ``messages`` still hold.
+    """
+    turns = _split_into_turns(messages)
+    if len(turns) < 2:
+        return list(messages)
+    latest_start = len(messages) - len(turns[-1])
+
+    def size(index: int, message: StoredMessage) -> int:
+        return count_fn(_to_message(message, keep_images=index >= latest_start))
+
+    result = list(messages)
+    total = sum(size(index, message) for index, message in enumerate(result))
+    limit = budget * CLEAR_AT
+    if total <= limit:
+        return result
+    names = {
+        str(call.get("id")): str(call.get("name", "a tool"))
+        for message in messages
+        if message.role == "assistant"
+        for call in message.tool_calls
+    }
+    for index in range(latest_start):
+        if total <= limit:
+            break
+        message = result[index]
+        if message.role != "tool" or message.is_error or _text_length(message) < CLEAR_MIN_CHARS:
+            continue
+        note = CLEARED.format(tool=names.get(message.tool_call_id or "", "a tool"))
+        cleared = message.model_copy(update={"content": [TextPart(text=note)]})
+        total -= size(index, message) - size(index, cleared)
+        result[index] = cleared
+    return result
 
 
 def keep_from(

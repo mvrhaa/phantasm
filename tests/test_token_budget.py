@@ -89,3 +89,26 @@ def test_a_models_budget_must_be_sensible() -> None:
     with pytest.raises(ValidationError):
         ProviderConfig(history_token_budget=10)
     assert ProviderConfig().history_token_budget is None
+
+
+async def test_the_prompt_clears_old_tool_results_but_the_summary_sees_them(
+    harness: Harness,
+) -> None:
+    for n in range(3):
+        call = {"id": f"c{n}", "name": "run_command", "input": {"command": "ls"}}
+        await harness.messages.append(harness.session_id, "user", [TextPart(text=f"q{n}")])
+        await harness.messages.append(harness.session_id, "assistant", [], tool_calls=[call])
+        await harness.messages.append(
+            harness.session_id, "tool", [TextPart(text=f"r{n} " + "x" * 3500)], tool_call_id=f"c{n}"
+        )
+        await harness.messages.append(
+            harness.session_id, "assistant", [TextPart(text=f"a{n}")], status="ok"
+        )
+    config = Config()
+    config.provider.history_token_budget = 4000
+
+    prompt = await builder(harness, config).build()
+
+    results = [m.content[0].text for m in prompt if m.role == "tool"]  # type: ignore[union-attr]
+    assert results[0].startswith("[old result of run_command")
+    assert results[-1].startswith("r2 ")

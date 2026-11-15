@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from zero.core.context import IMAGE_OMITTED, build_history, estimate_tokens
+from zero.core.context import IMAGE_OMITTED, build_history, clear_old_results, estimate_tokens
 from zero.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
 from zero.providers.base import Message, ToolCall
 from zero.store.messages import StoredMessage
@@ -213,3 +213,55 @@ def test_default_estimate_drives_the_window() -> None:
 
     assert texts(build_history(history, budget=210)) == ["a" * 350, "b" * 350, "c" * 35]
     assert texts(build_history(history, budget=209)) == ["c" * 35]
+
+
+def tool_turn(question: str, result: str, call_id: str, **extra: Any) -> list[StoredMessage]:
+    call = {"id": call_id, "name": "run_command", "input": {"command": "ls"}}
+    return [
+        user(question),
+        assistant(tool_calls=[call]),
+        tool_result(result, call_id=call_id, **extra),
+        assistant("done"),
+    ]
+
+
+def cleared_flags(messages: list[StoredMessage]) -> list[bool]:
+    return [
+        message.content[0].text.startswith("[old result of")  # type: ignore[union-attr]
+        for message in messages
+        if message.role == "tool"
+    ]
+
+
+BIG = "x" * 3500  # about 1000 tokens
+
+
+def test_old_tool_results_are_cleared_oldest_first_past_half_the_budget() -> None:
+    history = [*tool_turn("a", BIG, "c1"), *tool_turn("b", BIG, "c2"), *tool_turn("c", BIG, "c3")]
+
+    assert cleared_flags(clear_old_results(history, budget=4000)) == [True, True, False]
+    assert cleared_flags(clear_old_results(history, budget=6000)) == [True, False, False]
+    note = clear_old_results(history, budget=4000)[2].content[0]
+    assert isinstance(note, TextPart)
+    assert "run_command" in note.text
+
+
+def test_nothing_is_cleared_under_half_the_budget() -> None:
+    history = [*tool_turn("a", BIG, "c1"), *tool_turn("b", BIG, "c2")]
+    assert clear_old_results(history, budget=100_000) == history
+
+
+def test_errors_short_results_and_the_latest_turn_stay() -> None:
+    history = [
+        *tool_turn("a", BIG, "c1", is_error=True),
+        *tool_turn("b", "ok", "c2"),
+        *tool_turn("c", BIG * 3, "c3"),
+    ]
+    assert cleared_flags(clear_old_results(history, budget=1000)) == [False, False, False]
+
+
+def test_clearing_keeps_ids_and_the_original_list() -> None:
+    history = [*tool_turn("a", BIG, "c1"), *tool_turn("b", BIG, "c2")]
+    cleared = clear_old_results(history, budget=2000)
+    assert [message.id for message in cleared] == [message.id for message in history]
+    assert history[2].content[0] == TextPart(text=BIG)

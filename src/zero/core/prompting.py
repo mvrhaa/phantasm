@@ -8,7 +8,13 @@ from zero.config import Config
 from zero.core.attachments import prepare_for_model
 from zero.core.cancellation import CancelToken
 from zero.core.compaction import compact
-from zero.core.context import Computer, build_system_prompt, keep_from, to_history
+from zero.core.context import (
+    Computer,
+    build_system_prompt,
+    clear_old_results,
+    keep_from,
+    to_history,
+)
 from zero.core.events import EventBus
 from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
@@ -97,10 +103,11 @@ class PromptBuilder:
         budget = self._config.provider.history_token_budget or (
             self._config.agent.history_token_budget
         )
-        start = keep_from(stored, budget)
+        shown = clear_old_results(stored, budget)
+        start = keep_from(shown, budget)
         summary = None
         if (start > 0 or older) and self._summaries is not None:
-            start = keep_from(stored, max(budget - SUMMARY_RESERVE_TOKENS, 0))
+            start = keep_from(shown, max(budget - SUMMARY_RESERVE_TOKENS, 0))
             summary = await compact(
                 self._session_id,
                 [*older, *stored],
@@ -125,7 +132,7 @@ class PromptBuilder:
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),
-            *to_history(stored[start:]),
+            *to_history(shown[start:]),
         ]
         can_see = self._provider.supports_images(self._model)
         return await prepare_for_model(prompt, can_see)
