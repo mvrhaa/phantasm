@@ -28,6 +28,7 @@ from zero.store.db import Database
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
+from zero.store.session_memory import SessionMemoryRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
 from zero.store.todo import TodoRepo
@@ -105,6 +106,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             )
             await agent_runner.recover()
             jobs = JobManager()
+            session_memory = SessionMemoryRepo(db)
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
@@ -114,7 +116,9 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=events,
                 turns=turns,
-                tools=builtin_registry(memory, TodoRepo(db), schedules, agent_runner, jobs),
+                tools=builtin_registry(
+                    memory, TodoRepo(db), schedules, agent_runner, jobs, session_memory
+                ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
@@ -129,6 +133,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     schedules, lambda schedule: start_scheduled_turn(state, schedule)
                 ),
                 provider=provider or _choose_provider(config),
+                session_memory=session_memory,
                 jobs=jobs,
             )
             state.scheduler.start()

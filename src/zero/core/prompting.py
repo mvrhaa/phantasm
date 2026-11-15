@@ -22,6 +22,7 @@ from zero.providers.base import LLMProvider, Message
 from zero.providers.registry import small_model
 from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source, StoredMessage
+from zero.store.session_memory import SessionMemoryRepo
 from zero.store.summaries import SummariesRepo
 
 HISTORY_FETCH_LIMIT = 500
@@ -63,6 +64,7 @@ class PromptBuilder:
         messages: MessagesRepo,
         events: EventBus,
         memory: MemorySource | None = None,
+        session_memory: SessionMemoryRepo | None = None,
         summaries: SummariesRepo | None = None,
         agent_name: str | None = None,
         usage: UsageRecorder | None = None,
@@ -79,6 +81,7 @@ class PromptBuilder:
         self._messages = messages
         self._events = events
         self._memory = memory
+        self._session_memory = session_memory
         self._summaries = summaries
         self._agent_name = agent_name
         self._usage = usage
@@ -90,6 +93,11 @@ class PromptBuilder:
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
         memories = await self._memory.top(PROMPT_MEMORIES) if self._memory is not None else []
+        own = (
+            await self._session_memory.list(self._session_id)
+            if self._session_memory is not None
+            else []
+        )
         stored = await self._messages.list(self._session_id, limit=HISTORY_FETCH_LIMIT)
         older: list[StoredMessage] = []
         if len(stored) >= HISTORY_FETCH_LIMIT:
@@ -123,6 +131,7 @@ class PromptBuilder:
             self._client,
             self._source,
             [memory.text for memory in memories],
+            session_memories=[f"[{entry.id}] {entry.text}" for entry in own],
             now=clock.now(),
             summary=summary,
             agent_name=self._agent_name,

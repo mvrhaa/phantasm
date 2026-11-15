@@ -1,10 +1,15 @@
-"""Built-in memory tools: ``memory_save``, ``memory_search`` and ``memory_delete``."""
+"""Built-in memory tools: ``memory_save``, ``memory_search`` and ``memory_delete``.
 
-from typing import Any
+``memory_save`` keeps a fact in the user's lasting memory or, with
+``scope: "session"``, in the memory of this conversation only.
+"""
+
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from zero.store.memory import Memory, MemoryRepo
+from zero.store.session_memory import SessionMemoryRepo
 from zero.tools.base import Preview, Tool, ToolContext, ToolResult, error_result, text_result
 
 MAX_MEMORY_CHARS = 1000
@@ -30,6 +35,13 @@ class MemorySaveInput(BaseModel):
     tags: list[str] = Field(
         default_factory=list, max_length=MAX_TAGS, description="A few keywords to find it by"
     )
+    scope: Literal["everywhere", "session"] = Field(
+        default="everywhere",
+        description=(
+            "everywhere: a lasting fact for every conversation; session: an instruction or "
+            "fact for this conversation only"
+        ),
+    )
 
 
 class MemorySave(Tool[MemorySaveInput]):
@@ -38,18 +50,31 @@ class MemorySave(Tool[MemorySaveInput]):
     name = "memory_save"
     description = (
         "Remember a fact for later conversations. Save only what the user said about "
-        "themselves or asked you to remember, as one short sentence."
+        "themselves or asked you to remember, as one short sentence. With scope session "
+        "it is kept for this conversation only, such as an instruction for this chat."
     )
     input_model = MemorySaveInput
     default_policy = "allow"
 
-    def __init__(self, memory: MemoryRepo) -> None:
+    def __init__(self, memory: MemoryRepo, session_memory: SessionMemoryRepo | None = None) -> None:
         self._memory = memory
+        self._session_memory = session_memory
 
     def label(self, params: MemorySaveInput) -> str:
         return _short(params.text)
 
     async def run(self, params: MemorySaveInput, ctx: ToolContext) -> ToolResult:
+        if params.scope == "session":
+            if self._session_memory is None:
+                return error_result("This conversation has no memory of its own here.")
+            try:
+                entry = await self._session_memory.add(ctx.session_id, params.text)
+            except ValueError as exc:
+                return error_result(f"Nothing was saved: {exc}.")
+            return text_result(
+                f"Remembered for this conversation: {entry.text} (id {entry.id}).",
+                summary="saved here",
+            )
         try:
             saved = await self._memory.add(params.text, params.tags)
         except ValueError as exc:
@@ -96,32 +121,56 @@ class MemoryDeleteInput(BaseModel):
 
 
 class MemoryDelete(Tool[MemoryDeleteInput]):
-    """Forgets a remembered fact."""
+    """Forgets a remembered fact, lasting or of this conversation."""
 
     name = "memory_delete"
-    description = "Forget a memory by its id. The user usually approves this first."
+    description = (
+        "Forget a memory by its id, a lasting one or one of this conversation. "
+        "The user usually approves this first."
+    )
     input_model = MemoryDeleteInput
     default_policy = "ask"
 
-    def __init__(self, memory: MemoryRepo) -> None:
+    def __init__(self, memory: MemoryRepo, session_memory: SessionMemoryRepo | None = None) -> None:
         self._memory = memory
+        self._session_memory = session_memory
 
     def label(self, params: MemoryDeleteInput) -> str:
         return f"forget {params.id}"
 
+    async def _text(self, memory_id: str) -> str | None:
+        memory = await self._memory.get(memory_id)
+        if memory is not None:
+            return memory.text
+        if self._session_memory is not None:
+            entry = await self._session_memory.get(memory_id)
+            if entry is not None:
+                return entry.text
+        return None
+
     async def preview(self, params: MemoryDeleteInput, ctx: ToolContext) -> Preview:
-        memory = await self._memory.get(params.id)
-        if memory is None:
+        text = await self._text(params.id)
+        if text is None:
             return Preview(refusal=f"There is no memory with id {params.id}.")
-        return Preview(label=f"forget: {_short(memory.text)}")
+        return Preview(label=f"forget: {_short(text)}")
 
     async def run(self, params: MemoryDeleteInput, ctx: ToolContext) -> ToolResult:
-        memory = await self._memory.get(params.id)
-        if memory is None or not await self._memory.delete(params.id):
+        text = await self._text(params.id)
+        deleted = text is not None and (
+            await self._memory.delete(params.id)
+            or (self._session_memory is not None and await self._session_memory.delete(params.id))
+        )
+        if not deleted:
             return error_result(f"There is no memory with id {params.id}.")
-        return text_result(f"Forgot: {memory.text}", summary="forgotten")
+        return text_result(f"Forgot: {text}", summary="forgotten")
 
 
-def memory_tools(memory: MemoryRepo) -> list[Tool[Any]]:
-    """The three memory tools, working on ``memory``."""
-    return [MemorySave(memory), MemorySearch(memory), MemoryDelete(memory)]
+def memory_tools(
+    memory: MemoryRepo, session_memory: SessionMemoryRepo | None = None
+) -> list[Tool[Any]]:
+    """The three memory tools, working on ``memory`` and the sessions' own memory."""
+    return [
+        MemorySave(memory, session_memory),
+        MemorySearch(memory),
+        MemoryDelete(memory, session_memory),
+    ]

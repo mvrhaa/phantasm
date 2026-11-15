@@ -182,11 +182,24 @@ def _time(now: datetime, tz: tzinfo | None) -> str:
     )
 
 
+def _session_memories(entries: Sequence[str]) -> str:
+    return "\n".join(
+        [
+            "# This conversation's memory",
+            "",
+            "Kept for this conversation only; where it differs from the memory above, it wins.",
+            "",
+            *(f"- {entry}" for entry in entries),
+        ]
+    )
+
+
 def build_system_prompt(
     client: ClientInfo | None,
     source: str,
     memories: Sequence[str] = (),
     *,
+    session_memories: Sequence[str] = (),
     now: datetime,
     tz: tzinfo | None = None,
     summary: str | None = None,
@@ -215,6 +228,7 @@ def build_system_prompt(
         _agent_role(agent_name) if agent_name else None,
         _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,
+        _session_memories(session_memories) if session_memories else None,
         _summary(summary) if summary else None,
         _command(command, tools),
         _time(now, tz),

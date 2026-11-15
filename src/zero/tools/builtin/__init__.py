@@ -2,6 +2,7 @@
 
 from zero.store.memory import MemoryRepo
 from zero.store.schedules import SchedulesRepo
+from zero.store.session_memory import SessionMemoryRepo
 from zero.store.todo import TodoRepo
 from zero.tools.base import ToolRegistry
 from zero.tools.builtin.agents import AgentControl, agent_tools
@@ -22,6 +23,7 @@ def builtin_registry(
     schedules: SchedulesRepo | None = None,
     agents: AgentControl | None = None,
     jobs: JobManager | None = None,
+    session_memory: SessionMemoryRepo | None = None,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -36,7 +38,7 @@ def builtin_registry(
         SendFile(),
     )
     extra = [
-        *(memory_tools(memory) if memory is not None else []),
+        *(memory_tools(memory, session_memory) if memory is not None else []),
         *(todo_tools(todo) if todo is not None else []),
         *(schedule_tools(schedules) if schedules is not None else []),
         *(agent_tools(agents) if agents is not None else []),

@@ -57,6 +57,7 @@ def make_turn(
         tool_runs=state.tool_runs,
         action_caller=state.actions,
         memory=state.memory,
+        session_memory=state.session_memory,
         summaries=state.summaries,
         usage=state.usage,
         agent=agent,

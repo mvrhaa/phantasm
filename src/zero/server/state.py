@@ -18,6 +18,7 @@ from zero.store.db import Database
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
+from zero.store.session_memory import SessionMemoryRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
 from zero.store.tool_runs import ToolRunsRepo
@@ -52,6 +53,7 @@ class AppState:
     agent_runner: AgentRunner
     scheduler: SchedulerRunner
     provider: LLMProvider | None
+    session_memory: SessionMemoryRepo
     jobs: JobManager = field(default_factory=JobManager)
     stopping: bool = False
 
