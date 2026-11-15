@@ -52,3 +52,10 @@ class SummariesRepo:
         return Summary(
             session_id=session_id, text=text, until_message_id=until_message_id, updated_at=now
         )
+
+    async def delete(self, session_id: str) -> None:
+        """Forget the session's summary; it is made again when it is needed."""
+        await self._db.conn.execute(
+            "DELETE FROM session_summaries WHERE session_id = ?", (session_id,)
+        )
+        await self._db.conn.commit()

@@ -212,6 +212,20 @@ class SessionDelete(Envelope):
     session_id: str
 
 
+class SessionRewind(Envelope):
+    """Go back to just before a user message of the session.
+
+    That message and everything after it are undone where they can be (see
+    ``session.rewound``). With ``dry_run`` nothing changes and only the sender
+    hears what would. Refused with ``turn_busy`` while a turn of the session runs.
+    """
+
+    type: Literal["session.rewind"] = "session.rewind"
+    session_id: str
+    message_id: str
+    dry_run: bool = False
+
+
 class HistoryGet(Envelope):
     """Ask for a page of a session's history, newest first when paging back."""
 
@@ -239,6 +253,7 @@ ClientMessage = Annotated[
     | SessionCreate
     | SessionRename
     | SessionDelete
+    | SessionRewind
     | HistoryGet
     | Ping,
     Field(discriminator="type"),
@@ -432,6 +447,37 @@ class ApprovalResolved(TurnEvent):
     by_client_id: str
 
 
+class FileUndo(BaseModel):
+    """What going back did to one file a tool had changed."""
+
+    path: str
+    change: Literal["restored", "deleted", "changed elsewhere"]
+
+
+class SessionRewound(Envelope):
+    """A session went back to just before a user message (or, on a dry run, would).
+
+    ``text`` is that message, for the input. Gone: ``removed_messages``
+    messages, ``removed_todos`` todo items and ``removed_session_memories``
+    entries of the conversation's memory added since, the agents it started
+    since. ``files`` were put back as they were; a file changed outside Zero
+    since is left alone. ``kept`` counts the calls whose effects stay, by tool.
+    Every client gets it after a real rewind and should load the history again.
+    """
+
+    type: Literal["session.rewound"] = "session.rewound"
+    session_id: str
+    message_id: str
+    text: str
+    dry_run: bool = False
+    removed_messages: int = 0
+    files: list[FileUndo] = Field(default_factory=list)
+    removed_todos: int = 0
+    removed_session_memories: int = 0
+    stopped_agents: list[str] = Field(default_factory=list)
+    kept: dict[str, int] = Field(default_factory=dict)
+
+
 class TodoUpdated(Envelope):
     """The todo list of a session changed; carries the whole list."""
 
@@ -553,6 +599,7 @@ ServerEvent = Annotated[
     | SessionUpdated
     | SessionDeleted
     | SessionCompacted
+    | SessionRewound
     | AgentUpdated
     | HistoryOk,
     Field(discriminator="type"),

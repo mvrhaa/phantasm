@@ -26,3 +26,13 @@ class ReviewsRepo:
             (session_id, until_message_id, clock.to_iso(clock.now())),
         )
         await self._db.conn.commit()
+
+    async def reset(self, session_id: str, until_message_id: str | None) -> None:
+        """Move the review mark back to ``until_message_id``, or drop it with None."""
+        if until_message_id is None:
+            await self._db.conn.execute(
+                "DELETE FROM session_reviews WHERE session_id = ?", (session_id,)
+            )
+            await self._db.conn.commit()
+            return
+        await self.mark(session_id, until_message_id)

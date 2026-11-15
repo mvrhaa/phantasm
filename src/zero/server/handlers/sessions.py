@@ -2,10 +2,12 @@
 
 from zero.core.attachments import remove_files
 from zero.core.events import ReplyTo
+from zero.core.rewind import RewindError
 from zero.protocol.errors import ErrorCode
 from zero.protocol.messages import (
     Envelope,
     Error,
+    FileUndo,
     HistoryGet,
     HistoryMessage,
     HistoryOk,
@@ -16,7 +18,10 @@ from zero.protocol.messages import (
     SessionList,
     SessionListOk,
     SessionRename,
+    SessionRewind,
+    SessionRewound,
     SessionUpdated,
+    TodoUpdated,
 )
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
@@ -126,3 +131,39 @@ async def handle_history_get(connection: Connection, message: HistoryGet, state:
             tool_runs=runs,
         )
     )
+
+
+async def handle_session_rewind(
+    connection: Connection, message: SessionRewind, state: AppState
+) -> None:
+    """Go back to just before a user message (see ``Rewinder``).
+
+    After a real rewind every client gets ``session.rewound`` (and the new todo
+    list if items went); a dry run answers only the sender.
+    """
+    try:
+        report = await state.rewinder.rewind(
+            message.session_id, message.message_id, dry_run=message.dry_run
+        )
+    except RewindError as exc:
+        await connection.send(Error(code=exc.code, message=exc.message, reply_to=message.id))
+        return
+    event = SessionRewound(
+        session_id=report.session_id,
+        message_id=report.message_id,
+        text=report.text,
+        dry_run=message.dry_run,
+        removed_messages=report.removed_messages,
+        files=[FileUndo(path=f.path, change=f.change) for f in report.files],  # type: ignore[arg-type]
+        removed_todos=report.removed_todos,
+        removed_session_memories=report.removed_session_memories,
+        stopped_agents=report.stopped_agents,
+        kept=report.kept,
+    )
+    if message.dry_run:
+        await connection.send(event.model_copy(update={"reply_to": message.id}))
+        return
+    await _announce(connection, state, event, message.id)
+    if report.removed_todos:
+        items = [todo.item() for todo in await state.todos.list(message.session_id)]
+        await state.events.publish(TodoUpdated(session_id=message.session_id, items=items))

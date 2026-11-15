@@ -67,3 +67,14 @@ class ToolRunsRepo:
         ) as cursor:
             rows = await cursor.fetchall()
         return [_to_run(row) for row in rows]
+
+    async def delete_turns(self, session_id: str, turn_ids: Collection[str]) -> None:
+        """Forget the tool runs of these turns of the session."""
+        if not turn_ids:
+            return
+        marks = ", ".join("?" for _ in turn_ids)
+        await self._db.conn.execute(
+            f"DELETE FROM tool_runs WHERE session_id = ? AND turn_id IN ({marks})",
+            (session_id, *turn_ids),
+        )
+        await self._db.conn.commit()

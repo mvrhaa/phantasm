@@ -133,6 +133,29 @@ class MessagesRepo:
             rows = await cursor.fetchall()
         return [(_to_message(row), row["matched"]) for row in rows]
 
+    async def get(self, message_id: str) -> StoredMessage | None:
+        async with self._db.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _to_message(row) if row else None
+
+    async def delete_from(self, session_id: str, message_id: str) -> list[StoredMessage]:
+        """Delete this message of the session and every later one; return what went."""
+        async with self._db.conn.execute(
+            "SELECT * FROM messages WHERE session_id = ? AND rowid >= "
+            "(SELECT rowid FROM messages WHERE id = ?) ORDER BY rowid",
+            (session_id, message_id),
+        ) as cursor:
+            removed = [_to_message(row) for row in await cursor.fetchall()]
+        if removed:
+            marks = ", ".join("?" for _ in removed)
+            await self._db.conn.execute(
+                f"DELETE FROM messages WHERE id IN ({marks})", tuple(m.id for m in removed)
+            )
+            await self._db.conn.commit()
+        return removed
+
     async def file_paths(self, session_id: str) -> list[str]:
         """Paths of every file part in the messages of a session."""
         async with self._db.conn.execute(

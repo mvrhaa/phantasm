@@ -23,6 +23,7 @@ from zero.protocol.messages import (
     SessionDelete,
     SessionList,
     SessionRename,
+    SessionRewind,
     TurnCancel,
     TurnSteer,
 )
@@ -41,6 +42,7 @@ from zero.server.handlers.sessions import (
     handle_session_delete,
     handle_session_list,
     handle_session_rename,
+    handle_session_rewind,
 )
 from zero.server.state import AppState
 
@@ -68,6 +70,7 @@ HANDLERS: dict[type[Envelope], Handler] = {
     SessionCreate: handle_session_create,
     SessionRename: handle_session_rename,
     SessionDelete: handle_session_delete,
+    SessionRewind: handle_session_rewind,
     HistoryGet: handle_history_get,
 }
 

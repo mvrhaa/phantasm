@@ -1,5 +1,6 @@
 """Built-in tools that come with Zero."""
 
+from zero.store.file_changes import FileChangesRepo
 from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.schedules import SchedulesRepo
@@ -29,6 +30,7 @@ def builtin_registry(
     session_memory: SessionMemoryRepo | None = None,
     journal: JournalRepo | None = None,
     sessions: SessionStores | None = None,
+    file_changes: FileChangesRepo | None = None,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -36,8 +38,8 @@ def builtin_registry(
         ReadFile(),
         ListDir(),
         SearchFiles(),
-        WriteFile(),
-        EditFile(),
+        WriteFile(file_changes),
+        EditFile(file_changes),
         RunCommand(jobs),
         WebFetch(),
         SendFile(),

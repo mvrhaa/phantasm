@@ -78,6 +78,7 @@ CLIENT_EXAMPLES: list[BaseModel] = [
     m.SessionCreate(id="sc-1", title="Plans"),
     m.SessionRename(id="sr-1", session_id="s-1", title="Server setup"),
     m.SessionDelete(id="sd-1", session_id="s-1"),
+    m.SessionRewind(id="rw-1", session_id="s-1", message_id="msg-12"),
     m.HistoryGet(id="hg-1", session_id="s-1", limit=50),
     m.Ping(id="p-1"),
 ]
@@ -149,6 +150,15 @@ SERVER_EXAMPLES: list[BaseModel] = [
     m.SessionCreated(reply_to="sc-1", session=SESSION),
     m.SessionUpdated(session=SESSION),
     m.SessionDeleted(reply_to="sd-1", session_id="s-1"),
+    m.SessionRewound(
+        reply_to="rw-1",
+        session_id="s-1",
+        message_id="msg-12",
+        text="Now write it to notes.md",
+        removed_messages=6,
+        files=[m.FileUndo(path="/Users/me/notes.md", change="restored")],
+        kept={"run_command": 1},
+    ),
     m.SessionCompacted(
         session_id="s-1", summary="The user set up nginx …", until_message_id="msg-40"
     ),

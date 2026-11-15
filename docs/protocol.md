@@ -258,6 +258,28 @@ Delete a session with its history.
 }
 ```
 
+### `session.rewind`
+
+Go back to just before a user message of the session. That message and everything after it are undone where they can be (see `session.rewound`). With `dry_run` nothing changes and only the sender hears what would. Refused with `turn_busy` while a turn of the session runs.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `session_id` | string | required |
+| `message_id` | string | required |
+| `dry_run` | boolean | `false` |
+
+```json
+{
+  "type": "session.rewind",
+  "id": "rw-1",
+  "session_id": "s-1",
+  "message_id": "msg-12",
+  "dry_run": false
+}
+```
+
 ### `history.get`
 
 Ask for a page of a session's history, newest first when paging back.
@@ -812,6 +834,49 @@ The start of a long session was summarized so the rest fits the model's context.
   "session_id": "s-1",
   "summary": "The user set up nginx …",
   "until_message_id": "msg-40"
+}
+```
+
+### `session.rewound`
+
+A session went back to just before a user message (or, on a dry run, would). `text` is that message, for the input. Gone: `removed_messages` messages, `removed_todos` todo items and `removed_session_memories` entries of the conversation's memory added since, the agents it started since. `files` were put back as they were; a file changed outside Zero since is left alone. `kept` counts the calls whose effects stay, by tool. Every client gets it after a real rewind and should load the history again.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `session_id` | string | required |
+| `message_id` | string | required |
+| `text` | string | required |
+| `dry_run` | boolean | `false` |
+| `removed_messages` | integer | `0` |
+| `files` | array of [FileUndo](#fileundo) | `[]` |
+| `removed_todos` | integer | `0` |
+| `removed_session_memories` | integer | `0` |
+| `stopped_agents` | array of string | `[]` |
+| `kept` | object | `{}` |
+
+```json
+{
+  "type": "session.rewound",
+  "reply_to": "rw-1",
+  "session_id": "s-1",
+  "message_id": "msg-12",
+  "text": "Now write it to notes.md",
+  "dry_run": false,
+  "removed_messages": 6,
+  "files": [
+    {
+      "path": "/Users/me/notes.md",
+      "change": "restored"
+    }
+  ],
+  "removed_todos": 0,
+  "removed_session_memories": 0,
+  "stopped_agents": [],
+  "kept": {
+    "run_command": 1
+  }
 }
 ```
 

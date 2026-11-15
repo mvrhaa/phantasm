@@ -9,6 +9,7 @@ from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.review import ReviewRunner
+from zero.core.rewind import Rewinder
 from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.scheduler.runner import SchedulerRunner
@@ -23,6 +24,7 @@ from zero.store.schedules import SchedulesRepo
 from zero.store.session_memory import SessionMemoryRepo
 from zero.store.sessions import SessionsRepo
 from zero.store.summaries import SummariesRepo
+from zero.store.todo import TodoRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.store.usage import UsageRepo
 from zero.tools.base import ToolRegistry
@@ -58,6 +60,8 @@ class AppState:
     session_memory: SessionMemoryRepo
     journal: JournalRepo
     reviewer: ReviewRunner
+    rewinder: Rewinder
+    todos: TodoRepo
     jobs: JobManager = field(default_factory=JobManager)
     stopping: bool = False
 

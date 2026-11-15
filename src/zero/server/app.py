@@ -12,6 +12,7 @@ from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.review import ReviewRunner
+from zero.core.rewind import Rewinder
 from zero.core.turn_manager import TurnManager
 from zero.paths import db_path
 from zero.providers.base import LLMProvider
@@ -26,6 +27,7 @@ from zero.server.ws import router as ws_router
 from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
+from zero.store.file_changes import FileChangesRepo
 from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
@@ -114,6 +116,11 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             session_memory = SessionMemoryRepo(db)
             journal = JournalRepo(db)
             summaries = SummariesRepo(db)
+            todos = TodoRepo(db)
+            file_changes = FileChangesRepo(db)
+            await file_changes.prune()
+            reviews = ReviewsRepo(db)
+            tool_runs = ToolRunsRepo(db)
             usage = UsageRepo(db)
             app.state.zero = state = AppState(
                 config=config,
@@ -126,17 +133,18 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 turns=turns,
                 tools=builtin_registry(
                     memory,
-                    TodoRepo(db),
+                    todos,
                     schedules,
                     agent_runner,
                     jobs,
                     session_memory,
                     journal,
                     SessionStores(sessions, messages, summaries),
+                    file_changes,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
-                tool_runs=ToolRunsRepo(db),
+                tool_runs=tool_runs,
                 actions=ActionBroker(connections),
                 memory=memory,
                 schedules=schedules,
@@ -155,13 +163,27 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     messages=messages,
                     memory=memory,
                     journal=journal,
-                    reviews=ReviewsRepo(db),
+                    reviews=reviews,
                     provider=lambda: state.provider,
                     model=lambda: small_model(config.provider),
                     busy=lambda session_id: state.turns.busy(session_id),
                     enabled=lambda: config.agent.review_conversations,
                     usage=usage,
                 ),
+                rewinder=Rewinder(
+                    sessions=sessions,
+                    messages=messages,
+                    changes=file_changes,
+                    todos=todos,
+                    session_memory=session_memory,
+                    agents=agents,
+                    summaries=summaries,
+                    reviews=reviews,
+                    tool_runs=tool_runs,
+                    busy=lambda session_id: state.turns.busy(session_id),
+                    stop_agent=agent_runner.stop,
+                ),
+                todos=todos,
                 jobs=jobs,
             )
             state.scheduler.start()

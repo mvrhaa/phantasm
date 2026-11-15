@@ -81,3 +81,12 @@ class SessionMemoryRepo:
         )
         await self._db.conn.commit()
         return cursor.rowcount > 0
+
+    async def delete_since(self, session_id: str, moment: datetime) -> int:
+        """Delete the session's entries kept at ``moment`` or later; return how many."""
+        cursor = await self._db.conn.execute(
+            "DELETE FROM session_memories WHERE session_id = ? AND created_at >= ?",
+            (session_id, clock.to_iso(moment)),
+        )
+        await self._db.conn.commit()
+        return cursor.rowcount

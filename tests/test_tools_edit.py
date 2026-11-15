@@ -483,3 +483,42 @@ async def test_valid_change_and_other_files_are_not_checked(home: Path) -> None:
     assert not good.is_error
     text = await write(home / "notes.txt", "{ not json")
     assert not text.is_error
+
+
+async def test_changes_are_recorded_for_going_back(home: Path) -> None:
+    from zero.paths import db_path
+    from zero.store.db import Database
+    from zero.store.file_changes import FileChangesRepo, sha256
+
+    async with Database(db_path()) as db:
+        await db.migrate()
+        history = FileChangesRepo(db)
+        config = Config()
+        ctx = ToolContext(
+            session_id="s1",
+            turn_id="t1",
+            client_id="c1",
+            cancel=CancelToken(),
+            config=config,
+            paths=PathGuard.from_config(config.permissions),
+            approvals=FakeApprover("allow"),
+        )
+        registry = builtin_registry(file_changes=history)
+        path = home / "plan.md"
+        await registry.execute(
+            ToolCall(id="w", name="write_file", input={"path": str(path), "content": "one\n"}), ctx
+        )
+        await registry.execute(
+            ToolCall(
+                id="e", name="edit_file", input={"path": str(path), "old": "one", "new": "two"}
+            ),
+            ctx,
+        )
+        from datetime import UTC, datetime
+
+        changes = await history.since(["s1"], datetime(2000, 1, 1, tzinfo=UTC))
+
+    assert [(c.path, c.before, c.after_sha256, c.turn_id) for c in changes] == [
+        (str(path), None, sha256(b"one\n"), "t1"),
+        (str(path), b"one\n", sha256(b"two\n"), "t1"),
+    ]

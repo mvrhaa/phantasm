@@ -22,6 +22,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from zero.store.file_changes import FileChangesRepo
 from zero.tools.base import (
     MAX_OUTPUT_CHARS,
     Preview,
@@ -155,6 +156,29 @@ def syntax_problem(shown: str, target: Target, new: str) -> str | None:
     )
 
 
+@dataclass(frozen=True)
+class Change:
+    """What a write did to a file, for going back to a message later."""
+
+    path: Path
+    before: bytes | None
+    after: bytes
+
+
+def _before(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+async def _remember(
+    history: FileChangesRepo | None, ctx: ToolContext, change: Change | None
+) -> None:
+    if history is not None and change is not None:
+        await history.record(ctx.session_id, ctx.turn_id, change.path, change.before, change.after)
+
+
 def write_atomically(path: Path, text: str) -> None:
     """Write ``text`` as UTF-8, creating missing folders.
 
@@ -195,6 +219,9 @@ class WriteFile(Tool[WriteFileInput]):
     input_model = WriteFileInput
     default_policy = "ask"
 
+    def __init__(self, history: FileChangesRepo | None = None) -> None:
+        self._history = history
+
     def label(self, params: WriteFileInput) -> str:
         return params.path
 
@@ -208,26 +235,30 @@ class WriteFile(Tool[WriteFileInput]):
         return Preview(diff=truncate_text(diff, MAX_OUTPUT_CHARS))
 
     async def run(self, params: WriteFileInput, ctx: ToolContext) -> ToolResult:
-        return await asyncio.to_thread(self._write, params, ctx)
+        result, change = await asyncio.to_thread(self._write, params, ctx)
+        await _remember(self._history, ctx, change)
+        return result
 
-    def _write(self, params: WriteFileInput, ctx: ToolContext) -> ToolResult:
+    def _write(self, params: WriteFileInput, ctx: ToolContext) -> tuple[ToolResult, Change | None]:
         shown = params.path
         target = load_target(shown, ctx.paths)
         if isinstance(target, str):
-            return error_result(target)
+            return error_result(target), None
         if target.old == params.content:
             return text_result(
                 f"{shown} already has this content; nothing was written.", summary="no changes"
-            )
+            ), None
         if (problem := syntax_problem(shown, target, params.content)) is not None:
-            return error_result(problem)
+            return error_result(problem), None
         summary = diff_summary(make_diff(shown, target, params.content))
+        before = _before(target.path)
         try:
             write_atomically(target.path, params.content)
         except OSError as exc:
-            return error_result(f"Cannot write {shown}: {exc.strerror or exc}.")
+            return error_result(f"Cannot write {shown}: {exc.strerror or exc}."), None
         verb = "Wrote" if target.exists else "Created"
-        return text_result(f"{verb} {shown} ({summary}).", summary=summary)
+        change = Change(target.path, before, params.content.encode("utf-8"))
+        return text_result(f"{verb} {shown} ({summary}).", summary=summary), change
 
 
 class EditFileInput(BaseModel):
@@ -300,6 +331,9 @@ class EditFile(Tool[EditFileInput]):
     input_model = EditFileInput
     default_policy = "ask"
 
+    def __init__(self, history: FileChangesRepo | None = None) -> None:
+        self._history = history
+
     def label(self, params: EditFileInput) -> str:
         return params.path
 
@@ -311,16 +345,20 @@ class EditFile(Tool[EditFileInput]):
         return Preview(diff=truncate_text(make_diff(params.path, target, edited), MAX_OUTPUT_CHARS))
 
     async def run(self, params: EditFileInput, ctx: ToolContext) -> ToolResult:
-        return await asyncio.to_thread(self._edit, params, ctx)
+        result, change = await asyncio.to_thread(self._edit, params, ctx)
+        await _remember(self._history, ctx, change)
+        return result
 
-    def _edit(self, params: EditFileInput, ctx: ToolContext) -> ToolResult:
+    def _edit(self, params: EditFileInput, ctx: ToolContext) -> tuple[ToolResult, Change | None]:
         plan = plan_edit(params, ctx.paths)
         if isinstance(plan, str):
-            return error_result(plan)
+            return error_result(plan), None
         target, edited = plan
         summary = diff_summary(make_diff(params.path, target, edited))
+        before = _before(target.path)
         try:
             write_atomically(target.path, edited)
         except OSError as exc:
-            return error_result(f"Cannot write {params.path}: {exc.strerror or exc}.")
-        return text_result(f"Edited {params.path} ({summary}).", summary=summary)
+            return error_result(f"Cannot write {params.path}: {exc.strerror or exc}."), None
+        change = Change(target.path, before, edited.encode("utf-8"))
+        return text_result(f"Edited {params.path} ({summary}).", summary=summary), change
