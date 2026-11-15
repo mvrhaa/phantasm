@@ -24,12 +24,17 @@ from zero.protocol.messages import (
     SessionList,
     SessionRename,
     TurnCancel,
+    TurnSteer,
 )
 from zero.server.connections import Connection
 from zero.server.handlers.actions import handle_action_result
 from zero.server.handlers.approvals import handle_approval_respond
 from zero.server.handlers.hello import handle_hello
-from zero.server.handlers.messages import handle_message_send, handle_turn_cancel
+from zero.server.handlers.messages import (
+    handle_message_send,
+    handle_turn_cancel,
+    handle_turn_steer,
+)
 from zero.server.handlers.sessions import (
     handle_history_get,
     handle_session_create,
@@ -56,6 +61,7 @@ HANDLERS: dict[type[Envelope], Handler] = {
     Ping: handle_ping,
     MessageSend: handle_message_send,
     TurnCancel: handle_turn_cancel,
+    TurnSteer: handle_turn_steer,
     ApprovalRespond: handle_approval_respond,
     ActionResult: handle_action_result,
     SessionList: handle_session_list,

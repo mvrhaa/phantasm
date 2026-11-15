@@ -26,6 +26,7 @@ from zero.protocol.messages import (
     TextPart,
     TurnFinished,
     TurnStarted,
+    TurnSteered,
 )
 from zero.providers.base import (
     LLMProvider,
@@ -176,6 +177,8 @@ class Turn:
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
         self._used_computer = False
         self._timed_out = False
+        self._steers: list[tuple[str, ReplyTo | None]] = []
+        self._closed = False
         self._can_see_images = provider.supports_images(model)
         self._reply = reply
         self._prompts = PromptBuilder(
@@ -281,6 +284,7 @@ class Turn:
 
         finally:
             timer.cancel()
+            self._closed = True
 
         try:
             if progress.step_text or status in ("error", "cancelled"):
@@ -309,6 +313,45 @@ class Turn:
         )
         await self._events.publish(self.finished)
 
+    def steer(self, text: str, reply: ReplyTo | None = None) -> bool:
+        """Add the user's words to this turn; the model gets them before its next step.
+
+        False once the turn is ending: then the words should start a new turn.
+        """
+        if self._closed or self.done:
+            return False
+        self._steers.append((text, reply))
+        return True
+
+    async def _take_steers(self, prompt: list[Message]) -> None:
+        """Put the words the user added while the model worked into the conversation."""
+        steers, self._steers = self._steers, []
+        for text, reply in steers:
+            content: list[ContentPart] = [TextPart(text=text)]
+            await self._messages.append(
+                self.session_id, "user", content, turn_id=self.id, status="ok", source=self._source
+            )
+            prompt.append(Message(role="user", content=content))
+            await self._events.publish(
+                TurnSteered(session_id=self.session_id, turn_id=self.id, text=text), reply=reply
+            )
+
+    async def _keep_answer(self, prompt: list[Message], progress: Progress) -> None:
+        """The model answered, but the user added something meanwhile: keep the answer
+        in the conversation and let the model go on."""
+        if progress.step_text:
+            content = _text_content(progress.step_text)
+            await self._messages.append(
+                self.session_id,
+                "assistant",
+                content,
+                turn_id=self.id,
+                status="ok",
+                source=self._source,
+            )
+            prompt.append(Message(role="assistant", content=content))
+            progress.step_text = ""
+
     def _time_out(self) -> None:
         self._timed_out = True
         self.cancel.cancel()
@@ -334,14 +377,22 @@ class Turn:
         step = 1
         while step < self._step_limit():
             step += 1
+            await self._take_steers(prompt)
             calls = await self._model.answer(prompt, specs, progress)
             if not calls:
-                return False
+                if not self._steers:
+                    self._closed = True
+                    return False
+                await self._keep_answer(prompt, progress)
+                continue
             answered = bool(progress.step_text)
             results = await self._run_tools(prompt, calls, progress)
-            if answered and _only_expression(calls, results):
+            if answered and _only_expression(calls, results) and not self._steers:
+                self._closed = True
                 return False
 
+        await self._take_steers(prompt)
+        self._closed = True
         ignored = await self._model.answer(prompt, [], progress)
         if ignored:
             logger.warning(

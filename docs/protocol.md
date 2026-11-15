@@ -116,6 +116,26 @@ Ask to cancel a running turn.
 }
 ```
 
+### `turn.steer`
+
+Add the user's words to a running turn; they reach the model before its next step. A turn that is already ending takes no more: the answer is `error` `turn_not_running`, and the words should go as a new message.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `turn_id` | string | required |
+| `text` | string | required |
+
+```json
+{
+  "type": "turn.steer",
+  "id": "st-1",
+  "turn_id": "t-1",
+  "text": "Only the last hour, please"
+}
+```
+
 ### `approval.respond`
 
 The user's answer to an approval request.
@@ -363,6 +383,29 @@ A turn began.
   "session_id": "s-1",
   "turn_id": "t-1",
   "source": "desktop"
+}
+```
+
+### `turn.steered`
+
+The user's words went into a running turn, as a user message before the model's next step. The sender of `turn.steer` gets it with `reply_to`.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `session_id` | string | required |
+| `turn_id` | string | required |
+| `agent` | [AgentRef](#agentref) | `null` |
+| `text` | string | required |
+
+```json
+{
+  "type": "turn.steered",
+  "reply_to": "st-1",
+  "session_id": "s-1",
+  "turn_id": "t-1",
+  "text": "Only the last hour, please"
 }
 ```
 
@@ -1046,6 +1089,7 @@ Tokens spent by a turn.
 - `invalid_message`
 - `session_not_found`
 - `turn_busy`
+- `turn_not_running`
 - `provider_error`
 - `provider_not_configured`
 - `tool_error`

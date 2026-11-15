@@ -66,6 +66,7 @@ CLIENT_EXAMPLES: list[BaseModel] = [
         source="desktop",
     ),
     m.TurnCancel(id="c-1", turn_id="t-1"),
+    m.TurnSteer(id="st-1", turn_id="t-1", text="Only the last hour, please"),
     m.ApprovalRespond(id="r-1", approval_id="ap-1", decision="allow"),
     m.ActionResult(
         id="ar-1",
@@ -92,6 +93,7 @@ SERVER_EXAMPLES: list[BaseModel] = [
         message="a turn is already running in this session",
     ),
     m.TurnStarted(**TURN, source="desktop"),
+    m.TurnSteered(**TURN, reply_to="st-1", text="Only the last hour, please"),
     m.TextDelta(**TURN, delta="The log shows "),
     m.ToolStarted(
         **TURN,

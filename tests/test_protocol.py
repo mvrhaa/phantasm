@@ -192,6 +192,7 @@ def test_error_codes_match_the_spec() -> None:
         "invalid_message",
         "session_not_found",
         "turn_busy",
+        "turn_not_running",
         "provider_error",
         "provider_not_configured",
         "tool_error",

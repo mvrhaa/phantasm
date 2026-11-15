@@ -14,6 +14,7 @@ class ErrorCode(StrEnum):
     INVALID_MESSAGE = "invalid_message"
     SESSION_NOT_FOUND = "session_not_found"
     TURN_BUSY = "turn_busy"
+    TURN_NOT_RUNNING = "turn_not_running"
     PROVIDER_ERROR = "provider_error"
     PROVIDER_NOT_CONFIGURED = "provider_not_configured"
     TOOL_ERROR = "tool_error"

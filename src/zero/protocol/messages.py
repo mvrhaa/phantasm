@@ -153,6 +153,18 @@ class TurnCancel(Envelope):
     turn_id: str
 
 
+class TurnSteer(Envelope):
+    """Add the user's words to a running turn; they reach the model before its next step.
+
+    A turn that is already ending takes no more: the answer is ``error``
+    ``turn_not_running``, and the words should go as a new message.
+    """
+
+    type: Literal["turn.steer"] = "turn.steer"
+    turn_id: str
+    text: str = Field(min_length=1, max_length=20_000)
+
+
 class ApprovalRespond(Envelope):
     """The user's answer to an approval request."""
 
@@ -220,6 +232,7 @@ ClientMessage = Annotated[
     Hello
     | MessageSend
     | TurnCancel
+    | TurnSteer
     | ApprovalRespond
     | ActionResult
     | SessionList
@@ -348,6 +361,16 @@ class TurnStarted(TurnEvent):
 
     type: Literal["turn.started"] = "turn.started"
     source: Literal["desktop", "phone", "scheduler", "agent"]
+
+
+class TurnSteered(TurnEvent):
+    """The user's words went into a running turn, as a user message before the model's next step.
+
+    The sender of ``turn.steer`` gets it with ``reply_to``.
+    """
+
+    type: Literal["turn.steered"] = "turn.steered"
+    text: str
 
 
 class TextDelta(TurnEvent):
@@ -514,6 +537,7 @@ ServerEvent = Annotated[
     | Pong
     | Error
     | TurnStarted
+    | TurnSteered
     | TextDelta
     | ToolStarted
     | ToolFinished

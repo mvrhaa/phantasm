@@ -8,7 +8,7 @@ from zero.core.attachments import AttachmentError, save_attachments
 from zero.core.events import ReplyTo
 from zero.core.titles import title_new_session
 from zero.protocol.errors import ErrorCode
-from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel
+from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel, TurnSteer
 from zero.providers.registry import small_model
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
@@ -138,3 +138,19 @@ async def handle_turn_cancel(connection: Connection, message: TurnCancel, state:
         logger.debug("turn.cancel for a turn that is not running: %s", message.turn_id)
         return
     turn.cancel.cancel()
+
+
+async def handle_turn_steer(connection: Connection, message: TurnSteer, state: AppState) -> None:
+    """Add the user's words to a running turn (see ``Turn.steer``).
+
+    A turn that is not running, or is already ending, answers ``turn_not_running``.
+    """
+    turn = state.turns.get(message.turn_id)
+    if turn is None or not turn.steer(message.text, ReplyTo(connection.id, message.id)):
+        await connection.send(
+            Error(
+                code=ErrorCode.TURN_NOT_RUNNING,
+                message="this turn is not running; send the words as a new message",
+                reply_to=message.id,
+            )
+        )
