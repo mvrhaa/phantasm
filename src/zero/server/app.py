@@ -34,6 +34,7 @@ from zero.store.todo import TodoRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.store.usage import UsageRepo
 from zero.tools.builtin import builtin_registry
+from zero.tools.builtin.jobs import JobManager
 from zero.tools.client_actions import ActionBroker
 
 APP_ID = "zero"
@@ -65,6 +66,7 @@ async def graceful_stop(state: AppState, grace_s: float = SHUTDOWN_GRACE_S) -> N
     await state.scheduler.stop()
     await state.agent_runner.close()
     await state.turns.cancel_all(grace_s)
+    await state.jobs.stop_all()
     for connection in state.connections.connections:
         await connection.close(CLOSE_GOING_AWAY, f"{APP_NAME} is shutting down")
 
@@ -102,6 +104,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 max_agents=config.agent.max_agents,
             )
             await agent_runner.recover()
+            jobs = JobManager()
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
@@ -111,7 +114,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 connections=connections,
                 events=events,
                 turns=turns,
-                tools=builtin_registry(memory, TodoRepo(db), schedules, agent_runner),
+                tools=builtin_registry(memory, TodoRepo(db), schedules, agent_runner, jobs),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
                 tool_runs=ToolRunsRepo(db),
@@ -126,6 +129,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     schedules, lambda schedule: start_scheduled_turn(state, schedule)
                 ),
                 provider=provider or _choose_provider(config),
+                jobs=jobs,
             )
             state.scheduler.start()
             try:

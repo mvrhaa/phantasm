@@ -6,6 +6,9 @@ alive ``STOP_GRACE_S`` seconds later, SIGKILL. When the command ends by itself,
 whatever it left running in the background is stopped the same way, so nothing
 it started outlives the call. stdout and stderr are read as
 one stream; only the head and the tail of a huge output are kept in memory.
+
+A command still running after ``BACKGROUND_AFTER_S`` seconds goes on as a
+background job (``zero.tools.builtin.jobs``) when the brain has room for one.
 """
 
 import asyncio
@@ -14,7 +17,7 @@ import os
 import shutil
 import signal
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, BinaryIO, Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +26,11 @@ from zero.protocol.messages import TextPart
 from zero.tools.base import Preview, Tool, ToolContext, ToolResult, error_result
 from zero.tools.permissions import PathDenied, PathGuard
 
+if TYPE_CHECKING:
+    from zero.tools.builtin.jobs import JobManager
+
 DEFAULT_TIMEOUT_S = 120
+BACKGROUND_AFTER_S = 30.0
 MAX_TIMEOUT_S = 3600
 STOP_GRACE_S = 3.0
 DRAIN_S = 1.0
@@ -52,15 +59,21 @@ class RunCommandInput(BaseModel):
     )
 
 
-class _Output:
+class Output:
     """Collects output, keeping only its head and tail once it grows large."""
 
     def __init__(self) -> None:
         self.head = bytearray()
         self.tail = bytearray()
         self.total = 0
+        # Once the command is a background job, every chunk also goes to its log.
+        self.sink: BinaryIO | None = None
 
     def add(self, chunk: bytes) -> None:
+        if self.sink is not None:
+            with contextlib.suppress(OSError, ValueError):
+                self.sink.write(chunk)
+                self.sink.flush()
         self.total += len(chunk)
         room = KEEP_BYTES - len(self.head)
         if room > 0:
@@ -78,12 +91,12 @@ class _Output:
         return self.head.decode(errors="replace") + middle + self.tail.decode(errors="replace")
 
 
-async def _read(stream: asyncio.StreamReader, output: _Output) -> None:
+async def _read(stream: asyncio.StreamReader, output: Output) -> None:
     while chunk := await stream.read(64 * 1024):
         output.add(chunk)
 
 
-def _signal_group(process: asyncio.subprocess.Process, sig: signal.Signals) -> None:
+def signal_group(process: asyncio.subprocess.Process, sig: signal.Signals) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, sig)
 
@@ -97,7 +110,7 @@ def _group_alive(process: asyncio.subprocess.Process) -> bool:
     return True
 
 
-async def _exited(process: asyncio.subprocess.Process) -> None:
+async def exited(process: asyncio.subprocess.Process) -> None:
     """Return once the shell itself has exited.
 
     ``Process.wait()`` is not used for this: called before the exit, it also
@@ -107,7 +120,7 @@ async def _exited(process: asyncio.subprocess.Process) -> None:
         await asyncio.sleep(POLL_S)
 
 
-async def _stop_group(process: asyncio.subprocess.Process, reading: asyncio.Task[None]) -> None:
+async def stop_group(process: asyncio.subprocess.Process, reading: asyncio.Task[None]) -> None:
     """SIGTERM what is left of the group; SIGKILL it if it outlives the grace period.
 
     The output reaching its end means every process of the group has closed
@@ -115,16 +128,23 @@ async def _stop_group(process: asyncio.subprocess.Process, reading: asyncio.Task
     """
     if not _group_alive(process):
         return
-    _signal_group(process, signal.SIGTERM)
-    ended = asyncio.gather(_exited(process), asyncio.shield(reading))
+    signal_group(process, signal.SIGTERM)
+    ended = asyncio.gather(exited(process), asyncio.shield(reading))
     try:
         await asyncio.wait_for(ended, STOP_GRACE_S)
     except TimeoutError:
-        _signal_group(process, signal.SIGKILL)
-        await _exited(process)
+        signal_group(process, signal.SIGKILL)
+        await exited(process)
 
 
-async def _execute(command: str, cwd: Path, timeout_s: int, cancel: CancelToken) -> ToolResult:
+async def _execute(
+    command: str,
+    cwd: Path,
+    timeout_s: int,
+    cancel: CancelToken,
+    jobs: "JobManager | None" = None,
+    label: str = "",
+) -> ToolResult:
     cancel.raise_if_cancelled()
     process = await asyncio.create_subprocess_exec(
         find_zsh(),
@@ -137,32 +157,61 @@ async def _execute(command: str, cwd: Path, timeout_s: int, cancel: CancelToken)
         start_new_session=True,
     )
     assert process.stdout is not None
-    output = _Output()
+    output = Output()
     reading = asyncio.create_task(_read(process.stdout, output))
-    exiting = asyncio.create_task(_exited(process))
+    exiting = asyncio.create_task(exited(process))
     cancelled = asyncio.create_task(cancel.wait())
+    background = jobs is not None and jobs.has_room() and timeout_s > BACKGROUND_AFTER_S
+    first_wait = BACKGROUND_AFTER_S if background else timeout_s
+    adopted = False
     try:
         await asyncio.wait(
-            {exiting, cancelled}, timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED
+            {exiting, cancelled}, timeout=first_wait, return_when=asyncio.FIRST_COMPLETED
         )
+        if background and not exiting.done() and not cancel.cancelled:
+            assert jobs is not None
+            job = jobs.adopt(
+                label, process, reading, exiting, output, timeout_s - first_wait, timeout_s
+            )
+            adopted = True
+            return _went_background(output, job.id, timeout_s)
         if exiting.done():
             outcome: Outcome = "exit"
         else:
             outcome = "cancelled" if cancel.cancelled else "timeout"
-        await _stop_group(process, reading)
+        await stop_group(process, reading)
         await asyncio.wait({reading}, timeout=DRAIN_S)
         return _result(outcome, process.returncode, output, timeout_s)
     finally:
-        for task in (reading, exiting, cancelled):
-            task.cancel()
-        if process.returncode is None:
-            _signal_group(process, signal.SIGKILL)
-            await _exited(process)
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(process.wait(), DRAIN_S)
+        cancelled.cancel()
+        if not adopted:
+            await _clean_up(process, reading, exiting)
 
 
-def _result(outcome: Outcome, code: int | None, output: _Output, timeout_s: int) -> ToolResult:
+async def _clean_up(
+    process: asyncio.subprocess.Process, reading: asyncio.Task[None], exiting: asyncio.Task[None]
+) -> None:
+    """Make sure nothing of a finished command is left running or reading."""
+    for task in (reading, exiting):
+        task.cancel()
+    if process.returncode is None:
+        signal_group(process, signal.SIGKILL)
+        await exited(process)
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(process.wait(), DRAIN_S)
+
+
+def _went_background(output: Output, job_id: str, timeout_s: int) -> ToolResult:
+    text = output.text().rstrip("\n") or "(no output yet)"
+    note = (
+        f"[still running after {BACKGROUND_AFTER_S:g} s, so it goes on in the background as "
+        f"{job_id} and is stopped after the {timeout_s} s timeout. Read its output with "
+        "job_output (wait_s waits for the end); stop it with job_stop.]"
+    )
+    return ToolResult(content=[TextPart(text=f"{text}\n{note}")], summary=f"{job_id} running")
+
+
+def _result(outcome: Outcome, code: int | None, output: Output, timeout_s: int) -> ToolResult:
     text = output.text().rstrip("\n") or "(no output)"
     if outcome == "timeout":
         return _with_status(text, f"[stopped after the {timeout_s} s timeout]", "timed out", True)
@@ -201,11 +250,15 @@ class RunCommand(Tool[RunCommandInput]):
         "Run a shell command with zsh -lc in cwd (your home folder by default) and get "
         "its output (stdout and stderr together) and exit code. The command is stopped "
         "after timeout_s seconds or when the user cancels, and anything it starts in the "
-        "background is stopped when it ends, so do not use it to start servers or daemons. "
-        "The user usually approves each command first."
+        "background is stopped when it ends. A command still running after 30 s goes on "
+        "in the background as a job (check it with job_output, stop it with job_stop) "
+        "until it ends or timeout_s passes. The user usually approves each command first."
     )
     input_model = RunCommandInput
     default_policy = "ask"
+
+    def __init__(self, jobs: "JobManager | None" = None) -> None:
+        self._jobs = jobs
 
     def label(self, params: RunCommandInput) -> str:
         first, *rest = params.command.strip().splitlines() or [""]
@@ -220,4 +273,6 @@ class RunCommand(Tool[RunCommandInput]):
         cwd = await asyncio.to_thread(_check_cwd, params.cwd, ctx.paths)
         if isinstance(cwd, str):
             return error_result(cwd)
-        return await _execute(params.command, cwd, params.timeout_s, ctx.cancel)
+        return await _execute(
+            params.command, cwd, params.timeout_s, ctx.cancel, self._jobs, self.label(params)
+        )

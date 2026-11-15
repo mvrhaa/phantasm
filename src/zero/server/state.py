@@ -1,6 +1,6 @@
 """Everything a running application depends on, gathered in one object."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import FastAPI
 
@@ -23,6 +23,7 @@ from zero.store.summaries import SummariesRepo
 from zero.store.tool_runs import ToolRunsRepo
 from zero.store.usage import UsageRepo
 from zero.tools.base import ToolRegistry
+from zero.tools.builtin.jobs import JobManager
 from zero.tools.client_actions import ActionBroker
 
 
@@ -51,6 +52,7 @@ class AppState:
     agent_runner: AgentRunner
     scheduler: SchedulerRunner
     provider: LLMProvider | None
+    jobs: JobManager = field(default_factory=JobManager)
     stopping: bool = False
 
 

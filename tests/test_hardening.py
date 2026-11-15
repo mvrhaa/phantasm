@@ -33,7 +33,7 @@ from zero.store.tool_runs import ToolRunsRepo
 from zero.tools.base import Tool, ToolContext, ToolResult
 from zero.tools.builtin import builtin_registry
 from zero.tools.builtin.edit import EditFile, EditFileInput
-from zero.tools.builtin.shell import KEEP_BYTES, _Output
+from zero.tools.builtin.shell import KEEP_BYTES, Output
 from zero.tools.permissions import PathGuard
 
 
@@ -211,7 +211,7 @@ def test_secrets_in_a_traceback_are_masked(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_output_that_fits_is_decoded_in_one_piece() -> None:
-    output = _Output()
+    output = Output()
     text = "a" + "я" * (KEEP_BYTES // 2 + 10)
     output.add(text.encode())
 
