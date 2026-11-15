@@ -11,10 +11,11 @@ from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
+from zero.core.review import ReviewRunner
 from zero.core.turn_manager import TurnManager
 from zero.paths import db_path
 from zero.providers.base import LLMProvider
-from zero.providers.registry import ProviderNotConfigured, get_provider
+from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
@@ -28,6 +29,7 @@ from zero.store.db import Database
 from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
+from zero.store.reviews import ReviewsRepo
 from zero.store.schedules import SchedulesRepo
 from zero.store.session_memory import SessionMemoryRepo
 from zero.store.sessions import SessionsRepo
@@ -66,6 +68,7 @@ async def graceful_stop(state: AppState, grace_s: float = SHUTDOWN_GRACE_S) -> N
     state.stopping = True
     logger.info("Shutting down: %d turns running", len(state.turns.active))
     await state.scheduler.stop()
+    await state.reviewer.stop()
     await state.agent_runner.close()
     await state.turns.cancel_all(grace_s)
     await state.jobs.stop_all()
@@ -109,6 +112,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             jobs = JobManager()
             session_memory = SessionMemoryRepo(db)
             journal = JournalRepo(db)
+            usage = UsageRepo(db)
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
@@ -128,7 +132,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 memory=memory,
                 schedules=schedules,
                 summaries=SummariesRepo(db),
-                usage=UsageRepo(db),
+                usage=usage,
                 agents=agents,
                 agent_runner=agent_runner,
                 scheduler=SchedulerRunner(
@@ -137,9 +141,22 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 provider=provider or _choose_provider(config),
                 session_memory=session_memory,
                 journal=journal,
+                reviewer=ReviewRunner(
+                    sessions=sessions,
+                    messages=messages,
+                    memory=memory,
+                    journal=journal,
+                    reviews=ReviewsRepo(db),
+                    provider=lambda: state.provider,
+                    model=lambda: small_model(config.provider),
+                    busy=lambda session_id: state.turns.busy(session_id),
+                    enabled=lambda: config.agent.review_conversations,
+                    usage=usage,
+                ),
                 jobs=jobs,
             )
             state.scheduler.start()
+            state.reviewer.start()
             try:
                 yield
             finally:

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from zero import clock
 from zero.store.db import Database
 
-Purpose = Literal["turn", "agent", "title", "summary"]
+Purpose = Literal["turn", "agent", "title", "summary", "review"]
 
 
 @dataclass

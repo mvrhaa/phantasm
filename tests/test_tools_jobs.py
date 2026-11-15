@@ -198,6 +198,7 @@ async def test_the_app_has_job_tools_and_stopping_it_ends_the_jobs(rig: Rig, hom
         stopping=False,
         turns=SimpleNamespace(active=[], cancel_all=nothing),
         scheduler=SimpleNamespace(stop=nothing),
+        reviewer=SimpleNamespace(stop=nothing),
         agent_runner=SimpleNamespace(close=nothing),
         connections=SimpleNamespace(connections=[]),
         jobs=rig.jobs,

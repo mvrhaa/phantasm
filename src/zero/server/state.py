@@ -8,6 +8,7 @@ from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
 from zero.config import Config
 from zero.core.events import EventBus
+from zero.core.review import ReviewRunner
 from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.scheduler.runner import SchedulerRunner
@@ -56,6 +57,7 @@ class AppState:
     provider: LLMProvider | None
     session_memory: SessionMemoryRepo
     journal: JournalRepo
+    reviewer: ReviewRunner
     jobs: JobManager = field(default_factory=JobManager)
     stopping: bool = False
 

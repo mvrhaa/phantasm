@@ -25,6 +25,7 @@ SPEC_DEFAULTS = {
         "turn_timeout_s": 900,
         "history_token_budget": 60000,
         "max_agents": 3,
+        "review_conversations": True,
     },
     "permissions": {
         "bypass_approvals": False,

@@ -82,6 +82,8 @@ class AgentConfig(_Section):
     turn_timeout_s: int = Field(default=900, ge=1)
     history_token_budget: int = 60000
     max_agents: int = Field(default=3, ge=1, le=20)
+    # Go over quiet chats: a journal note and the lasting facts in them (core/review.py).
+    review_conversations: bool = True
 
 
 class PermissionsConfig(_Section):
