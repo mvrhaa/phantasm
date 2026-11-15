@@ -15,6 +15,7 @@ from zero.paths import config_path, ensure_dirs
 from zero.server.app import APP_ID, create_app, graceful_stop
 from zero.server.auth import get_or_create_token
 from zero.server.state import AppState
+from zero.tools.base import prune_outputs
 
 PROBE_TIMEOUT_S = 2.0
 
@@ -77,6 +78,7 @@ def main() -> int:
     """
     ensure_dirs()
     log_path = setup_logging()
+    prune_outputs()
 
     try:
         config = load_config()

@@ -45,6 +45,11 @@ def files_dir() -> Path:
     return home_dir() / "files"
 
 
+def outputs_dir() -> Path:
+    """Return the directory for tool outputs too long to show the model whole."""
+    return files_dir() / "outputs"
+
+
 def logs_dir() -> Path:
     """Return the log directory: ``ZERO_HOME/logs`` or ``~/Library/Logs/Zero``."""
     override = _home_override()

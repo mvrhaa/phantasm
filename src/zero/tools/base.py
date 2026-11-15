@@ -1,6 +1,8 @@
 """The tool interface: ``Tool``, its result and context, and the registry that runs tools."""
 
+import contextlib
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
@@ -8,9 +10,11 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from zero import clock
 from zero.approvals.manager import ApprovalAsk, Approver
 from zero.config import Config, Policy
 from zero.core.cancellation import CancelToken, TurnCancelled
+from zero.paths import outputs_dir
 from zero.protocol.messages import (
     AgentRef,
     ContentPart,
@@ -24,6 +28,10 @@ from zero.secrets import mask_secrets
 from zero.tools.permissions import PathGuard, decide
 
 MAX_OUTPUT_CHARS = 30_000
+# A longer output is saved whole to a file; the model sees its head, its tail and the path.
+SPILL_HEAD_CHARS = 6_000
+SPILL_TAIL_CHARS = 4_000
+OUTPUT_KEEP_DAYS = 7
 PREVIEW_CHARS = 300
 CANCELLED = "Cancelled: the user stopped the turn."
 NEEDS_APPROVAL = "so this call needs the user's approval, and no one can be asked here."
@@ -168,14 +176,66 @@ def truncate_text(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return f"{text[:head]}\n[… {len(text) - limit} chars truncated …]\n{text[-tail:]}"
 
 
-def _truncated(result: ToolResult) -> ToolResult:
-    """The result cut to size, with any API key from the .env file masked."""
-    content: list[ContentPart] = [
-        TextPart(text=truncate_text(mask_secrets(part.text)))
-        if isinstance(part, TextPart)
-        else part
-        for part in result.content
-    ]
+def _safe_name(value: str) -> str:
+    """A file name made of letters, digits, dots, dashes and underscores only."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", value).strip(".") or "output"
+
+
+def spill(text: str, session_id: str, call_id: str) -> str:
+    """Save a long output whole and give back its head, its tail and where the rest is.
+
+    If it cannot be saved, the output is only cut to size, as before.
+    """
+    path = outputs_dir() / _safe_name(session_id) / f"{_safe_name(call_id)}.txt"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not save a long tool output: %s", exc.strerror or exc)
+        return truncate_text(text)
+    hidden = len(text) - SPILL_HEAD_CHARS - SPILL_TAIL_CHARS
+    lines = text.count("\n") + 1
+    return (
+        f"{text[:SPILL_HEAD_CHARS]}\n[… {hidden} chars not shown. The whole output "
+        f"({len(text)} chars, {lines} lines) is in {path}; read it with read_file, "
+        f"offset and limit …]\n{text[-SPILL_TAIL_CHARS:]}"
+    )
+
+
+def prune_outputs(keep_days: int = OUTPUT_KEEP_DAYS) -> None:
+    """Delete saved outputs older than ``keep_days`` and folders left empty."""
+    root = outputs_dir()
+    if not root.is_dir():
+        return
+    oldest = clock.now().timestamp() - keep_days * 24 * 3600
+    for folder in root.iterdir():
+        if not folder.is_dir():
+            continue
+        for file in folder.iterdir():
+            with contextlib.suppress(OSError):
+                if file.is_file() and file.stat().st_mtime < oldest:
+                    file.unlink()
+        with contextlib.suppress(OSError):
+            folder.rmdir()
+
+
+def _truncated(result: ToolResult, session_id: str, call_id: str) -> ToolResult:
+    """The result cut to size, with any API key from the .env file masked.
+
+    A text part longer than ``MAX_OUTPUT_CHARS`` is saved to a file (see ``spill``).
+    """
+    content: list[ContentPart] = []
+    spilled = 0
+    for part in result.content:
+        if not isinstance(part, TextPart):
+            content.append(part)
+            continue
+        text = mask_secrets(part.text)
+        if len(text) > MAX_OUTPUT_CHARS:
+            name = call_id if spilled == 0 else f"{call_id}-{spilled}"
+            spilled += 1
+            text = spill(text, session_id, name)
+        content.append(TextPart(text=text))
     return replace(result, content=content)
 
 
@@ -312,4 +372,4 @@ class ToolRegistry:
             logger.warning("Tool %s failed: %s", call.name, type(exc).__name__)
             reason = mask_secrets(str(exc)) or type(exc).__name__
             return error_result(f"Tool {call.name!r} failed: {reason}")
-        return _truncated(result)
+        return _truncated(result, ctx.session_id, call.id)

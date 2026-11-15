@@ -1,6 +1,9 @@
 """Tests for zero.tools.base: the tool interface and the registry."""
 
 import logging
+import os
+import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -15,12 +18,15 @@ from zero.tools.base import (
     CANCELLED,
     MAX_OUTPUT_CHARS,
     NEEDS_APPROVAL,
+    SPILL_HEAD_CHARS,
+    SPILL_TAIL_CHARS,
     Preview,
     Tool,
     ToolContext,
     ToolRegistry,
     ToolResult,
     error_result,
+    prune_outputs,
     text_result,
     truncate_text,
 )
@@ -302,9 +308,9 @@ def test_truncate_with_a_custom_limit() -> None:
     assert truncate_text("abcdefghij", limit=4) == "ab\n[… 6 chars truncated …]\nij"
 
 
-async def test_execute_truncates_every_text_part_and_keeps_the_rest() -> None:
+async def test_long_text_goes_to_a_file_and_the_rest_is_kept(zero_home: Path) -> None:
     image = ImagePart(mime="image/png", data_b64="AAAA" * 20_000)
-    big = "a" * 40_000
+    big = "h" * 20_000 + "m" * 10_000 + "t" * 10_000
     result = ToolResult(
         content=[TextPart(text=big), image, TextPart(text="small")], summary="3 parts"
     )
@@ -313,9 +319,59 @@ async def test_execute_truncates_every_text_part_and_keeps_the_rest() -> None:
 
     first, second, third = executed.content
     assert isinstance(first, TextPart)
-    assert first.text == truncate_text(big)
-    assert "[… 10000 chars truncated …]" in first.text
+    saved = zero_home / "files" / "outputs" / "s1" / "call-1.txt"
+    assert saved.read_text() == big
+    assert str(saved) in first.text
+    assert "40000 chars" in first.text
+    assert first.text.startswith("h" * SPILL_HEAD_CHARS)
+    assert first.text.endswith("t" * SPILL_TAIL_CHARS)
+    assert len(first.text) < 11_000
     assert second == image
     assert third == TextPart(text="small")
     assert (executed.summary, executed.is_error) == ("3 parts", False)
     assert result.content[0] == TextPart(text=big)
+
+
+async def test_short_text_is_not_saved(zero_home: Path) -> None:
+    result = ToolResult(content=[TextPart(text="x" * MAX_OUTPUT_CHARS)])
+    executed = await execute(registry_with(returning(result)), "fixed")
+    assert executed.content == [TextPart(text="x" * MAX_OUTPUT_CHARS)]
+    assert not (zero_home / "files" / "outputs").exists()
+
+
+async def test_saved_output_has_secrets_masked(
+    zero_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "AIzaSecretValue1234567890"
+    Path(os.environ["ZERO_ENV_FILE"]).write_text(f"GEMINI_API_KEY={secret}\n")
+    result = ToolResult(content=[TextPart(text=f"key {secret} " + "z" * 40_000)])
+    executed = await execute(registry_with(returning(result)), "fixed")
+    saved = (zero_home / "files" / "outputs" / "s1" / "call-1.txt").read_text()
+    assert secret not in saved
+    assert secret not in text_of(executed)
+
+
+async def test_unwritable_outputs_fall_back_to_cutting(zero_home: Path) -> None:
+    (zero_home / "files").mkdir()
+    (zero_home / "files" / "outputs").write_text("not a folder")
+    big = "a" * 40_000
+    executed = await execute(
+        registry_with(returning(ToolResult(content=[TextPart(text=big)]))), "fixed"
+    )
+    assert executed.content == [TextPart(text=truncate_text(big))]
+
+
+def test_old_outputs_are_pruned(zero_home: Path) -> None:
+    folder = zero_home / "files" / "outputs" / "s1"
+    folder.mkdir(parents=True)
+    old, new = folder / "old.txt", folder / "new.txt"
+    old.write_text("old")
+    new.write_text("new")
+    week_ago = time.time() - 8 * 24 * 3600
+    os.utime(old, (week_ago, week_ago))
+    prune_outputs()
+    assert not old.exists()
+    assert new.exists()
+    (folder / "new.txt").unlink()
+    prune_outputs()
+    assert not folder.exists()
