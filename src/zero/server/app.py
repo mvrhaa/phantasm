@@ -25,6 +25,7 @@ from zero.server.ws import router as ws_router
 from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
+from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
@@ -107,6 +108,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             await agent_runner.recover()
             jobs = JobManager()
             session_memory = SessionMemoryRepo(db)
+            journal = JournalRepo(db)
             app.state.zero = state = AppState(
                 config=config,
                 db=db,
@@ -117,7 +119,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 events=events,
                 turns=turns,
                 tools=builtin_registry(
-                    memory, TodoRepo(db), schedules, agent_runner, jobs, session_memory
+                    memory, TodoRepo(db), schedules, agent_runner, jobs, session_memory, journal
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -134,6 +136,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 ),
                 provider=provider or _choose_provider(config),
                 session_memory=session_memory,
+                journal=journal,
                 jobs=jobs,
             )
             state.scheduler.start()

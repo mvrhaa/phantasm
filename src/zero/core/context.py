@@ -194,12 +194,26 @@ def _session_memories(entries: Sequence[str]) -> str:
     )
 
 
+def _journal(notes: Sequence[str]) -> str:
+    return "\n".join(
+        [
+            "# Lately in your other conversations",
+            "",
+            "Notes about what happened in your other conversations, oldest first; find "
+            "older ones with journal_search.",
+            "",
+            *(f"- {note}" for note in notes),
+        ]
+    )
+
+
 def build_system_prompt(
     client: ClientInfo | None,
     source: str,
     memories: Sequence[str] = (),
     *,
     session_memories: Sequence[str] = (),
+    journal: Sequence[str] = (),
     now: datetime,
     tz: tzinfo | None = None,
     summary: str | None = None,
@@ -229,6 +243,7 @@ def build_system_prompt(
         _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,
         _session_memories(session_memories) if session_memories else None,
+        _journal(journal) if journal else None,
         _summary(summary) if summary else None,
         _command(command, tools),
         _time(now, tz),

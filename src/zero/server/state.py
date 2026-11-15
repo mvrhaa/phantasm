@@ -15,6 +15,7 @@ from zero.server.connections import ConnectionManager
 from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
+from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
 from zero.store.schedules import SchedulesRepo
@@ -54,6 +55,7 @@ class AppState:
     scheduler: SchedulerRunner
     provider: LLMProvider | None
     session_memory: SessionMemoryRepo
+    journal: JournalRepo
     jobs: JobManager = field(default_factory=JobManager)
     stopping: bool = False
 

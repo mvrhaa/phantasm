@@ -34,6 +34,7 @@ from zero.providers.base import (
     ToolCall,
 )
 from zero.providers.registry import small_model
+from zero.store.journal import JournalRepo
 from zero.store.messages import MessagesRepo, Source
 from zero.store.session_memory import SessionMemoryRepo
 from zero.store.sessions import SessionsRepo
@@ -135,6 +136,7 @@ class Turn:
         action_caller: ActionCaller | None = None,
         memory: MemorySource | None = None,
         session_memory: SessionMemoryRepo | None = None,
+        journal: JournalRepo | None = None,
         summaries: SummariesRepo | None = None,
         agent: AgentRef | None = None,
         attachments: Sequence[FilePart] = (),
@@ -186,6 +188,7 @@ class Turn:
             events=events,
             memory=memory,
             session_memory=session_memory,
+            journal=journal,
             summaries=summaries,
             agent_name=agent.name if agent is not None else None,
             usage=usage,

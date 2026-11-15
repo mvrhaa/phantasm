@@ -20,6 +20,7 @@ from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
 from zero.providers.base import LLMProvider, Message
 from zero.providers.registry import small_model
+from zero.store.journal import JournalRepo, note_time
 from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source, StoredMessage
 from zero.store.session_memory import SessionMemoryRepo
@@ -27,6 +28,7 @@ from zero.store.summaries import SummariesRepo
 
 HISTORY_FETCH_LIMIT = 500
 PROMPT_MEMORIES = 10
+JOURNAL_PROMPT_CHARS = 5000
 SUMMARY_RESERVE_TOKENS = 1500
 
 
@@ -65,6 +67,7 @@ class PromptBuilder:
         events: EventBus,
         memory: MemorySource | None = None,
         session_memory: SessionMemoryRepo | None = None,
+        journal: JournalRepo | None = None,
         summaries: SummariesRepo | None = None,
         agent_name: str | None = None,
         usage: UsageRecorder | None = None,
@@ -82,6 +85,7 @@ class PromptBuilder:
         self._events = events
         self._memory = memory
         self._session_memory = session_memory
+        self._journal = journal
         self._summaries = summaries
         self._agent_name = agent_name
         self._usage = usage
@@ -96,6 +100,11 @@ class PromptBuilder:
         own = (
             await self._session_memory.list(self._session_id)
             if self._session_memory is not None
+            else []
+        )
+        notes = (
+            await self._journal.newest(self._session_id, JOURNAL_PROMPT_CHARS)
+            if self._journal is not None and self._agent_name is None
             else []
         )
         stored = await self._messages.list(self._session_id, limit=HISTORY_FETCH_LIMIT)
@@ -132,6 +141,7 @@ class PromptBuilder:
             self._source,
             [memory.text for memory in memories],
             session_memories=[f"[{entry.id}] {entry.text}" for entry in own],
+            journal=[f"[{note_time(note.created_at)}] {note.text}" for note in notes],
             now=clock.now(),
             summary=summary,
             agent_name=self._agent_name,
