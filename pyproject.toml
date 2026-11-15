@@ -50,4 +50,4 @@ select = [
 "scripts/*" = ["T20"]  # command-line helpers talk to the user with print()
 
 [tool.ruff.format]
-exclude = ["*.md"]  # do not reformat code samples in the spec and roadmap
+exclude = ["*.md"]  # do not reformat code samples in the markdown docs
