@@ -204,6 +204,9 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "job_output",
         "job_stop",
         "journal_search",
+        "sessions_list",
+        "sessions_read",
+        "sessions_search",
         "set_expression",
     ]
     assert system.role == "system"

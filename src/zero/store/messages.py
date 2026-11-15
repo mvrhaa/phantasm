@@ -113,6 +113,26 @@ class MessagesRepo:
         await self._db.conn.commit()
         return message
 
+    async def search_text(
+        self, query: str, exclude_session: str, limit: int = 10
+    ) -> list[tuple[StoredMessage, str]]:
+        """User and assistant messages of other sessions whose text has any word of
+        ``query``, newest first, each with the text that matched."""
+        words = [word.lower() for word in query.split() if word.strip()]
+        if not words:
+            return []
+        match = " OR ".join("lower(json_extract(part.value, '$.text')) LIKE ?" for _ in words)
+        async with self._db.conn.execute(
+            "SELECT messages.*, json_extract(part.value, '$.text') AS matched "
+            "FROM messages, json_each(messages.content_json) AS part "
+            "WHERE messages.role IN ('user', 'assistant') AND messages.session_id != ? "
+            f"AND json_extract(part.value, '$.type') = 'text' AND ({match}) "
+            "ORDER BY messages.created_at DESC, messages.rowid DESC LIMIT ?",
+            (exclude_session, *(f"%{word}%" for word in words), max(limit, 0)),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [(_to_message(row), row["matched"]) for row in rows]
+
     async def file_paths(self, session_id: str) -> list[str]:
         """Paths of every file part in the messages of a session."""
         async with self._db.conn.execute(

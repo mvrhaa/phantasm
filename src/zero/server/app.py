@@ -39,6 +39,7 @@ from zero.store.tool_runs import ToolRunsRepo
 from zero.store.usage import UsageRepo
 from zero.tools.builtin import builtin_registry
 from zero.tools.builtin.jobs import JobManager
+from zero.tools.builtin.sessions import SessionStores
 from zero.tools.client_actions import ActionBroker
 
 APP_ID = "zero"
@@ -112,6 +113,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             jobs = JobManager()
             session_memory = SessionMemoryRepo(db)
             journal = JournalRepo(db)
+            summaries = SummariesRepo(db)
             usage = UsageRepo(db)
             app.state.zero = state = AppState(
                 config=config,
@@ -123,7 +125,14 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 events=events,
                 turns=turns,
                 tools=builtin_registry(
-                    memory, TodoRepo(db), schedules, agent_runner, jobs, session_memory, journal
+                    memory,
+                    TodoRepo(db),
+                    schedules,
+                    agent_runner,
+                    jobs,
+                    session_memory,
+                    journal,
+                    SessionStores(sessions, messages, summaries),
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -131,7 +140,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 actions=ActionBroker(connections),
                 memory=memory,
                 schedules=schedules,
-                summaries=SummariesRepo(db),
+                summaries=summaries,
                 usage=usage,
                 agents=agents,
                 agent_runner=agent_runner,
