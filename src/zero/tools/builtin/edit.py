@@ -2,14 +2,21 @@
 
 A change is shown to the user as a unified diff before it is made, and files
 are replaced atomically, so a failed write never leaves half a file behind.
+A change that would break the syntax of a Python, JSON or TOML file is refused
+before the user is asked, so the model fixes it first.
 """
 
+import ast
 import asyncio
 import contextlib
 import difflib
+import json
 import os
 import shutil
 import tempfile
+import tomllib
+import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +98,63 @@ def diff_summary(diff: str) -> str:
     return f"+{added} -{removed}"
 
 
+def _python_problem(text: str) -> str | None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            ast.parse(text)
+        except SyntaxError as exc:
+            return f"line {exc.lineno}: {exc.msg}"
+        except (ValueError, RecursionError) as exc:
+            return str(exc) or type(exc).__name__
+    return None
+
+
+def _json_problem(text: str) -> str | None:
+    try:
+        json.loads(text)
+    except json.JSONDecodeError as exc:
+        return f"line {exc.lineno}, column {exc.colno}: {exc.msg}"
+    except RecursionError:
+        return "nested too deeply"
+    return None
+
+
+def _toml_problem(text: str) -> str | None:
+    try:
+        tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        return str(exc)
+    return None
+
+
+_SYNTAX_CHECKS: dict[str, tuple[str, Callable[[str], str | None]]] = {
+    ".py": ("Python", _python_problem),
+    ".pyi": ("Python", _python_problem),
+    ".json": ("JSON", _json_problem),
+    ".toml": ("TOML", _toml_problem),
+}
+
+
+def syntax_problem(shown: str, target: Target, new: str) -> str | None:
+    """Why ``new`` would break a Python, JSON or TOML file, for the model.
+
+    None when the new text parses, the file is of another kind, or it did not
+    parse before either (a half-fixed file may still be changed).
+    """
+    check = _SYNTAX_CHECKS.get(target.path.suffix.lower())
+    if check is None:
+        return None
+    kind, problem_of = check
+    problem = problem_of(new)
+    if problem is None or (target.old is not None and problem_of(target.old) is not None):
+        return None
+    return (
+        f"The change was not made: it would break the {kind} syntax of {shown} ({problem}). "
+        "Fix the change and try again."
+    )
+
+
 def write_atomically(path: Path, text: str) -> None:
     """Write ``text`` as UTF-8, creating missing folders.
 
@@ -138,6 +202,8 @@ class WriteFile(Tool[WriteFileInput]):
         target = await asyncio.to_thread(load_target, params.path, ctx.paths)
         if isinstance(target, str):
             return Preview(refusal=target)
+        if (problem := syntax_problem(params.path, target, params.content)) is not None:
+            return Preview(refusal=problem)
         diff = make_diff(params.path, target, params.content)
         return Preview(diff=truncate_text(diff, MAX_OUTPUT_CHARS))
 
@@ -153,6 +219,8 @@ class WriteFile(Tool[WriteFileInput]):
             return text_result(
                 f"{shown} already has this content; nothing was written.", summary="no changes"
             )
+        if (problem := syntax_problem(shown, target, params.content)) is not None:
+            return error_result(problem)
         summary = diff_summary(make_diff(shown, target, params.content))
         try:
             write_atomically(target.path, params.content)
@@ -214,7 +282,10 @@ def plan_edit(params: EditFileInput, guard: PathGuard) -> tuple[Target, str] | s
             f"old appears {count} times in {shown}; include more of the surrounding "
             "lines so that it matches exactly once."
         )
-    return target, target.old.replace(old, new, 1)
+    edited = target.old.replace(old, new, 1)
+    if (problem := syntax_problem(shown, target, edited)) is not None:
+        return problem
+    return target, edited
 
 
 class EditFile(Tool[EditFileInput]):

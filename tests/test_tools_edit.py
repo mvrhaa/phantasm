@@ -440,3 +440,46 @@ def test_write_file_over_websocket(home: Path, decision: Decision, written: bool
     finished = [e for e in events if e["type"] == "tool.finished"]
     assert [e["status"] for e in finished] == ["ok" if written else "denied"]
     assert (home / "hello.txt").exists() is written
+
+
+async def test_edit_that_breaks_python_is_refused_before_asking(app_py: Path) -> None:
+    approver = FakeApprover("allow")
+    before = app_py.read_text()
+    result = await edit(str(app_py), "def helper():", "def helper(:", approver)
+    assert result.is_error
+    assert "Python syntax" in text_of(result)
+    assert "line 5" in text_of(result)
+    assert approver.asked == []
+    assert app_py.read_text() == before
+
+
+async def test_write_that_breaks_json_is_refused(home: Path) -> None:
+    path = home / "settings.json"
+    path.write_text('{"a": 1}\n')
+    result = await write(path, '{"a": 1,,}\n')
+    assert result.is_error
+    assert "JSON syntax" in text_of(result)
+    assert path.read_text() == '{"a": 1}\n'
+
+
+async def test_new_toml_file_must_parse(home: Path) -> None:
+    path = home / "pyproject.toml"
+    result = await write(path, "[project\nname = 'x'\n")
+    assert result.is_error
+    assert "TOML syntax" in text_of(result)
+    assert not path.exists()
+
+
+async def test_file_that_was_already_broken_can_still_change(home: Path) -> None:
+    path = home / "draft.py"
+    path.write_text("def a(:\n    pass\nx = 1\n")
+    result = await edit(str(path), "x = 1", "x = 2")
+    assert not result.is_error
+    assert path.read_text().endswith("x = 2\n")
+
+
+async def test_valid_change_and_other_files_are_not_checked(home: Path) -> None:
+    good = await write(home / "ok.json", '{"a": [1, 2]}')
+    assert not good.is_error
+    text = await write(home / "notes.txt", "{ not json")
+    assert not text.is_error
