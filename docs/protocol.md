@@ -925,7 +925,8 @@ An agent was started or its status changed; carries the whole agent.
     "status": "done",
     "report": "Port 443 is used by another process.",
     "created_at": "2026-11-12T09:30:00Z",
-    "updated_at": "2026-11-12T09:31:05Z"
+    "updated_at": "2026-11-12T09:31:05Z",
+    "claude": false
   }
 }
 ```
@@ -1131,6 +1132,7 @@ What clients are told about an agent.
 | `updated_at` | ISO 8601 time | required |
 | `progress` | string | `null` |
 | `review_of` | string | `null` |
+| `claude` | boolean | `false` |
 
 ### HistoryMessage
 

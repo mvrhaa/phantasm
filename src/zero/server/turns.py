@@ -36,6 +36,7 @@ def make_turn(
     tools: ToolRegistry | None = None,
     approvals: Approver | None = None,
     command: MessageCommand | None = None,
+    on_claude: bool = False,
 ) -> Turn:
     """A turn wired to everything the application has: tools, approvals, memory and so on.
 
@@ -49,7 +50,11 @@ def make_turn(
         client=client,
         config=state.config,
         provider=provider,
-        thinker=turn_thinker(state.config, state.claude),
+        thinker=(
+            (state.claude, state.config.claude_code.model)
+            if on_claude and state.claude is not None
+            else turn_thinker(state.config, state.claude)
+        ),
         loaded_tools=state.loaded_tools.setdefault(session_id, set()),
         skills=state.skills,
         sessions=state.sessions,
@@ -122,6 +127,7 @@ async def start_agent_turn(state: AppState, agent: Agent, text: str) -> None:
         agent=AgentRef(id=agent.id, name=agent.name),
         tools=state.tools.without(AGENT_TOOL_PREFIX).extended(agent_side_tools(state.agent_runner)),
         approvals=AgentApprovals(state.approvals, state.agent_runner, agent.id),
+        on_claude=agent.claude,
     )
 
     async def report() -> None:

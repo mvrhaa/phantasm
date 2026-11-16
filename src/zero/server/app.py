@@ -115,6 +115,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 start_turn=lambda agent, text: start_agent_turn(state, agent, text),
                 start_notice=lambda session_id, text: start_notice_turn(state, session_id, text),
                 max_agents=config.agent.max_agents,
+                claude_ready=lambda: state.claude is not None,
             )
             await agent_runner.recover()
             jobs = JobManager()

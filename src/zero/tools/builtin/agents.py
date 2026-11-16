@@ -25,7 +25,12 @@ class AgentControl(Protocol):
     """What the agent tools need from the agent runner."""
 
     async def start(
-        self, name: str, task: str, parent_session_id: str, verify: bool = False
+        self,
+        name: str,
+        task: str,
+        parent_session_id: str,
+        verify: bool = False,
+        claude: bool = False,
     ) -> Agent: ...
 
     async def message(self, agent_id: str, text: str, parent_session_id: str) -> Agent: ...
@@ -66,6 +71,13 @@ class AgentStartInput(BaseModel):
         description=(
             "A skeptical reviewer checks the work before the report comes back and sends the "
             "agent back to fix what fails. For work with a checkable outcome: code, files."
+        ),
+    )
+    claude: bool = Field(
+        default=False,
+        description=(
+            "The agent thinks through the user's own Claude Code (Claude, on their Claude "
+            "plan) with your tools: for code and hard thinking, or when the user asks for Claude."
         ),
     )
 
@@ -124,7 +136,7 @@ class AgentStart(_AgentTool[AgentStartInput]):
     async def run(self, params: AgentStartInput, ctx: ToolContext) -> ToolResult:
         try:
             agent = await self._control.start(
-                params.name, params.task, ctx.session_id, params.verify
+                params.name, params.task, ctx.session_id, params.verify, params.claude
             )
         except AgentError as exc:
             return error_result(f"The agent could not be started: {exc}.")

@@ -583,6 +583,7 @@ class AgentInfo(AgentRef):
     updated_at: datetime
     progress: str | None = None
     review_of: str | None = None
+    claude: bool = False
 
 
 class AgentUpdated(Envelope):

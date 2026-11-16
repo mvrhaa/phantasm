@@ -89,6 +89,7 @@ class AgentRunner:
         start_turn: StartAgentTurn,
         start_notice: StartNoticeTurn,
         max_agents: int = 3,
+        claude_ready: Callable[[], bool] = lambda: False,
     ) -> None:
         self._agents = agents
         self._sessions = sessions
@@ -98,6 +99,7 @@ class AgentRunner:
         self._start_turn = start_turn
         self._start_notice = start_notice
         self._max_agents = max_agents
+        self._claude_ready = claude_ready
         self._deliveries: set[asyncio.Task[None]] = set()
         self._questions: dict[str, list[str]] = {}
         self._mail: list[Mail] = []
@@ -105,14 +107,22 @@ class AgentRunner:
         self._closed = False
 
     async def start(
-        self, name: str, task: str, parent_session_id: str, verify: bool = False
+        self,
+        name: str,
+        task: str,
+        parent_session_id: str,
+        verify: bool = False,
+        claude: bool = False,
     ) -> Agent:
         """Create the agent's session, store the agent and start its first turn on ``task``.
 
-        With ``verify`` a reviewer checks its work before its report goes to the parent.
+        With ``verify`` a reviewer checks its work before its report goes to the parent;
+        with ``claude`` it thinks through the user's Claude Code.
         """
         if await self._agents.by_session(parent_session_id) is not None:
             raise AgentError("an agent cannot start agents")
+        if claude and not self._claude_ready():
+            raise AgentError("Claude Code is not installed, so there is no Claude agent")
         at_work = len([a for a in await self._agents.active() if a.review_of is None])
         if at_work >= self._max_agents:
             raise AgentError(
@@ -121,7 +131,9 @@ class AgentRunner:
             )
         session = await self._sessions.create(f"Agent: {' '.join(name.split())}", kind="agent")
         try:
-            agent = await self._agents.add(name, parent_session_id, session.id, task, verify=verify)
+            agent = await self._agents.add(
+                name, parent_session_id, session.id, task, verify=verify, claude=claude
+            )
         except ValueError as exc:
             await self._sessions.delete(session.id)
             raise AgentError(str(exc)) from exc
@@ -253,7 +265,7 @@ class AgentRunner:
         prompt = VERIFY_PROMPT.format(task=agent.task, report=report)
         session = await self._sessions.create(f"Review: {agent.name}", kind="agent")
         reviewer = await self._agents.add(
-            REVIEWER, agent.session_id, session.id, prompt, review_of=agent.id
+            REVIEWER, agent.session_id, session.id, prompt, review_of=agent.id, claude=agent.claude
         )
         await self._events.publish(SessionCreated(session=session.info()))
         await self._announce(reviewer)

@@ -258,7 +258,12 @@ def test_agent_role_follows_the_environment() -> None:
 async def test_agent_start_reports_why_it_could_not_start() -> None:
     class Refusing:
         async def start(
-            self, name: str, task: str, parent_session_id: str, verify: bool = False
+            self,
+            name: str,
+            task: str,
+            parent_session_id: str,
+            verify: bool = False,
+            claude: bool = False,
         ) -> Agent:
             raise AgentError("an agent cannot start agents")
 

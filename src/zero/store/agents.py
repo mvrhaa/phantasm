@@ -33,6 +33,8 @@ class Agent(BaseModel):
     review_of: str | None = None
     # The agent's latest progress note (report_progress).
     progress: str | None = None
+    # It thinks through the user's Claude Code, whoever thinks in the user's turns.
+    claude: bool = False
 
     @property
     def active(self) -> bool:
@@ -55,6 +57,7 @@ def _to_agent(row: aiosqlite.Row) -> Agent:
         reviews=row["reviews"],
         review_of=row["review_of"],
         progress=row["progress"],
+        claude=bool(row["claude"]),
     )
 
 
@@ -73,6 +76,7 @@ class AgentsRepo:
         *,
         verify: bool = False,
         review_of: str | None = None,
+        claude: bool = False,
     ) -> Agent:
         """Store a new agent at work. Raises ``ValueError`` if the name or task is empty."""
         name = " ".join(name.split())
@@ -85,8 +89,19 @@ class AgentsRepo:
         now = clock.to_iso(clock.now())
         await self._db.conn.execute(
             "INSERT INTO agents (id, name, parent_session_id, session_id, task, created_at, "
-            "updated_at, verify, review_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (agent_id, name, parent_session_id, session_id, task, now, now, int(verify), review_of),
+            "updated_at, verify, review_of, claude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                agent_id,
+                name,
+                parent_session_id,
+                session_id,
+                task,
+                now,
+                now,
+                int(verify),
+                review_of,
+                int(claude),
+            ),
         )
         await self._db.conn.commit()
         agent = await self.get(agent_id)
