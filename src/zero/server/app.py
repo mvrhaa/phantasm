@@ -17,6 +17,7 @@ from zero.core.review import ReviewRunner
 from zero.core.rewind import Rewinder
 from zero.core.turn_manager import TurnManager
 from zero.paths import db_path
+from zero.plugins import PluginHost
 from zero.providers.base import LLMProvider
 from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
 from zero.scheduler.runner import SchedulerRunner
@@ -123,6 +124,8 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             todos = TodoRepo(db)
             file_changes = FileChangesRepo(db)
             skills = SkillBook()
+            plugins = PluginHost()
+            plugins.load_installed()
             await file_changes.prune()
             reviews = ReviewsRepo(db)
             tool_runs = ToolRunsRepo(db)
@@ -147,6 +150,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     SessionStores(sessions, messages, summaries),
                     file_changes,
                     skills,
+                    plugins,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -193,6 +197,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 jobs=jobs,
                 claude=make_claude(config),
                 skills=skills,
+                plugins=plugins,
             )
             state.scheduler.start()
             state.reviewer.start()

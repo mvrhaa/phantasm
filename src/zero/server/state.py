@@ -11,6 +11,7 @@ from zero.core.events import EventBus
 from zero.core.review import ReviewRunner
 from zero.core.rewind import Rewinder
 from zero.core.turn_manager import TurnManager
+from zero.plugins import PluginHost
 from zero.providers.base import LLMProvider
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.connections import ConnectionManager
@@ -68,6 +69,7 @@ class AppState:
     claude: LLMProvider | None = None
     skills: SkillBook = field(default_factory=SkillBook)
     mcp: McpHost = field(default_factory=McpHost)
+    plugins: PluginHost = field(default_factory=PluginHost)
     # Tools each session loaded on demand (tools_load), kept while the brain runs.
     loaded_tools: dict[str, set[str]] = field(default_factory=dict)
     stopping: bool = False
