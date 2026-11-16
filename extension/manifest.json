@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Zero",
+  "description": "Lets Zero use this Chrome in a window of its own, with your sign-ins, when you ask it to.",
+  "version": "0.1.0",
+  "background": {"service_worker": "background.js"},
+  "permissions": ["tabs", "scripting", "storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "action": {"default_popup": "popup.html", "default_title": "Zero"}
+}

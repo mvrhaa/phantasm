@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from zero import APP_NAME, __version__
 from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
+from zero.browser import BrowserBridge
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.review import ReviewRunner
@@ -22,6 +23,7 @@ from zero.providers.base import LLMProvider
 from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
+from zero.server.browser_ws import router as browser_router
 from zero.server.connections import ConnectionManager
 from zero.server.recovery import resume_after_restart
 from zero.server.state import AppState
@@ -130,6 +132,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             file_changes = FileChangesRepo(db)
             skills = SkillBook()
             plugins = PluginHost()
+            browser = BrowserBridge()
             plugins.load_installed()
             await file_changes.prune()
             reviews = ReviewsRepo(db)
@@ -157,6 +160,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     skills,
                     plugins,
                     github=True,
+                    browser=browser,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -204,6 +208,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 claude=make_claude(config),
                 skills=skills,
                 plugins=plugins,
+                browser=browser,
             )
             state.scheduler.start()
             state.reviewer.start()
@@ -242,4 +247,5 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
         return {"app": APP_ID, "version": __version__, "status": "ok"}
 
     app.include_router(ws_router)
+    app.include_router(browser_router)
     return app

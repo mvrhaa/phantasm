@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from zero.agents.runner import AgentRunner
 from zero.approvals.manager import ApprovalManager
+from zero.browser import BrowserBridge
 from zero.config import Config
 from zero.core.events import EventBus
 from zero.core.review import ReviewRunner
@@ -70,6 +71,7 @@ class AppState:
     skills: SkillBook = field(default_factory=SkillBook)
     mcp: McpHost = field(default_factory=McpHost)
     plugins: PluginHost = field(default_factory=PluginHost)
+    browser: BrowserBridge = field(default_factory=BrowserBridge)
     # Tools each session loaded on demand (tools_load), kept while the brain runs.
     loaded_tools: dict[str, set[str]] = field(default_factory=dict)
     stopping: bool = False

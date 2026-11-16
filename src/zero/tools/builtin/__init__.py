@@ -1,5 +1,6 @@
 """Built-in tools that come with Zero."""
 
+from zero.browser import BrowserBridge
 from zero.plugins import PluginHost
 from zero.skills import SkillBook
 from zero.store.file_changes import FileChangesRepo
@@ -10,6 +11,7 @@ from zero.store.session_memory import SessionMemoryRepo
 from zero.store.todo import TodoRepo
 from zero.tools.base import ToolRegistry
 from zero.tools.builtin.agents import AgentControl, agent_tools
+from zero.tools.builtin.browser import browser_tools
 from zero.tools.builtin.edit import EditFile, WriteFile
 from zero.tools.builtin.files import ListDir, ReadFile, SendFile
 from zero.tools.builtin.github import github_tools
@@ -39,6 +41,7 @@ def builtin_registry(
     skills: SkillBook | None = None,
     plugins: PluginHost | None = None,
     github: bool = False,
+    browser: BrowserBridge | None = None,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -63,6 +66,7 @@ def builtin_registry(
         *([SkillUse(skills)] if skills is not None else []),
         *(plugin_tools(plugins) if plugins is not None else []),
         *(github_tools() if github else []),
+        *(browser_tools(browser) if browser is not None else []),
     ]
     for tool in [*tools, *extra]:
         registry.register(tool)

@@ -54,7 +54,12 @@ uv run zero token          # показать токен для клиентов
 uv run zero doctor         # проверить папки, конфиг, БД, токен, порт и провайдер
 uv run zero usage          # сколько запросов и токенов ушло на модель
 uv run zero config path    # где лежит config.json
+uv run zero eval           # прогнать задачи оценки на твоей модели (настоящие запросы)
 ```
+
+## Chrome
+
+Зеро может работать в твоём Chrome (с твоими входами на сайты) в отдельном окне через расширение из папки `extension/`: `chrome://extensions` → Developer mode → Load unpacked → `extension/`, затем в окне расширения вставь вывод `uv run zero token`. Подробнее — `extension/README.md`.
 
 ## Ключ API
 
