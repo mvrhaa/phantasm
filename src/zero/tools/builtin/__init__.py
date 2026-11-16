@@ -12,6 +12,7 @@ from zero.tools.base import ToolRegistry
 from zero.tools.builtin.agents import AgentControl, agent_tools
 from zero.tools.builtin.edit import EditFile, WriteFile
 from zero.tools.builtin.files import ListDir, ReadFile, SendFile
+from zero.tools.builtin.github import github_tools
 from zero.tools.builtin.jobs import JobManager, job_tools
 from zero.tools.builtin.journal import journal_tools
 from zero.tools.builtin.memory import memory_tools
@@ -37,6 +38,7 @@ def builtin_registry(
     file_changes: FileChangesRepo | None = None,
     skills: SkillBook | None = None,
     plugins: PluginHost | None = None,
+    github: bool = False,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -60,6 +62,7 @@ def builtin_registry(
         *(session_tools(sessions) if sessions is not None else []),
         *([SkillUse(skills)] if skills is not None else []),
         *(plugin_tools(plugins) if plugins is not None else []),
+        *(github_tools() if github else []),
     ]
     for tool in [*tools, *extra]:
         registry.register(tool)

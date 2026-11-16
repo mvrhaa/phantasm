@@ -151,6 +151,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     file_changes,
                     skills,
                     plugins,
+                    github=True,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
