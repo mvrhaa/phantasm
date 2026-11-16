@@ -36,6 +36,7 @@ from zero.providers.base import (
     ToolSpec,
 )
 from zero.providers.registry import small_model
+from zero.skills import SkillBook
 from zero.store.journal import JournalRepo
 from zero.store.messages import MessagesRepo, Source
 from zero.store.session_memory import SessionMemoryRepo
@@ -149,6 +150,7 @@ class Turn:
         command: MessageCommand | None = None,
         thinker: tuple[LLMProvider, str] | None = None,
         loaded_tools: set[str] | None = None,
+        skills: SkillBook | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -219,6 +221,7 @@ class Turn:
             tools=has_tools,
             can_see_images=self._can_see_images,
             more_tools=more_tools,
+            skills=skills if has_tools else None,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None

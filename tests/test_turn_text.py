@@ -190,6 +190,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "send_file",
         "memory_save",
         "memory_search",
+        "skill_use",
         "tools_load",
         "set_expression",
     ]

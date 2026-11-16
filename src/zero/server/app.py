@@ -25,6 +25,7 @@ from zero.server.thinker import make_claude
 from zero.server.turns import start_agent_turn, start_notice_turn, start_scheduled_turn
 from zero.server.ws import CLOSE_GOING_AWAY
 from zero.server.ws import router as ws_router
+from zero.skills import SkillBook
 from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
@@ -119,6 +120,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             summaries = SummariesRepo(db)
             todos = TodoRepo(db)
             file_changes = FileChangesRepo(db)
+            skills = SkillBook()
             await file_changes.prune()
             reviews = ReviewsRepo(db)
             tool_runs = ToolRunsRepo(db)
@@ -142,6 +144,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     journal,
                     SessionStores(sessions, messages, summaries),
                     file_changes,
+                    skills,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -187,6 +190,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 todos=todos,
                 jobs=jobs,
                 claude=make_claude(config),
+                skills=skills,
             )
             state.scheduler.start()
             state.reviewer.start()

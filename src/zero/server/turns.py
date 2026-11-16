@@ -51,6 +51,7 @@ def make_turn(
         provider=provider,
         thinker=turn_thinker(state.config, state.claude),
         loaded_tools=state.loaded_tools.setdefault(session_id, set()),
+        skills=state.skills,
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,

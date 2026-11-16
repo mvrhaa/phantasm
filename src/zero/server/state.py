@@ -14,6 +14,7 @@ from zero.core.turn_manager import TurnManager
 from zero.providers.base import LLMProvider
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.connections import ConnectionManager
+from zero.skills import SkillBook
 from zero.store.agents import AgentsRepo
 from zero.store.approvals import ApprovalRulesRepo
 from zero.store.db import Database
@@ -64,6 +65,7 @@ class AppState:
     todos: TodoRepo
     jobs: JobManager = field(default_factory=JobManager)
     claude: LLMProvider | None = None
+    skills: SkillBook = field(default_factory=SkillBook)
     # Tools each session loaded on demand (tools_load), kept while the brain runs.
     loaded_tools: dict[str, set[str]] = field(default_factory=dict)
     stopping: bool = False

@@ -8,12 +8,20 @@ from zero.core.attachments import AttachmentError, save_attachments
 from zero.core.events import ReplyTo
 from zero.core.titles import title_new_session
 from zero.protocol.errors import ErrorCode
-from zero.protocol.messages import Error, MessageSend, SessionCreated, TurnCancel, TurnSteer
+from zero.protocol.messages import (
+    Error,
+    MessageCommand,
+    MessageSend,
+    SessionCreated,
+    TurnCancel,
+    TurnSteer,
+)
 from zero.providers.registry import small_model
 from zero.server.connections import Connection
 from zero.server.handlers.hello import session_info
 from zero.server.state import AppState
 from zero.server.turns import make_turn
+from zero.skills import expand, user_start
 from zero.tools.permissions import PathGuard
 
 logger = logging.getLogger(__name__)
@@ -99,6 +107,12 @@ async def handle_message_send(
         await _busy(connection, message)
         return
 
+    command = message.command
+    started = user_start(message.text, state.skills) if command is None else None
+    if started is not None:
+        skill, arguments = started
+        command = MessageCommand(name=f"/{skill.name}", instructions=expand(skill, arguments))
+
     after = None
     if session.title is None:
         after = partial(
@@ -121,7 +135,7 @@ async def handle_message_send(
             client=connection.hello,
             reply=ReplyTo(connection.id, message.id),
             attachments=attachments,
-            command=message.command,
+            command=command,
         ),
         after=after,
     )

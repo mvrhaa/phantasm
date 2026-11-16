@@ -1,5 +1,6 @@
 """Built-in tools that come with Zero."""
 
+from zero.skills import SkillBook
 from zero.store.file_changes import FileChangesRepo
 from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
@@ -17,6 +18,7 @@ from zero.tools.builtin.schedule import schedule_tools
 from zero.tools.builtin.search import SearchFiles
 from zero.tools.builtin.sessions import SessionStores, session_tools
 from zero.tools.builtin.shell import RunCommand
+from zero.tools.builtin.skills import SkillUse
 from zero.tools.builtin.todo import todo_tools
 from zero.tools.builtin.web import WebFetch
 
@@ -31,6 +33,7 @@ def builtin_registry(
     journal: JournalRepo | None = None,
     sessions: SessionStores | None = None,
     file_changes: FileChangesRepo | None = None,
+    skills: SkillBook | None = None,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -52,6 +55,7 @@ def builtin_registry(
         *(job_tools(jobs) if jobs is not None else []),
         *(journal_tools(journal) if journal is not None else []),
         *(session_tools(sessions) if sessions is not None else []),
+        *([SkillUse(skills)] if skills is not None else []),
     ]
     for tool in [*tools, *extra]:
         registry.register(tool)

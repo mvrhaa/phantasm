@@ -20,6 +20,7 @@ from zero.core.model_call import UsageRecorder
 from zero.protocol.messages import ClientInfo, TextPart
 from zero.providers.base import LLMProvider, Message
 from zero.providers.registry import small_model
+from zero.skills import SkillBook
 from zero.store.journal import JournalRepo, note_time
 from zero.store.memory import Memory
 from zero.store.messages import MessagesRepo, Source, StoredMessage
@@ -77,6 +78,7 @@ class PromptBuilder:
         tools: bool = True,
         can_see_images: bool | None = None,
         more_tools: str | None = None,
+        skills: SkillBook | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -97,6 +99,7 @@ class PromptBuilder:
         self._model = model or config.provider.model
         self._can_see_images = can_see_images
         self._more_tools = more_tools
+        self._skills = skills
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -153,6 +156,7 @@ class PromptBuilder:
             command=self._command,
             tools=self._tools,
             more_tools=self._more_tools,
+            skills=self._skills.prompt_block() if self._skills is not None else None,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),

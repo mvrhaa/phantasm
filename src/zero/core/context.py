@@ -222,6 +222,7 @@ def build_system_prompt(
     command: str | None = None,
     tools: bool = True,
     more_tools: str | None = None,
+    skills: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
@@ -242,6 +243,7 @@ def build_system_prompt(
         _environment(client, source),
         _computer(computer) if computer else None,
         more_tools if tools else None,
+        skills if tools else None,
         _agent_role(agent_name) if agent_name else None,
         _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,
