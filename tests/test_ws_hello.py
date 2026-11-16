@@ -52,6 +52,7 @@ def test_hello_is_answered_with_hello_ok(ws: WebSocketTestSession) -> None:
         "zero_version": zero.__version__,
         "protocol": 1,
         "sessions": [],
+        "thinker": {"claude_code": False, "name": "Fake"},
     }
 
 

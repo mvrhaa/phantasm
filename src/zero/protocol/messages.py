@@ -226,6 +226,18 @@ class SessionRewind(Envelope):
     dry_run: bool = False
 
 
+class ProviderSet(Envelope):
+    """Choose who thinks in the user's turns: the configured provider, or with
+    ``claude_code`` the user's own Claude Code.
+
+    Everyone hears ``provider.changed``. Refused with ``provider_not_configured``
+    when the ``claude`` command is not found.
+    """
+
+    type: Literal["provider.set"] = "provider.set"
+    claude_code: bool
+
+
 class HistoryGet(Envelope):
     """Ask for a page of a session's history, newest first when paging back."""
 
@@ -254,6 +266,7 @@ ClientMessage = Annotated[
     | SessionRename
     | SessionDelete
     | SessionRewind
+    | ProviderSet
     | HistoryGet
     | Ping,
     Field(discriminator="type"),
@@ -348,13 +361,28 @@ class TurnEvent(Envelope):
     agent: AgentRef | None = None
 
 
+class Thinker(BaseModel):
+    """Who thinks in the user's turns; ``name`` is for people ("Claude Sonnet", "Gemini")."""
+
+    claude_code: bool = False
+    name: str
+
+
 class HelloOk(Envelope):
-    """Answer to ``hello``."""
+    """Answer to ``hello``; ``thinker`` tells who thinks in the user's turns."""
 
     type: Literal["hello.ok"] = "hello.ok"
     zero_version: str
     protocol: int
     sessions: list[SessionInfo] = Field(default_factory=list)
+    thinker: Thinker | None = None
+
+
+class ProviderChanged(Envelope):
+    """Someone chose who thinks in the user's turns (``provider.set``)."""
+
+    type: Literal["provider.changed"] = "provider.changed"
+    thinker: Thinker
 
 
 class Pong(Envelope):
@@ -601,6 +629,7 @@ ServerEvent = Annotated[
     | SessionCompacted
     | SessionRewound
     | AgentUpdated
+    | ProviderChanged
     | HistoryOk,
     Field(discriminator="type"),
 ]

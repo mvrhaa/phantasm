@@ -75,6 +75,7 @@ class PromptBuilder:
         command: str | None = None,
         model: str | None = None,
         tools: bool = True,
+        can_see_images: bool | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -93,6 +94,7 @@ class PromptBuilder:
         self._command = command
         self._tools = tools
         self._model = model or config.provider.model
+        self._can_see_images = can_see_images
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -153,5 +155,9 @@ class PromptBuilder:
             Message(role="system", content=[TextPart(text=system)]),
             *to_history(shown[start:]),
         ]
-        can_see = self._provider.supports_images(self._model)
+        can_see = (
+            self._can_see_images
+            if self._can_see_images is not None
+            else self._provider.supports_images(self._model)
+        )
         return await prepare_for_model(prompt, can_see)

@@ -10,6 +10,7 @@ from zero.core.turn import Turn
 from zero.protocol.messages import AgentRef, ClientInfo, FilePart, MessageCommand, SessionCreated
 from zero.providers.base import LLMProvider
 from zero.server.state import AppState
+from zero.server.thinker import turn_thinker
 from zero.store.agents import Agent
 from zero.store.messages import Source
 from zero.store.schedules import Schedule
@@ -48,6 +49,7 @@ def make_turn(
         client=client,
         config=state.config,
         provider=provider,
+        thinker=turn_thinker(state.config, state.claude),
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,

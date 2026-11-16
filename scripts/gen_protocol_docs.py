@@ -79,13 +79,18 @@ CLIENT_EXAMPLES: list[BaseModel] = [
     m.SessionRename(id="sr-1", session_id="s-1", title="Server setup"),
     m.SessionDelete(id="sd-1", session_id="s-1"),
     m.SessionRewind(id="rw-1", session_id="s-1", message_id="msg-12"),
+    m.ProviderSet(id="pv-1", claude_code=True),
     m.HistoryGet(id="hg-1", session_id="s-1", limit=50),
     m.Ping(id="p-1"),
 ]
 
 SERVER_EXAMPLES: list[BaseModel] = [
     m.HelloOk(
-        reply_to="h-1", zero_version=__version__, protocol=PROTOCOL_VERSION, sessions=[SESSION]
+        reply_to="h-1",
+        zero_version=__version__,
+        protocol=PROTOCOL_VERSION,
+        sessions=[SESSION],
+        thinker=m.Thinker(name="Gemini"),
     ),
     m.Pong(reply_to="p-1"),
     m.Error(
@@ -162,6 +167,7 @@ SERVER_EXAMPLES: list[BaseModel] = [
     m.SessionCompacted(
         session_id="s-1", summary="The user set up nginx …", until_message_id="msg-40"
     ),
+    m.ProviderChanged(reply_to="pv-1", thinker=m.Thinker(claude_code=True, name="Claude Sonnet")),
     m.AgentUpdated(
         agent=m.AgentInfo(
             id="a-1",

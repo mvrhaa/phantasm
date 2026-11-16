@@ -5,6 +5,7 @@ from zero.protocol.errors import PROTOCOL_VERSION, ErrorCode
 from zero.protocol.messages import Error, Hello, HelloOk, SessionInfo
 from zero.server.connections import Connection
 from zero.server.state import AppState
+from zero.server.thinker import thinker_info
 from zero.store.sessions import Session
 
 CLOSE_PROTOCOL_MISMATCH = 4400
@@ -43,6 +44,7 @@ async def handle_hello(connection: Connection, message: Hello, state: AppState) 
             zero_version=__version__,
             protocol=PROTOCOL_VERSION,
             sessions=[session_info(session) for session in sessions],
+            thinker=thinker_info(state.config),
         )
     )
     if first:

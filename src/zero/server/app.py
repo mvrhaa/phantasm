@@ -21,6 +21,7 @@ from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
 from zero.server.state import AppState
+from zero.server.thinker import make_claude
 from zero.server.turns import start_agent_turn, start_notice_turn, start_scheduled_turn
 from zero.server.ws import CLOSE_GOING_AWAY
 from zero.server.ws import router as ws_router
@@ -185,6 +186,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 ),
                 todos=todos,
                 jobs=jobs,
+                claude=make_claude(config),
             )
             state.scheduler.start()
             state.reviewer.start()
@@ -193,9 +195,10 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             finally:
                 await graceful_stop(state)
                 await state.turns.shutdown()
-                close = getattr(state.provider, "aclose", None)
-                if close is not None:
-                    await close()
+                for thinker in (state.provider, state.claude):
+                    close = getattr(thinker, "aclose", None)
+                    if close is not None:
+                        await close()
         finally:
             app.state.zero = None
             await db.close()

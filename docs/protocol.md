@@ -280,6 +280,24 @@ Go back to just before a user message of the session. That message and everythin
 }
 ```
 
+### `provider.set`
+
+Choose who thinks in the user's turns: the configured provider, or with `claude_code` the user's own Claude Code. Everyone hears `provider.changed`. Refused with `provider_not_configured` when the `claude` command is not found.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `claude_code` | boolean | required |
+
+```json
+{
+  "type": "provider.set",
+  "id": "pv-1",
+  "claude_code": true
+}
+```
+
 ### `history.get`
 
 Ask for a page of a session's history, newest first when paging back.
@@ -323,7 +341,7 @@ Liveness check; answered with `pong`.
 
 ### `hello.ok`
 
-Answer to `hello`.
+Answer to `hello`; `thinker` tells who thinks in the user's turns.
 
 | Field | Type | Default |
 |---|---|---|
@@ -332,6 +350,7 @@ Answer to `hello`.
 | `zero_version` | string | required |
 | `protocol` | integer | required |
 | `sessions` | array of [SessionInfo](#sessioninfo) | `[]` |
+| `thinker` | [Thinker](#thinker) | `null` |
 
 ```json
 {
@@ -346,7 +365,11 @@ Answer to `hello`.
       "updated_at": "2026-11-12T09:31:05Z",
       "kind": "chat"
     }
-  ]
+  ],
+  "thinker": {
+    "claude_code": false,
+    "name": "Gemini"
+  }
 }
 ```
 
@@ -903,6 +926,27 @@ An agent was started or its status changed; carries the whole agent.
     "report": "Port 443 is used by another process.",
     "created_at": "2026-11-12T09:30:00Z",
     "updated_at": "2026-11-12T09:31:05Z"
+  }
+}
+```
+
+### `provider.changed`
+
+Someone chose who thinks in the user's turns (`provider.set`).
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `thinker` | [Thinker](#thinker) | required |
+
+```json
+{
+  "type": "provider.changed",
+  "reply_to": "pv-1",
+  "thinker": {
+    "claude_code": true,
+    "name": "Claude Sonnet"
   }
 }
 ```

@@ -63,6 +63,7 @@ class AppState:
     rewinder: Rewinder
     todos: TodoRepo
     jobs: JobManager = field(default_factory=JobManager)
+    claude: LLMProvider | None = None
     stopping: bool = False
 
 

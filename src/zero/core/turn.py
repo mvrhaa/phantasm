@@ -145,6 +145,7 @@ class Turn:
         retry_delays: Sequence[float] = RETRY_DELAYS_S,
         usage: UsageRecorder | None = None,
         command: MessageCommand | None = None,
+        thinker: tuple[LLMProvider, str] | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -179,7 +180,10 @@ class Turn:
         self._timed_out = False
         self._steers: list[tuple[str, ReplyTo | None]] = []
         self._closed = False
-        self._can_see_images = provider.supports_images(model)
+        steps = provider
+        if thinker is not None:
+            steps, model = thinker
+        self._can_see_images = steps.supports_images(model)
         self._reply = reply
         self._prompts = PromptBuilder(
             session_id=session_id,
@@ -199,6 +203,7 @@ class Turn:
             command=command.instructions if command is not None else None,
             model=model,
             tools=has_tools,
+            can_see_images=self._can_see_images,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None
@@ -220,7 +225,7 @@ class Turn:
             agent=agent,
         )
         self._model = ModelCaller(
-            provider=provider,
+            provider=steps,
             model=model,
             purpose="agent" if agent is not None else "turn",
             session_id=session_id,

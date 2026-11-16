@@ -19,6 +19,7 @@ SPEC_DEFAULTS = {
         "options": {},
         "history_token_budget": None,
     },
+    "claude_code": {"active": False, "model": "sonnet", "command": "claude"},
     "agent": {
         "max_steps": 40,
         "max_steps_computer": 100,

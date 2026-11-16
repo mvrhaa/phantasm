@@ -19,6 +19,7 @@ from zero.protocol.messages import (
     MessageSend,
     Ping,
     Pong,
+    ProviderSet,
     SessionCreate,
     SessionDelete,
     SessionList,
@@ -36,6 +37,7 @@ from zero.server.handlers.messages import (
     handle_turn_cancel,
     handle_turn_steer,
 )
+from zero.server.handlers.provider import handle_provider_set
 from zero.server.handlers.sessions import (
     handle_history_get,
     handle_session_create,
@@ -71,6 +73,7 @@ HANDLERS: dict[type[Envelope], Handler] = {
     SessionRename: handle_session_rename,
     SessionDelete: handle_session_delete,
     SessionRewind: handle_session_rewind,
+    ProviderSet: handle_provider_set,
     HistoryGet: handle_history_get,
 }
 

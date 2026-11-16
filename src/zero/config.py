@@ -74,6 +74,19 @@ class ProviderConfig(_Section):
     history_token_budget: int | None = Field(default=None, ge=1000)
 
 
+class ClaudeCodeConfig(_Section):
+    """Thinking through the user's own Claude Code (``provider.set``).
+
+    With ``active`` the user's turns go to ``command`` (found on PATH and in the
+    usual install folders) with ``model``; titles, summaries and reviews stay
+    with ``provider``.
+    """
+
+    active: bool = False
+    model: str = "sonnet"
+    command: str = "claude"
+
+
 class AgentConfig(_Section):
     """Limits of the agent loop."""
 
@@ -111,6 +124,7 @@ class Config(_Section):
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
+    claude_code: ClaudeCodeConfig = Field(default_factory=ClaudeCodeConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     secrets: dict[str, Any] = Field(default_factory=dict)
