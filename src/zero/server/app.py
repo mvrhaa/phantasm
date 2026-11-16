@@ -23,6 +23,7 @@ from zero.providers.registry import ProviderNotConfigured, get_provider, small_m
 from zero.scheduler.runner import SchedulerRunner
 from zero.server.auth import get_or_create_token
 from zero.server.connections import ConnectionManager
+from zero.server.recovery import resume_after_restart
 from zero.server.state import AppState
 from zero.server.thinker import make_claude
 from zero.server.turns import start_agent_turn, start_notice_turn, start_scheduled_turn
@@ -36,6 +37,7 @@ from zero.store.file_changes import FileChangesRepo
 from zero.store.journal import JournalRepo
 from zero.store.memory import MemoryRepo
 from zero.store.messages import MessagesRepo
+from zero.store.open_turns import OpenTurnsRepo
 from zero.store.reviews import ReviewsRepo
 from zero.store.schedules import SchedulesRepo
 from zero.store.session_memory import SessionMemoryRepo
@@ -105,7 +107,9 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             sessions = SessionsRepo(db)
             agents = AgentsRepo(db)
             messages = MessagesRepo(db)
-            turns = TurnManager()
+            open_turns = OpenTurnsRepo(db)
+            left_open = await open_turns.take_all()
+            turns = TurnManager(open_turns)
             agent_runner = AgentRunner(
                 agents=agents,
                 sessions=sessions,
@@ -117,7 +121,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 max_agents=config.agent.max_agents,
                 claude_ready=lambda: state.claude is not None,
             )
-            await agent_runner.recover()
+            stale_agents = await agent_runner.recover(resume=config.agent.resume_after_restart)
             jobs = JobManager()
             session_memory = SessionMemoryRepo(db)
             journal = JournalRepo(db)
@@ -203,6 +207,8 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             )
             state.scheduler.start()
             state.reviewer.start()
+            if config.agent.resume_after_restart:
+                await resume_after_restart(state, stale_agents, left_open)
             mcp_start = asyncio.create_task(state.mcp.start(), name="mcp-start")
             try:
                 yield

@@ -14,7 +14,7 @@ from zero.store.db import Database
 
 Role = Literal["user", "assistant", "tool"]
 Status = Literal["ok", "cancelled", "error"]
-Source = Literal["desktop", "phone", "scheduler", "agent"]
+Source = Literal["desktop", "phone", "scheduler", "agent", "recovery"]
 
 _content_adapter: TypeAdapter[list[ContentPart]] = TypeAdapter(list[ContentPart])
 

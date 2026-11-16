@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from zero.core.turn import Turn
 
@@ -12,12 +13,27 @@ AfterTurn = Callable[[], Awaitable[None]]
 logger = logging.getLogger(__name__)
 
 
-class TurnManager:
-    """Runs turns as background tasks and keeps track of the ones in progress."""
+class OpenTurns(Protocol):
+    """Where turns in progress are noted, so a crash does not lose them."""
 
-    def __init__(self) -> None:
+    async def add(
+        self, turn_id: str, session_id: str, source: str, agent_id: str | None
+    ) -> None: ...
+
+    async def remove(self, turn_id: str) -> None: ...
+
+
+class TurnManager:
+    """Runs turns as background tasks and keeps track of the ones in progress.
+
+    With ``open_turns`` each turn is noted there while it runs; a turn that
+    finishes in any way, a cancelled one too, is crossed out.
+    """
+
+    def __init__(self, open_turns: OpenTurns | None = None) -> None:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._turns: dict[str, Turn] = {}
+        self._open = open_turns
 
     @property
     def active(self) -> list[Turn]:
@@ -49,7 +65,20 @@ class TurnManager:
         task.add_done_callback(lambda _: self._forget(turn.id))
 
     async def _run(self, turn: Turn, after: AfterTurn | None) -> None:
-        await turn.run()
+        if self._open is not None:
+            try:
+                agent = turn.agent.id if turn.agent is not None else None
+                await self._open.add(turn.id, turn.session_id, turn.source, agent)
+            except Exception:
+                logger.exception("Turn %s could not be noted as open", turn.id)
+        try:
+            await turn.run()
+        finally:
+            if self._open is not None:
+                try:
+                    await self._open.remove(turn.id)
+                except Exception:
+                    logger.exception("Turn %s could not be crossed out", turn.id)
         if after is None:
             return
         try:

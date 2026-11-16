@@ -420,7 +420,7 @@ A turn began.
 | `session_id` | string | required |
 | `turn_id` | string | required |
 | `agent` | [AgentRef](#agentref) | `null` |
-| `source` | `"desktop"` \| `"phone"` \| `"scheduler"` \| `"agent"` | required |
+| `source` | `"desktop"` \| `"phone"` \| `"scheduler"` \| `"agent"` \| `"recovery"` | required |
 
 ```json
 {
@@ -1145,7 +1145,7 @@ A stored message as returned by `history.ok`.
 | `role` | `"user"` \| `"assistant"` \| `"tool"` | required |
 | `content` | array of [ContentPart](#contentpart) | required |
 | `status` | `"ok"` \| `"cancelled"` \| `"error"` | `null` |
-| `source` | `"desktop"` \| `"phone"` \| `"scheduler"` \| `"agent"` | `null` |
+| `source` | `"desktop"` \| `"phone"` \| `"scheduler"` \| `"agent"` \| `"recovery"` | `null` |
 | `command` | string | `null` |
 | `created_at` | ISO 8601 time | required |
 

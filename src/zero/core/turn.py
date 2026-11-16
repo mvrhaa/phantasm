@@ -429,6 +429,11 @@ class Turn:
             specs.append(self._expression.spec)
         return specs
 
+    @property
+    def source(self) -> Source:
+        """Who the turn came from: a client, the scheduler, an agent or a restart."""
+        return self._source
+
     def _for_model(self, content: list[ContentPart]) -> list[ContentPart]:
         """A tool's result as the model gets it: no images for a model that cannot see them."""
         if self._can_see_images:

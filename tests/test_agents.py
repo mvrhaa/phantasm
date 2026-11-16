@@ -136,7 +136,9 @@ async def test_the_service_fails_agents_left_by_its_last_run() -> None:
         parent, own = await sessions.create(), await sessions.create()
         left = await agents.add("left", parent.id, own.id, "task")
 
-    with TestClient(create_app(Config(), FakeProvider([]))) as client:
+    config = Config()
+    config.agent.resume_after_restart = False
+    with TestClient(create_app(config, FakeProvider([]))) as client:
         stored = client.portal.call(get_state(client.app).agents.get, left.id)  # type: ignore[union-attr,arg-type]
 
     assert stored is not None and (stored.status, stored.report) == ("failed", RESTARTED)
@@ -228,11 +230,11 @@ async def test_recover_fails_the_agents_an_earlier_run_left(stores: RunnerKit) -
     finished = await stores.runner.start("finished", "task", parent.id)
     await stores.runner.finished(finished.id, result("ok", "done"))
 
-    assert await stores.runner.recover() == 1
+    assert [agent.id for agent in await stores.runner.recover()] == [left.id]
 
     stored = await stores.agents.get(left.id)
     assert stored is not None and (stored.status, stored.report) == ("failed", RESTARTED)
-    assert await stores.runner.recover() == 0
+    assert await stores.runner.recover() == []
 
 
 def test_registry_without_a_prefix() -> None:

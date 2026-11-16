@@ -27,6 +27,7 @@ SPEC_DEFAULTS = {
         "history_token_budget": 60000,
         "max_agents": 3,
         "defer_tools": True,
+        "resume_after_restart": True,
         "review_conversations": True,
     },
     "permissions": {

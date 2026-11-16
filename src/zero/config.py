@@ -97,6 +97,8 @@ class AgentConfig(_Section):
     max_agents: int = Field(default=3, ge=1, le=20)
     # Tools that are not core go to the model only once it loads them (tools/loading.py).
     defer_tools: bool = True
+    # Turns and agents a crash cut off go on after the restart (server/recovery.py).
+    resume_after_restart: bool = True
     # Go over quiet chats: a journal note and the lasting facts in them (core/review.py).
     review_conversations: bool = True
 

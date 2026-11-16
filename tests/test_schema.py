@@ -75,6 +75,7 @@ async def test_tables_exist_after_migration(db: Database) -> None:
         "journal",
         "session_reviews",
         "file_changes",
+        "open_turns",
     }
 
 

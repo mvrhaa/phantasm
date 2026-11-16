@@ -311,7 +311,7 @@ class HistoryMessage(BaseModel):
     role: Literal["user", "assistant", "tool"]
     content: list[ContentPart]
     status: Literal["ok", "cancelled", "error"] | None = None
-    source: Literal["desktop", "phone", "scheduler", "agent"] | None = None
+    source: Literal["desktop", "phone", "scheduler", "agent", "recovery"] | None = None
     command: str | None = None
     created_at: datetime
 
@@ -403,7 +403,7 @@ class TurnStarted(TurnEvent):
     """A turn began."""
 
     type: Literal["turn.started"] = "turn.started"
-    source: Literal["desktop", "phone", "scheduler", "agent"]
+    source: Literal["desktop", "phone", "scheduler", "agent", "recovery"]
 
 
 class TurnSteered(TurnEvent):

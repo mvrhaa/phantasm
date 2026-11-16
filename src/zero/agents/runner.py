@@ -306,14 +306,24 @@ class AgentRunner:
         if agent is not None and agent.status == before:
             await self._set(agent, after)
 
-    async def recover(self) -> int:
-        """Mark agents left at work by an earlier run as failed; returns how many."""
+    async def recover(self, resume: bool = False) -> list[Agent]:
+        """The agents an earlier run left at work. With ``resume`` they stay at work for the
+        caller to start again (see ``give_up``); else they are marked failed."""
+        if not resume:
+            stale = await self._agents.active()
+            for agent in stale:
+                await self._agents.set_status(agent.id, "failed", RESTARTED)
+            if stale:
+                logger.info("%d agents were left unfinished by the last run", len(stale))
+            return stale
         stale = await self._agents.active()
-        for agent in stale:
-            await self._agents.set_status(agent.id, "failed", RESTARTED)
         if stale:
-            logger.info("%d agents were left unfinished by the last run", len(stale))
-        return len(stale)
+            logger.info("%d agents left unfinished by the last run go on", len(stale))
+        return [await self._agents.set_status(agent.id, "working") or agent for agent in stale]
+
+    async def give_up(self, agent: Agent) -> None:
+        """An agent the restart could not take up again has failed."""
+        await self._set(agent, "failed", RESTARTED)
 
     async def close(self) -> None:
         """Drop the messages still waiting for their session; nothing is delivered after this."""
