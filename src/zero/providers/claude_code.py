@@ -111,6 +111,9 @@ class ClaudeCodeProvider:
 
     name = NAME
     writes_prose = True
+    # The tools of a Claude Code process are fixed when it starts: loading more of them in
+    # the middle of a turn would start the conversation over, so it gets all of them.
+    takes_all_tools = True
 
     def __init__(self, folder: Path, command: Sequence[str] = ("claude",)) -> None:
         self._folder = folder

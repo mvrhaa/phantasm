@@ -198,6 +198,8 @@ class JobOutput(Tool[JobOutputInput]):
     """Reads what a background job printed since the last look."""
 
     name = "job_output"
+
+    core = False
     description = (
         "Get what a background job of run_command printed since you last looked, and "
         "whether it still runs or how it ended. wait_s waits up to that many seconds for "
@@ -237,6 +239,8 @@ class JobStop(Tool[JobStopInput]):
     """Stops a background job and everything it started."""
 
     name = "job_stop"
+
+    core = False
     description = (
         "Stop a background job of run_command and everything it started; you get the "
         "output it printed since you last looked."

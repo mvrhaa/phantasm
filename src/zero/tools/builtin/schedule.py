@@ -44,6 +44,8 @@ class ScheduleCreate(Tool[ScheduleCreateInput]):
     """Plans a task for later, once or again and again."""
 
     name = "schedule_create"
+
+    core = False
     description = (
         "Plan a task to run later on your own, once or repeatedly, e.g. a reminder. When it "
         "is time, you get the task as a message in a separate conversation. " + HELP
@@ -75,6 +77,8 @@ class ScheduleList(Tool[ScheduleListInput]):
     """Shows the planned tasks."""
 
     name = "schedule_list"
+
+    core = False
     description = "List the planned tasks with their id, when they run next and what they do."
     input_model = ScheduleListInput
     default_policy = "allow"
@@ -101,6 +105,8 @@ class ScheduleDelete(Tool[ScheduleDeleteInput]):
     """Cancels a planned task."""
 
     name = "schedule_delete"
+
+    core = False
     description = "Cancel a planned task by its id. The user usually approves this first."
     input_model = ScheduleDeleteInput
     default_policy = "ask"

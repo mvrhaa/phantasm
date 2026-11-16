@@ -91,7 +91,8 @@ def test_agent_works_on_its_task_in_its_own_session() -> None:
         agent_tools = {tool.name for tool in agent_call.tools}
         assert "read_file" in agent_tools
         assert not any(name.startswith("agent_") for name in agent_tools)
-        assert "agent_start" in {tool.name for tool in provider.main.calls[0].tools}
+        assert "- agent_start(" in text_of(provider.main.calls[0].messages[0])
+        assert "agent_start" not in text_of(system)
         assert "# Your role" not in text_of(provider.main.calls[0].messages[0])
         tool_result = provider.main.calls[1].messages[-1]
         assert text_of(tool_result).startswith("Started agent 'reader' (id ")

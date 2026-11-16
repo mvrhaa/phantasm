@@ -56,6 +56,8 @@ class SessionsList(Tool[SessionsListInput]):
     """Lists the other conversations."""
 
     name = "sessions_list"
+
+    core = False
     description = (
         "List your other conversations, the latest first: id, title, kind (chat, agent or "
         "scheduled) and when it last changed. Read one with sessions_read."
@@ -92,6 +94,8 @@ class SessionsRead(Tool[SessionsReadInput]):
     """Reads what was said in another conversation."""
 
     name = "sessions_read"
+
+    core = False
     description = (
         "Read another conversation: what the user and you said, without tool calls, the "
         "latest last lines. When the start is left out, its summary is shown if there is one."
@@ -138,6 +142,8 @@ class SessionsSearch(Tool[SessionsSearchInput]):
     """Finds messages in other conversations by their words."""
 
     name = "sessions_search"
+
+    core = False
     description = (
         "Search what the user and you said in your other conversations, newest first; "
         "each hit names its conversation for sessions_read."

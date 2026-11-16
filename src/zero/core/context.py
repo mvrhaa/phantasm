@@ -221,6 +221,7 @@ def build_system_prompt(
     computer: Computer | None = None,
     command: str | None = None,
     tools: bool = True,
+    more_tools: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
@@ -232,6 +233,7 @@ def build_system_prompt(
     Blocks with nothing to say are left out.
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     ``agent_name`` turns the prompt into an agent's: its role follows the environment.
+    ``more_tools`` lists the tools the model loads on demand (``tools/loading.py``).
     """
     character = client.character if client is not None else None
     blocks = [
@@ -239,6 +241,7 @@ def build_system_prompt(
         _persona(character) if character else None,
         _environment(client, source),
         _computer(computer) if computer else None,
+        more_tools if tools else None,
         _agent_role(agent_name) if agent_name else None,
         _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,

@@ -190,23 +190,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "send_file",
         "memory_save",
         "memory_search",
-        "memory_delete",
-        "todo_add",
-        "todo_update",
-        "todo_list",
-        "schedule_create",
-        "schedule_list",
-        "schedule_delete",
-        "agent_start",
-        "agent_message",
-        "agent_status",
-        "agent_stop",
-        "job_output",
-        "job_stop",
-        "journal_search",
-        "sessions_list",
-        "sessions_read",
-        "sessions_search",
+        "tools_load",
         "set_expression",
     ]
     assert system.role == "system"
@@ -215,6 +199,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
     assert "Your name is Zero." in system_text
     assert "cannot see the computer screen" in system_text
     assert "# Current time" in system_text
+    assert "# More tools" in system_text and "- todo_add(" in system_text
     assert (user.role, user.content[0].text) == ("user", "what time is it?")  # type: ignore[union-attr]
 
 

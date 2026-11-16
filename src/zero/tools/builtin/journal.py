@@ -17,6 +17,8 @@ class JournalSearch(Tool[JournalSearchInput]):
     """Finds journal notes by their words."""
 
     name = "journal_search"
+
+    core = False
     description = (
         "Search the journal: short dated notes about what happened in your earlier "
         "conversations, newest first. The newest ones are already in the system prompt."

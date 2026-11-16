@@ -33,6 +33,7 @@ from zero.providers.base import (
     Message,
     ProviderError,
     ToolCall,
+    ToolSpec,
 )
 from zero.providers.registry import small_model
 from zero.store.journal import JournalRepo
@@ -53,6 +54,7 @@ from zero.tools.client_actions import (
     ClientActionTool,
     action_tools,
 )
+from zero.tools.loading import ToolsLoadTool, more_tools_block
 from zero.tools.permissions import PathGuard
 
 NOT_RUN = "Not run: the user cancelled the turn."
@@ -146,6 +148,7 @@ class Turn:
         usage: UsageRecorder | None = None,
         command: MessageCommand | None = None,
         thinker: tuple[LLMProvider, str] | None = None,
+        loaded_tools: set[str] | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -174,15 +177,26 @@ class Turn:
             if client is not None and reply is not None
             else []
         )
+        steps = provider
+        if thinker is not None:
+            steps, model = thinker
         base = tools if tools is not None else ToolRegistry()
         self._tools = base.extended(actions, reserved=[EXPRESSION_TOOL])
+        self._loaded = loaded_tools if loaded_tools is not None else set()
+        self._defer = (
+            has_tools
+            and config.agent.defer_tools
+            and not getattr(steps, "takes_all_tools", False)
+            and bool(self._tools.deferred())
+        )
+        more_tools = more_tools_block(self._tools.deferred()) if self._defer else None
+        if self._defer:
+            self._tools = self._tools.extended([ToolsLoadTool(self._tools, self._loaded)])
+        self._has_tools = has_tools
         self._used_computer = False
         self._timed_out = False
         self._steers: list[tuple[str, ReplyTo | None]] = []
         self._closed = False
-        steps = provider
-        if thinker is not None:
-            steps, model = thinker
         self._can_see_images = steps.supports_images(model)
         self._reply = reply
         self._prompts = PromptBuilder(
@@ -204,6 +218,7 @@ class Turn:
             model=model,
             tools=has_tools,
             can_see_images=self._can_see_images,
+            more_tools=more_tools,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None
@@ -373,17 +388,11 @@ class Turn:
         the model has to sum up. Returns True when the limit was reached.
         """
         prompt = await self._prompts.build()
-        specs = []
-        if self._command is None or self._command.tools == "all":
-            specs = self._tools.specs()
-            if self._expression is not None:
-                specs.append(self._expression.spec)
-
         step = 1
         while step < self._step_limit():
             step += 1
             await self._take_steers(prompt)
-            calls = await self._model.answer(prompt, specs, progress)
+            calls = await self._model.answer(prompt, self._specs(), progress)
             if not calls:
                 if not self._steers:
                     self._closed = True
@@ -406,6 +415,16 @@ class Turn:
                 len(ignored),
             )
         return True
+
+    def _specs(self) -> list[ToolSpec]:
+        """The tools of the next step: the core ones and those loaded so far, or all of
+        them when nothing is deferred; none for a command without tools."""
+        if not self._has_tools:
+            return []
+        specs = self._tools.specs(self._loaded if self._defer else None)
+        if self._expression is not None:
+            specs.append(self._expression.spec)
+        return specs
 
     def _for_model(self, content: list[ContentPart]) -> list[ContentPart]:
         """A tool's result as the model gets it: no images for a model that cannot see them."""

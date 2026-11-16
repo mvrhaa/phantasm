@@ -76,6 +76,7 @@ class PromptBuilder:
         model: str | None = None,
         tools: bool = True,
         can_see_images: bool | None = None,
+        more_tools: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -95,6 +96,7 @@ class PromptBuilder:
         self._tools = tools
         self._model = model or config.provider.model
         self._can_see_images = can_see_images
+        self._more_tools = more_tools
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -150,6 +152,7 @@ class PromptBuilder:
             computer=Computer.detect(self._config.permissions.allowed_roots),
             command=self._command,
             tools=self._tools,
+            more_tools=self._more_tools,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),

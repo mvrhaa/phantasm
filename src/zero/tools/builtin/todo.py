@@ -43,6 +43,8 @@ class TodoAdd(_TodoTool[TodoAddInput]):
     """Adds an item to the session's todo list."""
 
     name = "todo_add"
+
+    core = False
     description = (
         "Add an item to this conversation's todo list. Use the list to plan work with "
         "several steps; the user sees it."
@@ -69,6 +71,8 @@ class TodoUpdate(_TodoTool[TodoUpdateInput]):
     """Changes the status of a todo item."""
 
     name = "todo_update"
+
+    core = False
     description = "Mark a todo item as pending, in_progress or done."
     input_model = TodoUpdateInput
 
@@ -89,6 +93,8 @@ class TodoList(_TodoTool[TodoListInput]):
     """Shows the session's todo list."""
 
     name = "todo_list"
+
+    core = False
     description = "Show this conversation's todo list with the number and status of each item."
     input_model = TodoListInput
 

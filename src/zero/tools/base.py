@@ -4,7 +4,7 @@ import contextlib
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
@@ -140,6 +140,9 @@ class Tool[InputT: BaseModel](ABC):
     input_model: type[InputT]
     default_policy: Policy = "ask"
     config_tightens_only = False
+    # Sent with every request. The others are listed in the prompt in brief and come with
+    # their parameters once the model loads them (``tools_load``), to keep requests small.
+    core = True
 
     def label(self, params: InputT) -> str:
         """A short line for the UI, such as ``$ ls -la`` or ``~/notes.md``."""
@@ -308,9 +311,18 @@ class ToolRegistry:
         except ValidationError:
             return call.name
 
-    def specs(self) -> list[ToolSpec]:
-        """Describe every tool for the model, in the order they were registered."""
-        return [tool.spec() for tool in self._tools.values()]
+    def specs(self, loaded: Collection[str] | None = None) -> list[ToolSpec]:
+        """Describe the tools for the model, in the order they were registered: every
+        tool, or with ``loaded`` the core ones and those loaded."""
+        return [
+            tool.spec()
+            for tool in self._tools.values()
+            if loaded is None or tool.core or tool.name in loaded
+        ]
+
+    def deferred(self) -> list[Tool[Any]]:
+        """The tools that are not core: they come only once loaded."""
+        return [tool for tool in self._tools.values() if not tool.core]
 
     async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolResult:
         """Validate the input, check the call is permitted, run it and cut the output to size.

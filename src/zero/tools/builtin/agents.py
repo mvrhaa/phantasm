@@ -74,6 +74,8 @@ class AgentStart(_AgentTool[AgentStartInput]):
     """Start an agent on a task; it reports back when done."""
 
     name = "agent_start"
+
+    core = False
     description = (
         "Start an agent: a copy of you with a clean context and the same tools that works "
         "on one task in the background while this conversation goes on. Use it for "
@@ -100,6 +102,8 @@ class AgentMessage(_AgentTool[AgentMessageInput]):
     """Send an agent an answer, a correction or more work."""
 
     name = "agent_message"
+
+    core = False
     description = (
         "Send a message to an agent of this conversation: the answer to its question, a "
         "correction or more work. It gets back to work and reports again when done."
@@ -121,6 +125,8 @@ class AgentStatusTool(_AgentTool[AgentIdInput]):
     """How an agent is doing."""
 
     name = "agent_status"
+
+    core = False
     description = (
         "Check on an agent of this conversation: its status, how many steps it took, the "
         "last thing it wrote and its report, if any."
@@ -152,6 +158,8 @@ class AgentStop(_AgentTool[AgentIdInput]):
     """Stop an agent and delete its session."""
 
     name = "agent_stop"
+
+    core = False
     description = (
         "Stop an agent of this conversation: its work is cancelled and its session deleted. "
         "Its status and report can still be checked."

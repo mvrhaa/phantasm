@@ -64,6 +64,8 @@ class AppState:
     todos: TodoRepo
     jobs: JobManager = field(default_factory=JobManager)
     claude: LLMProvider | None = None
+    # Tools each session loaded on demand (tools_load), kept while the brain runs.
+    loaded_tools: dict[str, set[str]] = field(default_factory=dict)
     stopping: bool = False
 
 

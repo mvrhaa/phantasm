@@ -50,6 +50,7 @@ def make_turn(
         config=state.config,
         provider=provider,
         thinker=turn_thinker(state.config, state.claude),
+        loaded_tools=state.loaded_tools.setdefault(session_id, set()),
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,

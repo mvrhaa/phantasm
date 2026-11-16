@@ -95,6 +95,8 @@ class AgentConfig(_Section):
     turn_timeout_s: int = Field(default=900, ge=1)
     history_token_budget: int = 60000
     max_agents: int = Field(default=3, ge=1, le=20)
+    # Tools that are not core go to the model only once it loads them (tools/loading.py).
+    defer_tools: bool = True
     # Go over quiet chats: a journal note and the lasting facts in them (core/review.py).
     review_conversations: bool = True
 

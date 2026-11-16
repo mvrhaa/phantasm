@@ -124,6 +124,8 @@ class MemoryDelete(Tool[MemoryDeleteInput]):
     """Forgets a remembered fact, lasting or of this conversation."""
 
     name = "memory_delete"
+
+    core = False
     description = (
         "Forget a memory by its id, a lasting one or one of this conversation. "
         "The user usually approves this first."
