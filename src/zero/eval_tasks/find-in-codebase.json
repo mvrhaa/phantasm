@@ -1,0 +1,15 @@
+{
+  "prompt": "Which function in this project computes the shipping cost, and what does it return for an order that weighs 0 kg? Answer with the function's name and the value.",
+  "files": {
+    "shop/__init__.py": "",
+    "shop/orders.py": "from shop.rates import rate_for\n\n\ndef order_total(items, weight_kg):\n    return sum(items) + delivery_fee(weight_kg)\n\n\ndef delivery_fee(weight_kg):\n    if weight_kg <= 0:\n        return 4.5\n    return round(4.5 + rate_for(weight_kg) * weight_kg, 2)\n",
+    "shop/rates.py": "def rate_for(weight_kg):\n    return 1.2 if weight_kg < 10 else 0.9\n",
+    "README.md": "A small shop.\n"
+  },
+  "check": {
+    "reply": [
+      "delivery_fee",
+      "4.5"
+    ]
+  }
+}

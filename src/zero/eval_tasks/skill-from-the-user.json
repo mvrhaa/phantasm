@@ -1,0 +1,11 @@
+{
+  "prompt": "/haiku autumn rain",
+  "home_files": {
+    "skills/haiku/SKILL.md": "---\nname: haiku\ndescription: Write a haiku on a theme\n---\nWrite one haiku (5-7-5 syllables) about $ARGUMENTS. End your answer with the line: Signed, Zero\n"
+  },
+  "check": {
+    "reply": [
+      "Signed, Zero"
+    ]
+  }
+}

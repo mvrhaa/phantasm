@@ -1,0 +1,6 @@
+{
+  "prompt": "Remind me every day at 9:00 to drink a glass of water.",
+  "check": {
+    "schedule": "water"
+  }
+}

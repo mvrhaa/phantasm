@@ -1,0 +1,16 @@
+{
+  "prompt": "Write wordcount.py: a command line program that prints how many words the file given as its argument has (words are separated by whitespace). Also write test_wordcount.py with pytest tests for it, and make them pass.",
+  "files": {
+    "sample.txt": "one two  three\nfour\tfive six\nseven\n"
+  },
+  "check": [
+    {
+      "command": "{python} wordcount.py sample.txt",
+      "stdout": "7"
+    },
+    {
+      "command": "{python} -m pytest -q"
+    }
+  ],
+  "max_steps": 30
+}

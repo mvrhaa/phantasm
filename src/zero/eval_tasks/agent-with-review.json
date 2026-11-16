@@ -1,0 +1,16 @@
+{
+  "prompt": "Start an agent (with verify on) to count the .txt files in the working folder, wait for its report with agent_wait, then tell me the number.",
+  "files": {
+    "a.txt": "a",
+    "b.txt": "b",
+    "c.txt": "c",
+    "notes.md": "not text",
+    "sub/d.txt": "d"
+  },
+  "check": {
+    "reply": [
+      "4"
+    ]
+  },
+  "max_steps": 30
+}

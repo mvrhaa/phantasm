@@ -1,0 +1,21 @@
+{
+  "prompts": [
+    {
+      "text": "Please remember for the future: my cat is called Pixel."
+    },
+    {
+      "text": "What is my cat called?",
+      "new_session": true
+    }
+  ],
+  "check": [
+    {
+      "memory": "Pixel"
+    },
+    {
+      "reply": [
+        "Pixel"
+      ]
+    }
+  ]
+}

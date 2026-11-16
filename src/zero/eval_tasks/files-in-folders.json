@@ -1,0 +1,26 @@
+{
+  "prompt": "Make a folder notes with three files day1.md, day2.md and day3.md. Each file starts with a heading '# Day N' (N is its number) followed by one line: 'Nothing planned yet.'",
+  "check": [
+    {
+      "file": "notes/day1.md",
+      "contains": [
+        "# Day 1",
+        "Nothing planned yet."
+      ]
+    },
+    {
+      "file": "notes/day2.md",
+      "contains": [
+        "# Day 2",
+        "Nothing planned yet."
+      ]
+    },
+    {
+      "file": "notes/day3.md",
+      "contains": [
+        "# Day 3",
+        "Nothing planned yet."
+      ]
+    }
+  ]
+}

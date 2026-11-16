@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 from zero import APP_NAME, __version__, clock
@@ -210,6 +211,19 @@ def _doctor(probe: Callable[[str, int], object] | None) -> int:
     return 1 if failed else 0
 
 
+def _eval(names: list[str], report: Path | None) -> int:
+    from zero.evals import load_tasks, run
+
+    try:
+        config = load_config()
+        load_tasks(names)
+    except (ConfigError, ValueError) as exc:
+        _say(f"{exc}")
+        return 1
+    results = run(names or None, config, _say, report)
+    return 0 if all(result.passed for result in results) else 1
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="zero", description=f"{APP_NAME}, the local brain.")
     parser.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
@@ -218,6 +232,11 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("token", help="show the token clients connect with")
     commands.add_parser("doctor", help="check that everything is in order")
     commands.add_parser("usage", help="model requests and tokens used lately")
+    evaluate = commands.add_parser(
+        "eval", help="run the evaluation tasks on your model (real requests)"
+    )
+    evaluate.add_argument("tasks", nargs="*", help="task names (default: all)")
+    evaluate.add_argument("--report", type=Path, help="write the results to this JSON file")
     config = commands.add_parser("config", help="about the config file")
     config_commands = config.add_subparsers(dest="config_command", required=True)
     config_commands.add_parser("path", help="show where the config file is")
@@ -238,6 +257,8 @@ def main(
         return _doctor(probe)
     if arguments.command == "usage":
         return _usage()
+    if arguments.command == "eval":
+        return _eval(arguments.tasks, arguments.report)
     _say(str(config_path()))
     return 0
 

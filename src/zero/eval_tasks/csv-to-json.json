@@ -1,0 +1,14 @@
+{
+  "prompt": "people.csv lists people with their ages. Write adults.json: a JSON list of the names of the people who are 18 or older, sorted alphabetically.",
+  "files": {
+    "people.csv": "name,age\nOlga,34\nTimur,17\nAnna,18\nBoris,62\nLiza,9\n"
+  },
+  "check": {
+    "json_file": "adults.json",
+    "equals": [
+      "Anna",
+      "Boris",
+      "Olga"
+    ]
+  }
+}

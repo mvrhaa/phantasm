@@ -1,0 +1,18 @@
+{
+  "prompt": "Rename the function fetch_data to load_records everywhere in this project (definition and every use), then run the tests with python -m pytest.",
+  "files": {
+    "store.py": "def fetch_data(path):\n    with open(path) as f:\n        return [line.strip() for line in f if line.strip()]\n",
+    "report.py": "from store import fetch_data\n\n\ndef count(path):\n    return len(fetch_data(path))\n",
+    "test_report.py": "from report import count\nfrom store import load_records\n\n\ndef test_count(tmp_path):\n    p = tmp_path / 'a.txt'\n    p.write_text('x\\n\\ny\\n')\n    assert count(p) == 2\n    assert load_records(p) == ['x', 'y']\n"
+  },
+  "check": [
+    {
+      "command": "{python} -m pytest -q"
+    },
+    {
+      "absent_in": "*.py",
+      "text": "fetch_data"
+    }
+  ],
+  "max_steps": 30
+}
