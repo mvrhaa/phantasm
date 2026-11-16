@@ -1129,6 +1129,8 @@ What clients are told about an agent.
 | `report` | string | `null` |
 | `created_at` | ISO 8601 time | required |
 | `updated_at` | ISO 8601 time | required |
+| `progress` | string | `null` |
+| `review_of` | string | `null` |
 
 ### HistoryMessage
 

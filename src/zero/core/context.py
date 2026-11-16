@@ -109,8 +109,11 @@ def _agent_role(name: str) -> str:
             "If you need something only that conversation or the user knows, ask with "
             "ask_parent and end your turn: the answer comes as your next message.",
             "",
-            "When you are done, reply with a short report of what you did and found. That "
-            "reply is sent back to the conversation that started you.",
+            "In long work, note how far you got with report_progress after each meaningful part.",
+            "",
+            "When you are done, reply with a short report of what you did, what you checked "
+            "and what is left open. That reply is sent back to the conversation that started "
+            "you.",
         ]
     )
 

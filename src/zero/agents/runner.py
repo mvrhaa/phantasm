@@ -7,9 +7,11 @@ with source ``agent`` that starts a turn, as soon as that session is free.
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from asyncio import FIRST_COMPLETED
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 
-from zero.agents.types import AgentError, AgentProgress
+from zero.agents.types import AgentError, AgentProgress, AgentWait
 from zero.approvals.manager import Answer, ApprovalAsk, Approver
 from zero.core.attachments import remove_files
 from zero.core.cancellation import CancelToken
@@ -29,6 +31,16 @@ from zero.store.messages import MessagesRepo
 from zero.store.sessions import SessionsRepo
 
 NO_REPORT = "(the agent finished without a report)"
+VERIFY_ROUNDS = 2
+REVIEWER = "reviewer"
+VERIFY_PROMPT = (
+    "You review work another assistant says it finished. Be skeptical: the author tends to "
+    "praise its own work. Check the work yourself with your tools (read the files, run the "
+    "tests or commands); do not trust the report. Do not fix anything. Start your answer with "
+    "PASS or FAIL on the first line, then explain briefly. FAIL if any part of the task is "
+    "missing, broken or unverified.\n\nThe task:\n{task}\n\nThe author's report:\n{report}"
+)
+FIX = "A reviewer checked your work and it did not pass:\n{verdict}\nFix this, then report again."
 RESTARTED = "Zero was restarted before the agent finished."
 LAST_OUTPUT_CHARS = 1000
 STATUS_MESSAGES = 200
@@ -48,6 +60,15 @@ def agent_info(agent: Agent) -> AgentInfo:
 
 def _who(agent: Agent) -> str:
     return f"Agent '{agent.name}' (id {agent.id})"
+
+
+@dataclass(eq=False)
+class Mail:
+    """What an agent has to tell a session, until a turn or ``wait`` takes it."""
+
+    session_id: str
+    agent_id: str
+    text: str
 
 
 class AgentRunner:
@@ -79,13 +100,20 @@ class AgentRunner:
         self._max_agents = max_agents
         self._deliveries: set[asyncio.Task[None]] = set()
         self._questions: dict[str, list[str]] = {}
+        self._mail: list[Mail] = []
+        self._bell = asyncio.Event()
         self._closed = False
 
-    async def start(self, name: str, task: str, parent_session_id: str) -> Agent:
-        """Create the agent's session, store the agent and start its first turn on ``task``."""
+    async def start(
+        self, name: str, task: str, parent_session_id: str, verify: bool = False
+    ) -> Agent:
+        """Create the agent's session, store the agent and start its first turn on ``task``.
+
+        With ``verify`` a reviewer checks its work before its report goes to the parent.
+        """
         if await self._agents.by_session(parent_session_id) is not None:
             raise AgentError("an agent cannot start agents")
-        at_work = len(await self._agents.active())
+        at_work = len([a for a in await self._agents.active() if a.review_of is None])
         if at_work >= self._max_agents:
             raise AgentError(
                 f"{at_work} agents are already at work and the limit is {self._max_agents}; "
@@ -93,7 +121,7 @@ class AgentRunner:
             )
         session = await self._sessions.create(f"Agent: {' '.join(name.split())}", kind="agent")
         try:
-            agent = await self._agents.add(name, parent_session_id, session.id, task)
+            agent = await self._agents.add(name, parent_session_id, session.id, task, verify=verify)
         except ValueError as exc:
             await self._sessions.delete(session.id)
             raise AgentError(str(exc)) from exc
@@ -181,7 +209,9 @@ class AgentRunner:
         if agent is None or agent.status not in ("working", "asking"):
             return
         cancelled = result is not None and result.status == "cancelled"
-        if cancelled:
+        if agent.review_of is not None:
+            await self._reviewed(agent, result)
+        elif cancelled:
             await self._set(agent, "stopped")
         elif agent.status == "asking":
             if questions:
@@ -189,16 +219,73 @@ class AgentRunner:
                     agent.parent_session_id,
                     f"{_who(agent)} asks:\n" + "\n\n".join(questions) + "\n\n"
                     "Answer it with agent_message, or ask the user first if only they know.",
+                    agent.id,
                 )
         elif result is None or result.status == "error":
             error = (result.error if result is not None else None) or "internal error"
             failed = await self._set(agent, "failed", error)
-            self._deliver(agent.parent_session_id, f"{_who(failed)} failed: {error}")
+            self._deliver(agent.parent_session_id, f"{_who(failed)} failed: {error}", agent.id)
+        elif agent.verify and agent.reviews < VERIFY_ROUNDS and agent.session_id is not None:
+            report = result.text.strip() or NO_REPORT
+            await self._agents.set_status(agent.id, "working", report)
+            await self._review(agent, report)
         else:
             done = await self._set(agent, "done", result.text.strip() or NO_REPORT)
             self._deliver(
-                agent.parent_session_id, f"{_who(done)} has finished. Its report:\n{done.report}"
+                agent.parent_session_id,
+                f"{_who(done)} has finished. Its report:\n{done.report}",
+                agent.id,
             )
+
+    async def note_progress(self, session_id: str, note: str) -> Agent:
+        """An agent records how far it got; its parent sees it in agent_status."""
+        agent = await self._agents.by_session(session_id)
+        if agent is None:
+            raise AgentError("only an agent records progress")
+        updated = await self._agents.set_progress(agent.id, note.strip())
+        assert updated is not None
+        await self._announce(updated)
+        return updated
+
+    async def _review(self, agent: Agent, report: str) -> None:
+        """Start a reviewer on the agent's work; the agent stays at work meanwhile."""
+        assert agent.session_id is not None
+        prompt = VERIFY_PROMPT.format(task=agent.task, report=report)
+        session = await self._sessions.create(f"Review: {agent.name}", kind="agent")
+        reviewer = await self._agents.add(
+            REVIEWER, agent.session_id, session.id, prompt, review_of=agent.id
+        )
+        await self._events.publish(SessionCreated(session=session.info()))
+        await self._announce(reviewer)
+        await self._start_turn(reviewer, prompt)
+
+    async def _reviewed(self, reviewer: Agent, result: TurnFinished | None) -> None:
+        """A reviewer is done: a pass sends the agent's report on, a failure sends the agent
+        back to work, until ``VERIFY_ROUNDS`` reviews were made."""
+        ok = result is not None and result.status == "ok"
+        verdict = result.text.strip() if ok and result is not None else ""
+        await self._set(reviewer, "done" if ok else "failed", verdict or None)
+        agent = await self._agents.get(reviewer.review_of or "")
+        if agent is None or agent.status != "working":
+            return
+        agent = await self._agents.count_review(agent.id)
+        assert agent is not None
+        passed = verdict.lstrip().upper().startswith("PASS")
+        if ok and not passed and agent.reviews < VERIFY_ROUNDS:
+            await self._start_turn(agent, FIX.format(verdict=verdict))
+            return
+        if passed:
+            note = f"A reviewer checked its work: {verdict}"
+        elif ok:
+            note = f"Its work did not pass {agent.reviews} reviews. The last one:\n{verdict}"
+        else:
+            note = "Its work could not be reviewed (the reviewer did not finish)."
+        done = await self._set(agent, "done")
+        self._deliver(
+            agent.parent_session_id,
+            f"{_who(done)} has finished. {note}\nIts report:\n{done.report}",
+            agent.id,
+        )
 
     async def waiting(self, agent_id: str, waiting: bool) -> None:
         """An agent's turn starts or stops waiting for the user's approval."""
@@ -238,20 +325,68 @@ class AgentRunner:
     async def _announce(self, agent: Agent) -> None:
         await self._events.publish(AgentUpdated(agent=agent_info(agent)))
 
-    def _deliver(self, session_id: str, text: str) -> None:
+    async def wait(
+        self,
+        parent_session_id: str,
+        agent_ids: Sequence[str],
+        timeout_s: float,
+        cancel: CancelToken,
+    ) -> AgentWait:
+        """Wait until the parent's agents (those of ``agent_ids``, or all) have something to
+        say, and take it: what this returns does not come again as a message."""
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while True:
+            bell = self._bell
+            mine = [
+                mail
+                for mail in self._mail
+                if mail.session_id == parent_session_id
+                and (not agent_ids or mail.agent_id in agent_ids)
+            ]
+            if mine:
+                self._mail = [mail for mail in self._mail if mail not in mine]
+                return AgentWait([mail.text for mail in mine], [])
+            working = [
+                agent
+                for agent in await self._agents.active(parent_session_id)
+                if agent.review_of is None and (not agent_ids or agent.id in agent_ids)
+            ]
+            left = deadline - asyncio.get_running_loop().time()
+            if not working or left <= 0 or cancel.cancelled:
+                return AgentWait([], [_who(agent) for agent in working])
+            rung = asyncio.ensure_future(bell.wait())
+            stopped = asyncio.ensure_future(cancel.wait())
+            try:
+                await asyncio.wait({rung, stopped}, timeout=left, return_when=FIRST_COMPLETED)
+            finally:
+                rung.cancel()
+                stopped.cancel()
+
+    def _deliver(self, session_id: str, text: str, agent_id: str = "") -> None:
+        """Leave the message for the session: ``wait`` takes it, else a turn brings it when
+        the session is free."""
         if self._closed:
             return
-        task = asyncio.create_task(self._deliver_when_free(session_id, text), name="agent-notice")
+        mail = Mail(session_id, agent_id, text)
+        self._mail.append(mail)
+        self._bell.set()
+        self._bell = asyncio.Event()
+        task = asyncio.create_task(self._deliver_when_free(mail), name="agent-notice")
         self._deliveries.add(task)
         task.add_done_callback(self._deliveries.discard)
 
-    async def _deliver_when_free(self, session_id: str, text: str) -> None:
+    async def _deliver_when_free(self, mail: "Mail") -> None:
         while True:
-            await self._turns.wait_free(session_id)
-            if await self._sessions.get(session_id) is None:
+            await self._turns.wait_free(mail.session_id)
+            if mail not in self._mail:
                 return
-            if await self._start_notice(session_id, text):
+            if await self._sessions.get(mail.session_id) is None:
+                self._mail.remove(mail)
                 return
+            self._mail.remove(mail)
+            if await self._start_notice(mail.session_id, mail.text):
+                return
+            self._mail.append(mail)
 
 
 class AgentApprovals:

@@ -5,11 +5,13 @@ except those, plus ``ask_parent`` to put a question to the conversation that
 started them.
 """
 
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
-from zero.agents.types import AgentError, AgentProgress
+from zero.agents.types import AgentError, AgentProgress, AgentWait
+from zero.core.cancellation import CancelToken
 from zero.store.agents import Agent
 from zero.tools.base import Tool, ToolContext, ToolResult, error_result, text_result
 
@@ -22,7 +24,9 @@ MAX_MESSAGE_CHARS = 8000
 class AgentControl(Protocol):
     """What the agent tools need from the agent runner."""
 
-    async def start(self, name: str, task: str, parent_session_id: str) -> Agent: ...
+    async def start(
+        self, name: str, task: str, parent_session_id: str, verify: bool = False
+    ) -> Agent: ...
 
     async def message(self, agent_id: str, text: str, parent_session_id: str) -> Agent: ...
 
@@ -31,6 +35,16 @@ class AgentControl(Protocol):
     async def stop(self, agent_id: str, parent_session_id: str) -> Agent: ...
 
     async def ask(self, session_id: str, question: str) -> Agent: ...
+
+    async def note_progress(self, session_id: str, note: str) -> Agent: ...
+
+    async def wait(
+        self,
+        parent_session_id: str,
+        agent_ids: Sequence[str],
+        timeout_s: float,
+        cancel: CancelToken,
+    ) -> AgentWait: ...
 
 
 class AgentStartInput(BaseModel):
@@ -46,6 +60,26 @@ class AgentStartInput(BaseModel):
             "Everything the agent needs to know. It sees only this text, not this "
             "conversation, so include paths, goals and what the report should contain."
         ),
+    )
+    verify: bool = Field(
+        default=False,
+        description=(
+            "A skeptical reviewer checks the work before the report comes back and sends the "
+            "agent back to fix what fails. For work with a checkable outcome: code, files."
+        ),
+    )
+
+
+class AgentWaitInput(BaseModel):
+    ids: list[str] = Field(
+        default_factory=list, description="Agents to wait for (default: all of this conversation)"
+    )
+    timeout_s: int = Field(default=300, ge=1, le=1800, description="Most seconds to wait")
+
+
+class AgentProgressInput(BaseModel):
+    note: str = Field(
+        min_length=1, max_length=2000, description="What you did and what comes next, briefly"
     )
 
 
@@ -89,7 +123,9 @@ class AgentStart(_AgentTool[AgentStartInput]):
 
     async def run(self, params: AgentStartInput, ctx: ToolContext) -> ToolResult:
         try:
-            agent = await self._control.start(params.name, params.task, ctx.session_id)
+            agent = await self._control.start(
+                params.name, params.task, ctx.session_id, params.verify
+            )
         except AgentError as exc:
             return error_result(f"The agent could not be started: {exc}.")
         return text_result(
@@ -147,6 +183,8 @@ class AgentStatusTool(_AgentTool[AgentIdInput]):
             f"Task: {agent.task}",
             f"Steps so far: {progress.steps}",
         ]
+        if agent.progress:
+            lines.append(f"Its latest progress note: {agent.progress}")
         if progress.last_output:
             lines.append(f"Last output:\n{progress.last_output}")
         if agent.report:
@@ -200,16 +238,66 @@ class AskParent(_AgentTool[AskParentInput]):
         )
 
 
+class AgentWaitTool(_AgentTool[AgentWaitInput]):
+    """Wait for the agents' reports inside this turn."""
+
+    name = "agent_wait"
+
+    core = False
+    description = (
+        "Wait for the reports or questions of this conversation's agents and get them here, "
+        "instead of ending your turn. What this returns does not come again as a message."
+    )
+    input_model = AgentWaitInput
+
+    def label(self, params: AgentWaitInput) -> str:
+        return "waiting for agents"
+
+    async def run(self, params: AgentWaitInput, ctx: ToolContext) -> ToolResult:
+        found = await self._control.wait(ctx.session_id, params.ids, params.timeout_s, ctx.cancel)
+        if found.messages:
+            return text_result("\n\n".join(found.messages))
+        if found.working:
+            return text_result(
+                f"No reports yet after {params.timeout_s} s. Still working: "
+                + ", ".join(found.working)
+                + ". Their reports come here as messages when they are done."
+            )
+        return text_result("None of these agents is working, and no report is waiting.")
+
+
+class AgentProgressTool(_AgentTool[AgentProgressInput]):
+    """An agent's note of how far it got."""
+
+    name = "report_progress"
+    description = (
+        "Note how far you got: what you did and what comes next. The conversation that "
+        "started you sees your latest note. Use it after each meaningful part of long work."
+    )
+    input_model = AgentProgressInput
+
+    def label(self, params: AgentProgressInput) -> str:
+        return "progress note"
+
+    async def run(self, params: AgentProgressInput, ctx: ToolContext) -> ToolResult:
+        try:
+            await self._control.note_progress(ctx.session_id, params.note)
+        except AgentError as exc:
+            return error_result(f"Not recorded: {exc}.")
+        return text_result("Progress recorded.")
+
+
 def agent_tools(control: AgentControl) -> list[Tool[Any]]:
     """The tools the main conversation uses to run agents, working through ``control``."""
     return [
         AgentStart(control),
         AgentMessage(control),
         AgentStatusTool(control),
+        AgentWaitTool(control),
         AgentStop(control),
     ]
 
 
 def agent_side_tools(control: AgentControl) -> list[Tool[Any]]:
     """The tools only agents get."""
-    return [AskParent(control)]
+    return [AskParent(control), AgentProgressTool(control)]

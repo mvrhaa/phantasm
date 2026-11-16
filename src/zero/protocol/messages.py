@@ -581,6 +581,8 @@ class AgentInfo(AgentRef):
     report: str | None = None
     created_at: datetime
     updated_at: datetime
+    progress: str | None = None
+    review_of: str | None = None
 
 
 class AgentUpdated(Envelope):

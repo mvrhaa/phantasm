@@ -16,3 +16,11 @@ class AgentProgress:
     agent: Agent
     steps: int
     last_output: str | None
+
+
+@dataclass(frozen=True)
+class AgentWait:
+    """What waiting for agents found: their messages, or who is still at work."""
+
+    messages: list[str]
+    working: list[str]
