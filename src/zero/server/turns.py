@@ -55,7 +55,7 @@ def make_turn(
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,
-        tools=tools if tools is not None else state.tools,
+        tools=(tools if tools is not None else state.tools).extended(state.mcp.tools()),
         approvals=approvals if approvals is not None else state.approvals,
         approval_rules=state.approval_rules,
         tool_runs=state.tool_runs,

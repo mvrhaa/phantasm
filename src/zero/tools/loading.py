@@ -59,7 +59,7 @@ class ToolsLoadTool(Tool[ToolsLoadInput]):
 
 def brief(tool: Tool[Any]) -> str:
     """``name(param, optional?): first sentence`` of a tool, for the prompt."""
-    schema = tool.input_model.model_json_schema()
+    schema = tool.spec().input_schema
     required = set(schema.get("required") or [])
     params = ", ".join(
         name if name in required else f"{name}?" for name in schema.get("properties") or {}

@@ -31,6 +31,7 @@ from zero.store.usage import UsageRepo
 from zero.tools.base import ToolRegistry
 from zero.tools.builtin.jobs import JobManager
 from zero.tools.client_actions import ActionBroker
+from zero.tools.mcp import McpHost
 
 
 @dataclass
@@ -66,6 +67,7 @@ class AppState:
     jobs: JobManager = field(default_factory=JobManager)
     claude: LLMProvider | None = None
     skills: SkillBook = field(default_factory=SkillBook)
+    mcp: McpHost = field(default_factory=McpHost)
     # Tools each session loaded on demand (tools_load), kept while the brain runs.
     loaded_tools: dict[str, set[str]] = field(default_factory=dict)
     stopping: bool = False

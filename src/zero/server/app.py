@@ -1,5 +1,7 @@
 """FastAPI application factory."""
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -194,10 +196,15 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             )
             state.scheduler.start()
             state.reviewer.start()
+            mcp_start = asyncio.create_task(state.mcp.start(), name="mcp-start")
             try:
                 yield
             finally:
                 await graceful_stop(state)
+                mcp_start.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await mcp_start
+                await state.mcp.close()
                 await state.turns.shutdown()
                 for thinker in (state.provider, state.claude):
                     close = getattr(thinker, "aclose", None)
