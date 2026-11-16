@@ -246,12 +246,14 @@ Zero → клиент:
 |---|---|---|
 | `message.send` | `session_id?`, `text`, `attachments?: [{name, mime, data_b64 \| path}]`, `source: "desktop"\|"phone"`, `command?: {name, instructions?, tools?: "all"\|"none", model?: "main"\|"small"}` | `turn.started`, затем поток событий хода. Без `session_id` создаётся новая сессия. Вложения копируются в `files/` и хранятся как `ContentPart file` с путём (не base64); `path` проходит PathGuard, лимит 100 MB. Плохое вложение даёт `error invalid_message`, ход не начинается. В модель картинка уходит только из текущего сообщения (если модель видит картинки и картинка до 5 MB), остальные файлы — короткой текстовой заметкой с путём. Команда (`command`) настраивает только этот ход (§7.2): её `instructions` идут блоком `# Command` в системный промпт, `tools: "none"` — модель не получает инструментов (и `set_expression`), `model: "small"` — ход идёт на `provider.small_model`; `name` сохраняется у сообщения и возвращается в `history.ok`. При пустом тексте и вложениях текстовой части у сообщения нет: провайдеры не принимают пустой текст. |
 | `turn.cancel` | `turn_id` | Ход отменяется (раздел 7.4), приходит `turn.finished` со `status: "cancelled"` |
+| `turn.steer` | `turn_id`, `text` (1–20 000 символов) | Слова пользователя для идущего хода (§7.5): `turn.steered` всем, отправителю с `reply_to`. Ход, который уже закрывается, отвечает `error turn_not_running` — тогда текст шлют новым сообщением. |
 | `approval.respond` | `approval_id`, `decision: "allow"\|"deny"\|"always"`, `note?` | Ход продолжается |
 | `action.result` | `call_id`, `ok: bool`, `content: [ContentPart]`, `error?` | Результат действия клиента возвращается в agent loop |
 | `session.list` | — | `session.list.ok` |
 | `session.create` | `title?` | `session.created` |
 | `session.rename` | `session_id`, `title` | `session.updated` |
 | `session.delete` | `session_id` | `session.deleted`. Идущий в сессии ход сначала отменяется (приходит его `turn.finished` со `status: "cancelled"`), агенты, которых она запустила, останавливаются, и их сессии удаляются. Вместе с сессией удаляются её сообщения, список дел, саммари и записи `tool_runs`. Папки в `files/` с вложениями, копиями `send_file` и картинками инструментов этой сессии тоже удаляются. |
+| `session.rewind` | `session_id`, `message_id` (сообщение пользователя этой сессии), `dry_run=false` | Возврат к моменту перед этим сообщением (§7.6): `session.rewound` всем, отправителю с `reply_to`; с `dry_run` ничего не меняется и ответ получает только отправитель. Пока в сессии идёт ход — `error turn_busy`; чужое или не пользовательское сообщение — `invalid_message`. |
 | `history.get` | `session_id`, `before?`, `limit=50`, `include_tools=true` | `history.ok` с сообщениями и вызовами инструментов |
 | `ping` | — | `pong` |
 
@@ -261,6 +263,7 @@ Zero → клиент:
 | type | Поля |
 |---|---|
 | `turn.started` | `turn_id`, `session_id`, `source` |
+| `turn.steered` | `text` — слова пользователя вошли в идущий ход сообщением пользователя перед следующим шагом модели |
 | `text.delta` | `delta` |
 | `tool.started` | `call_id`, `tool`, `label` (короткое человекочитаемое: `$ ls -la`, `~/notes.md`), `input` |
 | `tool.finished` | `call_id`, `status: "ok"\|"error"\|"denied"\|"cancelled"`, `summary` (`exit 1`, `+79 lines`, `3 matches`), `output_preview`, `duration_ms` |
@@ -273,6 +276,7 @@ Zero → клиент:
 | `session.created` / `session.updated` / `session.deleted` | данные сессии: `{id, title, updated_at, kind}`, где `kind` — `chat` (разговор пользователя), `agent` или `scheduled`, чтобы клиент мог держать служебные сессии отдельно |
 | `todo.updated` | `session_id`, `items: [{number, text, status}]` — весь список после изменения (этап 6) |
 | `session.compacted` | `session_id`, `summary`, `until_message_id` — начало истории сжато в саммари (этап 6) |
+| `session.rewound` | `session_id`, `message_id`, `text` (возвращённое сообщение — в поле ввода), `dry_run`, `removed_messages`, `files: [{path, change: "restored"\|"deleted"\|"changed elsewhere"}]`, `removed_todos`, `removed_session_memories`, `stopped_agents: [name]`, `kept: {tool: count}` — после настоящего отката клиенты загружают историю заново |
 | `agent.updated` | `agent: {id, name, parent_session_id, session_id?, task, status, report?, created_at, updated_at}` — агент запущен или сменил статус (этап 7) |
 
 События хода агента (включая `approval.request` и `approval.resolved`) несут `agent: {id, name}`, чтобы клиент показал, кто действует и кто спрашивает. У обычных ходов этого поля нет.
@@ -287,7 +291,7 @@ Zero → клиент:
 ```
 
 ### 6.6 Коды ошибок
-`unauthorized`, `protocol_mismatch`, `unknown_type`, `invalid_message`, `session_not_found`, `turn_busy` (в сессии уже идёт ход), `provider_error`, `provider_not_configured`, `tool_error`, `action_timeout`, `client_gone`, `internal`.
+`unauthorized`, `protocol_mismatch`, `unknown_type`, `invalid_message`, `session_not_found`, `turn_busy` (в сессии уже идёт ход), `turn_not_running` (подсказка для хода, который уже закрывается), `provider_error`, `provider_not_configured`, `tool_error`, `action_timeout`, `client_gone`, `internal`.
 
 **Правило:** в одной сессии одновременно идёт не больше одного хода. Новое сообщение во время хода приходит `error turn_busy`. (Позже можно сделать очередь.)
 
@@ -355,6 +359,17 @@ on message.send:
 - Частичный текст сохраняется в историю с пометкой `cancelled`.
 
 ---
+
+### 7.5 Подсказка в идущий ход (`turn.steer`)
+- Текст ждёт в очереди хода и перед следующим вызовом модели сохраняется сообщением пользователя (`turn_id` этого хода) и уходит в промпт; клиентам — `turn.steered`.
+- Если текст пришёл, пока модель писала финальный ответ без инструментов, ответ сохраняется сообщением ассистента, и модель делает ещё шаг. Перед последним шагом без инструментов (лимит шагов) очередь тоже забирается.
+- Как только ход начал закрываться (ответ без новых подсказок, отмена, ошибка), подсказки не принимаются: `turn_not_running`.
+
+### 7.6 Возврат к сообщению (`session.rewind`, `core/rewind.py`)
+- Удаляются сообщение пользователя и всё после него, записи `tool_runs` их ходов.
+- Файлы, которые `write_file` и `edit_file` изменили с тех пор (в этой сессии и в сессиях агентов, запущенных с тех пор), возвращаются к виду до первого изменения; созданные — удаляются. Каждое изменение пишется в `file_changes(id, session_id, turn_id, path, before, after_sha256, created_at)`: прежнее содержимое (`NULL` — файла не было; файлы больше 5 MB не пишутся) и хеш записанного. Файл, который с тех пор менялся вне Zero (хеш не совпадает), не трогается: `changed elsewhere`. Записи старше 8 дней удаляются при старте.
+- Удаляются пункты todo и записи памяти разговора, добавленные с тех пор (статусы старых пунктов остаются); агенты, запущенные с тех пор, останавливаются. Саммари, покрывавшее удалённое, удаляется (будет сделано заново); отметка разбора (§11) отходит на последнее оставшееся сообщение.
+- Что отменить нельзя, перечисляется в `kept` по инструментам: команды, расписания, долгая память, действия клиента и т. п. (чтение и то, что откат отменяет, не считается).
 
 ## 8. Провайдеры (`providers/`)
 
@@ -478,6 +493,9 @@ class ToolResult:
 | `agent_status(id)` | allow | Статус, число шагов, последний вывод, отчёт |
 | `agent_stop(id)` | allow | Отменить работу и удалить сессию агента; запись и отчёт остаются |
 | `ask_parent(question)` | allow | Только у агентов: вопрос сессии, которая их запустила |
+| `sessions_list(limit=20)` | allow | Другие разговоры, новые сверху: id, название, вид, время |
+| `sessions_read(session_id, last=20)` | allow | Реплики пользователя и Zero без вызовов инструментов, последние `last`; если начало скрыто — сводка начала |
+| `sessions_search(query, limit=10)` | allow | Поиск по тексту реплик других разговоров, новые сверху |
 
 ### 9.3 Действия клиента
 - Каждое `action` из `hello` превращается в инструмент с тем же именем, описанием и схемой.
