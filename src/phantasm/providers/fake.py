@@ -2,15 +2,19 @@
 
 With a script it plays the script back. Without one it runs in echo mode:
 it answers "echo: <the user's text>" and, if the ``set_expression`` tool is
-offered, calls it once.
+offered, calls it once. A message "call <tool> <JSON input>" makes it call that
+tool instead, and then say what the tool returned, so a client can check a whole
+round trip through a real brain.
 """
 
 import asyncio
+import json
 import re
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from phantasm.protocol.messages import TextPart
+from phantasm.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
 from phantasm.providers.base import (
     CancelSignal,
     Message,
@@ -25,6 +29,7 @@ from phantasm.providers.base import (
 )
 
 EXPRESSION_TOOL = "set_expression"
+_CALL = re.compile(r"call (\S+)(?:\s+(.*))?", re.DOTALL)
 
 
 @dataclass
@@ -39,6 +44,47 @@ class RecordedCall:
 
 def _text_of(message: Message) -> str:
     return "".join(part.text for part in message.content if isinstance(part, TextPart))
+
+
+def _named_call(text: str) -> tuple[str, dict[str, Any]] | None:
+    """The tool and input of a "call <tool> <JSON input>" message, or None."""
+    match = _CALL.fullmatch(text.strip())
+    if match is None:
+        return None
+    try:
+        params = json.loads(match.group(2)) if match.group(2) else {}
+    except json.JSONDecodeError:
+        return None
+    return (match.group(1), params) if isinstance(params, dict) else None
+
+
+def _describe(part: ContentPart) -> str:
+    if isinstance(part, TextPart):
+        return part.text
+    if isinstance(part, ImagePart):
+        return f"[image {part.mime}]"
+    if isinstance(part, FilePart):
+        return f"[file {part.name} {part.mime or '?'}]"
+    return f"[{part.type}]"
+
+
+def _tool_report(messages: list[Message]) -> str:
+    """What the tools called last returned, one line each; set_expression says nothing."""
+    results = []
+    for message in reversed(messages):
+        if message.role != "tool":
+            break
+        results.append(message)
+    asked = next((m for m in reversed(messages) if m.role == "assistant"), None)
+    names = {call.id: call.name for call in asked.tool_calls} if asked else {}
+    lines = []
+    for result in reversed(results):
+        name = names.get(result.tool_call_id or "", "tool")
+        if name == EXPRESSION_TOOL:
+            continue
+        said = " ".join(_describe(part) for part in result.content)
+        lines.append(f"{name} failed: {said}" if result.is_error else f"{name}: {said}")
+    return "\n".join(lines)
 
 
 def _first_choice(tool: ToolSpec, field: str) -> str | None:
@@ -142,13 +188,25 @@ class FakeProvider:
     async def _echo(
         self, messages: list[Message], tools: list[ToolSpec]
     ) -> AsyncIterator[StreamEvent]:
-        """Answer the last user message; after a tool result just finish the turn."""
+        """Answer the last user message, or call the tool it names; after a tool result say
+        what a named tool returned and finish the turn."""
         if messages and messages[-1].role == "tool":
+            report = _tool_report(messages)
+            if report:
+                yield TextDelta(text=report)
             yield StopEvent(reason="end")
             return
 
         user_text = next((_text_of(m) for m in reversed(messages) if m.role == "user"), "")
-        reply = f"echo: {user_text}"
+        named = _named_call(user_text)
+        if named is not None and any(tool.name == named[0] for tool in tools):
+            name, params = named
+            yield ToolCallEvent(
+                call=ToolCall(id=f"fake-call-{len(self.calls)}", name=name, input=params)
+            )
+            yield StopEvent(reason="tool_use")
+            return
+        reply = f"echo: no tool {named[0]}" if named is not None else f"echo: {user_text}"
         for chunk in re.findall(r"\S+\s*|\s+", reply):
             yield TextDelta(text=chunk)
         yield UsageEvent(input_tokens=len(user_text.split()), output_tokens=len(reply.split()))

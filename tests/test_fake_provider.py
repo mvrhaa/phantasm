@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from phantasm.core.cancellation import CancelToken, TurnCancelled
-from phantasm.protocol.messages import TextPart
+from phantasm.protocol.messages import FilePart, ImagePart, TextPart
 from phantasm.providers.base import (
     LLMProvider,
     Message,
@@ -344,3 +344,73 @@ async def test_infinite_stream_can_be_cancelled_from_another_task() -> None:
     cancel.cancel()
 
     assert await asyncio.wait_for(task, timeout=1) > 0
+
+
+def call_message(text: str) -> Message:
+    return Message(role="user", content=[TextPart(text=text)])
+
+
+async def test_echo_calls_the_tool_a_message_names() -> None:
+    events = await play(FakeProvider(), [call_message('call read_file {"path": "a.txt"}')], [TOOL])
+
+    calls = [event.call for event in events if isinstance(event, ToolCallEvent)]
+    assert [(call.name, call.input) for call in calls] == [("read_file", {"path": "a.txt"})]
+    assert text_of(events) == ""
+    assert events[-1] == StopEvent(reason="tool_use")
+
+
+async def test_a_call_without_input_sends_an_empty_one() -> None:
+    events = await play(FakeProvider(), [call_message("call read_file")], [TOOL])
+
+    calls = [event.call for event in events if isinstance(event, ToolCallEvent)]
+    assert [(call.name, call.input) for call in calls] == [("read_file", {})]
+
+
+async def test_echo_says_when_the_named_tool_is_not_offered() -> None:
+    events = await play(FakeProvider(), [call_message("call open_app {}")], [TOOL])
+
+    assert text_of(events) == "echo: no tool open_app"
+    assert events[-1] == StopEvent(reason="end")
+
+
+async def test_a_call_with_bad_input_is_echoed() -> None:
+    events = await play(FakeProvider(), [call_message("call read_file {oops")], [TOOL])
+
+    assert text_of(events) == "echo: call read_file {oops"
+    assert not any(isinstance(event, ToolCallEvent) for event in events)
+
+
+async def test_echo_reports_what_the_called_tool_returned() -> None:
+    history = [
+        call_message('call read_file {"path": "a.txt"}'),
+        Message(role="assistant", tool_calls=[CALL]),
+        Message(
+            role="tool",
+            content=[
+                TextPart(text="hello"),
+                ImagePart(mime="image/jpeg", data_b64="AAAA"),
+                FilePart(name="shot.jpg", path="/tmp/shot.jpg", mime="image/jpeg"),
+            ],
+            tool_call_id=CALL.id,
+        ),
+    ]
+
+    events = await play(FakeProvider(), history, [TOOL])
+
+    assert text_of(events) == "read_file: hello [image image/jpeg] [file shot.jpg image/jpeg]"
+    assert events[-1] == StopEvent(reason="end")
+
+
+async def test_echo_reports_a_failed_tool() -> None:
+    history = [
+        call_message("call read_file"),
+        Message(role="assistant", tool_calls=[CALL]),
+        Message(
+            role="tool",
+            content=[TextPart(text="no such file")],
+            tool_call_id=CALL.id,
+            is_error=True,
+        ),
+    ]
+
+    assert text_of(await play(FakeProvider(), history, [TOOL])) == "read_file failed: no such file"
