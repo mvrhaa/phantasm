@@ -241,6 +241,12 @@ class ProviderSet(Envelope):
     claude_code: bool
 
 
+class SkillList(Envelope):
+    """Ask for the skills the user may start with ``/name``, to offer them as the user types."""
+
+    type: Literal["skill.list"] = "skill.list"
+
+
 class HistoryGet(Envelope):
     """Ask for a page of a session's history, newest first when paging back."""
 
@@ -270,6 +276,7 @@ ClientMessage = Annotated[
     | SessionDelete
     | SessionRewind
     | ProviderSet
+    | SkillList
     | HistoryGet
     | Ping,
     Field(discriminator="type"),
@@ -551,6 +558,21 @@ class SessionListOk(Envelope):
     sessions: list[SessionInfo] = Field(default_factory=list)
 
 
+class SkillInfo(BaseModel):
+    """A skill as a client offers it after ``/``."""
+
+    name: str
+    description: str = ""
+    argument_hint: str = ""
+
+
+class SkillListOk(Envelope):
+    """Answer to ``skill.list``: the skills the user may start, by name."""
+
+    type: Literal["skill.list.ok"] = "skill.list.ok"
+    skills: list[SkillInfo] = Field(default_factory=list)
+
+
 class SessionCreated(Envelope):
     """A session was created."""
 
@@ -629,6 +651,7 @@ ServerEvent = Annotated[
     | Expression
     | TurnFinished
     | SessionListOk
+    | SkillListOk
     | SessionCreated
     | SessionUpdated
     | SessionDeleted

@@ -25,6 +25,7 @@ from phantasm.protocol.messages import (
     SessionList,
     SessionRename,
     SessionRewind,
+    SkillList,
     TurnCancel,
     TurnSteer,
 )
@@ -46,6 +47,7 @@ from phantasm.server.handlers.sessions import (
     handle_session_rename,
     handle_session_rewind,
 )
+from phantasm.server.handlers.skills import handle_skill_list
 from phantasm.server.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,7 @@ HANDLERS: dict[type[Envelope], Handler] = {
     SessionDelete: handle_session_delete,
     SessionRewind: handle_session_rewind,
     ProviderSet: handle_provider_set,
+    SkillList: handle_skill_list,
     HistoryGet: handle_history_get,
 }
 

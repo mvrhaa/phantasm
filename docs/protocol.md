@@ -298,6 +298,22 @@ Choose who thinks in the user's turns: the configured provider, or with `claude_
 }
 ```
 
+### `skill.list`
+
+Ask for the skills the user may start with `/name`, to offer them as the user types.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+
+```json
+{
+  "type": "skill.list",
+  "id": "sk-1"
+}
+```
+
 ### `history.get`
 
 Ask for a page of a session's history, newest first when paging back.
@@ -771,6 +787,30 @@ Answer to `session.list`.
       "title": "Nginx reverse proxy with TLS",
       "updated_at": "2026-11-12T09:31:05Z",
       "kind": "chat"
+    }
+  ]
+}
+```
+
+### `skill.list.ok`
+
+Answer to `skill.list`: the skills the user may start, by name.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | `null` |
+| `reply_to` | string | `null` |
+| `skills` | array of [SkillInfo](#skillinfo) | `[]` |
+
+```json
+{
+  "type": "skill.list.ok",
+  "reply_to": "sk-1",
+  "skills": [
+    {
+      "name": "cve",
+      "description": "Find known vulnerabilities of a program and version.",
+      "argument_hint": "<program> [version]"
     }
   ]
 }

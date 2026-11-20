@@ -139,3 +139,19 @@ def test_a_builtin_skill_starts_with_a_slash(tmp_path: Path) -> None:
     skill, arguments = started
     assert (skill.name, arguments) == ("cve", "openssl 3.0.2")
     assert "ARGUMENTS: openssl 3.0.2" in expand(skill, arguments)
+
+
+def test_skill_list_offers_what_the_user_may_start() -> None:
+    folder = home_dir() / "skills"
+    write_skill(folder, "notes", "---\nname: notes\nargument-hint: <topic>\n---\nWrite notes.")
+    write_skill(folder, "hidden", "---\nname: hidden\nuser-invocable: false\n---\nModel only.")
+    with running() as (client, state), connected(client, state) as ws:
+        ws.send_json({"type": "skill.list", "id": "sk-1"})
+        answer = ws.receive_json()
+
+    assert answer["type"] == "skill.list.ok"
+    assert answer["reply_to"] == "sk-1"
+    names = [skill["name"] for skill in answer["skills"]]
+    assert names == sorted([*SECURITY, "notes"])
+    notes = next(skill for skill in answer["skills"] if skill["name"] == "notes")
+    assert (notes["description"], notes["argument_hint"]) == ("Write notes.", "<topic>")

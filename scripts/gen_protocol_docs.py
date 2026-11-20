@@ -80,6 +80,7 @@ CLIENT_EXAMPLES: list[BaseModel] = [
     m.SessionDelete(id="sd-1", session_id="s-1"),
     m.SessionRewind(id="rw-1", session_id="s-1", message_id="msg-12"),
     m.ProviderSet(id="pv-1", claude_code=True),
+    m.SkillList(id="sk-1"),
     m.HistoryGet(id="hg-1", session_id="s-1", limit=50),
     m.Ping(id="p-1"),
 ]
@@ -152,6 +153,16 @@ SERVER_EXAMPLES: list[BaseModel] = [
         usage=m.Usage(input_tokens=7285, output_tokens=450),
     ),
     m.SessionListOk(reply_to="l-1", sessions=[SESSION]),
+    m.SkillListOk(
+        reply_to="sk-1",
+        skills=[
+            m.SkillInfo(
+                name="cve",
+                description="Find known vulnerabilities of a program and version.",
+                argument_hint="<program> [version]",
+            )
+        ],
+    ),
     m.SessionCreated(reply_to="sc-1", session=SESSION),
     m.SessionUpdated(session=SESSION),
     m.SessionDeleted(reply_to="sd-1", session_id="s-1"),
