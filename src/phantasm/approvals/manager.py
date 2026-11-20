@@ -29,6 +29,7 @@ class ApprovalAsk:
     reason: str = ""
     diff: str | None = None
     agent: AgentRef | None = None
+    always_scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ def _request(approval_id: str, ask: ApprovalAsk) -> ApprovalRequest:
         reason=ask.reason,
         diff=ask.diff,
         agent=ask.agent,
+        always_scope=ask.always_scope,
     )
 
 

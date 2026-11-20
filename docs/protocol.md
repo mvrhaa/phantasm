@@ -599,6 +599,7 @@ Ask the user to allow or deny a tool call.
 | `input` | object | `{}` |
 | `reason` | string | `""` |
 | `diff` | string | `null` |
+| `always_scope` | string | `null` |
 
 ```json
 {
@@ -1112,6 +1113,8 @@ An action the client can perform; Phantasm offers it to the model as a tool.
 | `input_schema` | object | `{}` |
 | `policy` | `"allow"` \| `"ask"` \| `"deny"` | `"ask"` |
 | `timeout_s` | number | `15` |
+| `always_by` | string | `null` |
+| `label_by` | string | `null` |
 
 ### Attachment
 

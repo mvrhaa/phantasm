@@ -86,6 +86,11 @@ class ActionDecl(BaseModel):
     input_schema: dict[str, Any] = Field(default_factory=dict)
     policy: Policy = "ask"
     timeout_s: float = Field(default=15, gt=0)
+    # An input field (such as "app") that scopes "always": the answer then allows only the
+    # calls with the same value of that field, not every call of the action.
+    always_by: str | None = None
+    # An input field whose text is the line the user sees when asked.
+    label_by: str | None = None
 
 
 class ClientInfo(BaseModel):
@@ -474,6 +479,8 @@ class ApprovalRequest(TurnEvent):
     input: dict[str, Any] = Field(default_factory=dict)
     reason: str = ""
     diff: str | None = None
+    # What "always" covers when it is narrower than the tool, such as an app's name.
+    always_scope: str | None = None
 
 
 class ApprovalResolved(TurnEvent):

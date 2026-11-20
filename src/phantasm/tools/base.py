@@ -109,6 +109,10 @@ class Preview:
     approval_reason: str | None = None
     diff: str | None = None
     label: str | None = None
+    # "Always" for this call covers only calls with the same key, not the whole tool;
+    # ``always_scope`` is how the user sees that key (an app's name).
+    always_key: str | None = None
+    always_scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -348,11 +352,14 @@ class ToolRegistry:
                 return error_result(preview.refusal)
             reason = preview.approval_reason
             rules = ctx.approval_rules
+            allowed = await rules.always_allowed() if rules is not None else set()
+            if preview.always_key is not None and preview.always_key in allowed:
+                allowed = {*allowed, tool.name}
             policy = decide(
                 tool.name,
                 tool.default_policy,
                 ctx.config.permissions,
-                await rules.always_allowed() if rules is not None else (),
+                allowed,
                 needs_approval=reason is not None,
                 config_tightens_only=tool.config_tightens_only,
             )
@@ -371,12 +378,13 @@ class ToolRegistry:
                     reason=why,
                     diff=preview.diff,
                     agent=ctx.agent,
+                    always_scope=preview.always_scope,
                 )
                 answer = await ctx.approvals.request(ask, ctx.cancel)
                 if answer.decision == "deny":
                     return denied_result(answer.note)
                 if answer.decision == "always":
-                    await _remember(tool.name, rules)
+                    await _remember(preview.always_key or tool.name, rules)
             result = await tool.run(params, ctx)
         except TurnCancelled:
             return cancelled_result()

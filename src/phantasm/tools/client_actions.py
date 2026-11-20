@@ -18,9 +18,10 @@ from phantasm.core.cancellation import TurnCancelled
 from phantasm.protocol.errors import ErrorCode
 from phantasm.protocol.messages import ActionCall, ActionDecl, ActionResult, Envelope, TextPart
 from phantasm.providers.base import ToolSpec
-from phantasm.tools.base import Tool, ToolContext, ToolResult, error_result
+from phantasm.tools.base import Preview, Tool, ToolContext, ToolResult, error_result
 
 COMPUTER_PREFIX = "computer_"
+LABEL_CHARS = 100
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,29 @@ class ClientActionTool(Tool[ActionInput]):
         self.description = action.description
         self.default_policy = action.policy
         self._caller = caller
+
+    def _text(self, params: ActionInput, field: str | None) -> str | None:
+        """The trimmed text of an input field, or None when it has none."""
+        if field is None:
+            return None
+        value = (params.model_extra or {}).get(field)
+        return value.strip() or None if isinstance(value, str) else None
+
+    def label(self, params: ActionInput) -> str:
+        """The ``label_by`` field's text, after the ``always_by`` one: "Telegram · send it"."""
+        text = self._text(params, self.action.label_by)
+        if text is None:
+            return self.name
+        scope = self._text(params, self.action.always_by)
+        line = f"{scope} · {text}" if scope else text
+        return line if len(line) <= LABEL_CHARS else line[: LABEL_CHARS - 1] + "…"
+
+    async def preview(self, params: ActionInput, ctx: ToolContext) -> Preview:
+        """With ``always_by``, "always" covers the calls with the same value of that field."""
+        scope = self._text(params, self.action.always_by)
+        if scope is None:
+            return Preview()
+        return Preview(always_key=f"{self.name}@{scope.casefold()}", always_scope=scope)
 
     def spec(self) -> ToolSpec:
         """The tool as the model sees it, with the schema the client declared."""

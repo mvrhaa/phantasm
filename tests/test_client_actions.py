@@ -283,3 +283,76 @@ async def test_other_actions_keep_the_normal_limit(harness: Harness) -> None:
     assert len(provider.calls) == 2
     assert provider.calls[1].tools == []
     assert harness.finished.status == "max_steps"
+
+
+class MemoryRules:
+    """Keeps "always allow" answers in a set."""
+
+    def __init__(self) -> None:
+        self.saved: set[str] = set()
+
+    async def always_allowed(self) -> set[str]:
+        return set(self.saved)
+
+    async def allow_always(self, tool: str) -> object:
+        self.saved.add(tool)
+        return tool
+
+
+ACT = ActionDecl(
+    name="computer_act",
+    description="Act in an app",
+    policy="ask",
+    always_by="app",
+    label_by="about",
+)
+
+
+async def act(approver: FakeApprover, rules: MemoryRules, **params: Any) -> ToolResult:
+    tool = action_tools([ACT], "conn-1", RecordingCaller())[0]
+    config = Config()
+    ctx = ToolContext(
+        session_id="s1",
+        turn_id="t1",
+        client_id="c1",
+        cancel=CancelToken(),
+        config=config,
+        paths=PathGuard.from_config(config.permissions),
+        approvals=approver,
+        approval_rules=rules,
+    )
+    call = ToolCall(id="a", name="computer_act", input=params)
+    return await builtin_registry().extended([tool]).execute(call, ctx)
+
+
+async def test_always_for_one_app_allows_only_that_app() -> None:
+    rules = MemoryRules()
+    always = FakeApprover("always")
+    await act(always, rules, app="Telegram", about="send the message")
+    (asked,) = always.asked
+    assert asked.label == "Telegram · send the message"
+    assert asked.always_scope == "Telegram"
+    assert rules.saved == {"computer_act@telegram"}
+
+    later = FakeApprover("deny")
+    result = await act(later, rules, app=" telegram ", about="press Enter")
+    assert text_of(result) == "computer_act done"
+    assert later.asked == []
+
+    other = await act(later, rules, app="Mail", about="send it")
+    assert other.denied
+    assert [ask.always_scope for ask in later.asked] == ["Mail"]
+
+
+async def test_an_action_without_its_scope_field_asks_for_the_whole_tool() -> None:
+    rules = MemoryRules()
+    always = FakeApprover("always")
+    await act(always, rules, about="something")
+    assert always.asked[0].always_scope is None
+    assert always.asked[0].label == "something"
+    assert rules.saved == {"computer_act"}
+
+
+def test_the_label_falls_back_to_the_action_name() -> None:
+    tool = action_tools([ACT], "conn-1", None)[0]
+    assert tool.label(tool.input_model.model_validate({"app": "Notes"})) == "computer_act"
