@@ -1,4 +1,4 @@
-"""Tests for zero.tools.base: the tool interface and the registry."""
+"""Tests for phantasm.tools.base: the tool interface and the registry."""
 
 import logging
 import os
@@ -9,12 +9,11 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, Field
 
-from tests.turns import FuncTool, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers.base import ToolCall
-from zero.tools.base import (
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken, TurnCancelled
+from phantasm.protocol.messages import ImagePart, TextPart
+from phantasm.providers.base import ToolCall
+from phantasm.tools.base import (
     CANCELLED,
     MAX_OUTPUT_CHARS,
     NEEDS_APPROVAL,
@@ -30,7 +29,8 @@ from zero.tools.base import (
     text_result,
     truncate_text,
 )
-from zero.tools.permissions import PathGuard
+from phantasm.tools.permissions import PathGuard
+from tests.turns import FuncTool, text_of
 
 
 class GreetInput(BaseModel):
@@ -308,7 +308,7 @@ def test_truncate_with_a_custom_limit() -> None:
     assert truncate_text("abcdefghij", limit=4) == "ab\n[… 6 chars truncated …]\nij"
 
 
-async def test_long_text_goes_to_a_file_and_the_rest_is_kept(zero_home: Path) -> None:
+async def test_long_text_goes_to_a_file_and_the_rest_is_kept(phantasm_home: Path) -> None:
     image = ImagePart(mime="image/png", data_b64="AAAA" * 20_000)
     big = "h" * 20_000 + "m" * 10_000 + "t" * 10_000
     result = ToolResult(
@@ -319,7 +319,7 @@ async def test_long_text_goes_to_a_file_and_the_rest_is_kept(zero_home: Path) ->
 
     first, second, third = executed.content
     assert isinstance(first, TextPart)
-    saved = zero_home / "files" / "outputs" / "s1" / "call-1.txt"
+    saved = phantasm_home / "files" / "outputs" / "s1" / "call-1.txt"
     assert saved.read_text() == big
     assert str(saved) in first.text
     assert "40000 chars" in first.text
@@ -332,28 +332,28 @@ async def test_long_text_goes_to_a_file_and_the_rest_is_kept(zero_home: Path) ->
     assert result.content[0] == TextPart(text=big)
 
 
-async def test_short_text_is_not_saved(zero_home: Path) -> None:
+async def test_short_text_is_not_saved(phantasm_home: Path) -> None:
     result = ToolResult(content=[TextPart(text="x" * MAX_OUTPUT_CHARS)])
     executed = await execute(registry_with(returning(result)), "fixed")
     assert executed.content == [TextPart(text="x" * MAX_OUTPUT_CHARS)]
-    assert not (zero_home / "files" / "outputs").exists()
+    assert not (phantasm_home / "files" / "outputs").exists()
 
 
 async def test_saved_output_has_secrets_masked(
-    zero_home: Path, monkeypatch: pytest.MonkeyPatch
+    phantasm_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     secret = "AIzaSecretValue1234567890"
-    Path(os.environ["ZERO_ENV_FILE"]).write_text(f"GEMINI_API_KEY={secret}\n")
+    Path(os.environ["PHANTASM_ENV_FILE"]).write_text(f"GEMINI_API_KEY={secret}\n")
     result = ToolResult(content=[TextPart(text=f"key {secret} " + "z" * 40_000)])
     executed = await execute(registry_with(returning(result)), "fixed")
-    saved = (zero_home / "files" / "outputs" / "s1" / "call-1.txt").read_text()
+    saved = (phantasm_home / "files" / "outputs" / "s1" / "call-1.txt").read_text()
     assert secret not in saved
     assert secret not in text_of(executed)
 
 
-async def test_unwritable_outputs_fall_back_to_cutting(zero_home: Path) -> None:
-    (zero_home / "files").mkdir()
-    (zero_home / "files" / "outputs").write_text("not a folder")
+async def test_unwritable_outputs_fall_back_to_cutting(phantasm_home: Path) -> None:
+    (phantasm_home / "files").mkdir()
+    (phantasm_home / "files" / "outputs").write_text("not a folder")
     big = "a" * 40_000
     executed = await execute(
         registry_with(returning(ToolResult(content=[TextPart(text=big)]))), "fixed"
@@ -361,8 +361,8 @@ async def test_unwritable_outputs_fall_back_to_cutting(zero_home: Path) -> None:
     assert executed.content == [TextPart(text=truncate_text(big))]
 
 
-def test_old_outputs_are_pruned(zero_home: Path) -> None:
-    folder = zero_home / "files" / "outputs" / "s1"
+def test_old_outputs_are_pruned(phantasm_home: Path) -> None:
+    folder = phantasm_home / "files" / "outputs" / "s1"
     folder.mkdir(parents=True)
     old, new = folder / "old.txt", folder / "new.txt"
     old.write_text("old")

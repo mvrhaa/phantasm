@@ -10,14 +10,14 @@ from typing import Any
 
 import pytest
 
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.providers.base import ToolCall
+from phantasm.tools.base import ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry, jobs, shell
+from phantasm.tools.builtin.jobs import JobManager
+from phantasm.tools.permissions import PathGuard
 from tests.turns import FakeApprover, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.providers.base import ToolCall
-from zero.tools.base import ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry, jobs, shell
-from zero.tools.builtin.jobs import JobManager
-from zero.tools.permissions import PathGuard
 
 
 @pytest.fixture
@@ -181,8 +181,8 @@ async def test_the_app_has_job_tools_and_stopping_it_ends_the_jobs(rig: Rig, hom
 
     from fastapi.testclient import TestClient
 
-    from zero.server.app import create_app, graceful_stop
-    from zero.server.state import get_state
+    from phantasm.server.app import create_app, graceful_stop
+    from phantasm.server.state import get_state
 
     app = create_app(Config())
     with TestClient(app):

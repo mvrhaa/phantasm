@@ -16,10 +16,9 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.conftest import FrozenClock
-from zero.core.cancellation import CancelToken
-from zero.protocol.messages import TextPart
-from zero.providers.base import (
+from phantasm.core.cancellation import CancelToken
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import (
     LLMProvider,
     Message,
     ProviderError,
@@ -31,13 +30,14 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
-from zero.providers.chat_completions import ChatCompletionsProvider
-from zero.providers.presets import PRESETS
-from zero.secrets import env_file
+from phantasm.providers.chat_completions import ChatCompletionsProvider
+from phantasm.providers.presets import PRESETS
+from phantasm.secrets import env_file
+from tests.conftest import FrozenClock
 
 KEY = "AIza-test-0123456789abcdef"
 MESSAGES = [
-    Message(role="system", content=[TextPart(text="You are Zero.")]),
+    Message(role="system", content=[TextPart(text="You are Phantasm.")]),
     Message(role="user", content=[TextPart(text="Какая погода в Праге?")]),
 ]
 WEATHER = ToolSpec(
@@ -145,7 +145,7 @@ async def test_the_request_to_google() -> None:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     )
     assert request.headers["authorization"] == f"Bearer {KEY}"
-    assert request.headers["user-agent"].startswith("Zero/")
+    assert request.headers["user-agent"].startswith("Phantasm/")
     assert body["model"] == "gemma-4-31b-it"
     assert body["stream"] is True
     assert body["stream_options"] == {"include_usage": True}

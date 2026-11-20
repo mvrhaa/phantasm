@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from zero.config import Config
-from zero.protocol.messages import TextPart
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
+from phantasm.config import Config
+from phantasm.protocol.messages import TextPart
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
 
 
 @pytest.fixture

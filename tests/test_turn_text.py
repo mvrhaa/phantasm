@@ -8,11 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from zero.config import Config
-from zero.providers.base import LLMProvider, TextDelta, UsageEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
+from phantasm.config import Config
+from phantasm.providers.base import LLMProvider, TextDelta, UsageEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
 
 HELLO = {
     "type": "hello",
@@ -21,7 +21,7 @@ HELLO = {
         "app": "desktop",
         "client_id": "c-1",
         "character": {
-            "name": "Zero",
+            "name": "Phantasm",
             "persona": "Curious.",
             "poses": ["idle"],
             "moods": ["neutral"],
@@ -197,7 +197,7 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
     assert system.role == "system"
     system_text = system.content[0].text  # type: ignore[union-attr]
     assert system_text.startswith("# Who you are")
-    assert "Your name is Zero." in system_text
+    assert "Your name is Phantasm." in system_text
     assert "cannot see the computer screen" in system_text
     assert "# Current time" in system_text
     assert "# More tools" in system_text and "- todo_add(" in system_text

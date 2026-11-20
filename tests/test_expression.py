@@ -4,14 +4,13 @@ from typing import Any
 
 import pytest
 
-from tests.turns import FuncTool, Harness, registry, roles, text_of
-from zero.core.expression import (
+from phantasm.core.expression import (
     EXPRESSION_SET,
     EXPRESSION_TOOL,
     ExpressionTool,
     default_expression,
 )
-from zero.protocol.messages import (
+from phantasm.protocol.messages import (
     Character,
     ClientInfo,
     Expression,
@@ -19,11 +18,14 @@ from zero.protocol.messages import (
     ToolFinished,
     ToolStarted,
 )
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.tools.base import ToolContext
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.tools.base import ToolContext
+from tests.turns import FuncTool, Harness, registry, roles, text_of
 
-CHARACTER = Character(name="Zero", poses=["idle", "sit", "wave"], moods=["happy", "neutral", "sad"])
+CHARACTER = Character(
+    name="Phantasm", poses=["idle", "sit", "wave"], moods=["happy", "neutral", "sad"]
+)
 CLIENT = ClientInfo(app="desktop", client_id="c-1", character=CHARACTER)
 
 

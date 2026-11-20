@@ -5,18 +5,18 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from phantasm.core.review import QUIET_S, RETRY_AFTER_S, ReviewRunner
+from phantasm.paths import db_path
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import StreamEvent, TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.store.db import Database
+from phantasm.store.journal import JournalRepo
+from phantasm.store.memory import MemoryRepo
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.reviews import ReviewsRepo
+from phantasm.store.sessions import SessionsRepo
 from tests.conftest import FrozenClock
-from zero.core.review import QUIET_S, RETRY_AFTER_S, ReviewRunner
-from zero.paths import db_path
-from zero.protocol.messages import TextPart
-from zero.providers.base import StreamEvent, TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.store.db import Database
-from zero.store.journal import JournalRepo
-from zero.store.memory import MemoryRepo
-from zero.store.messages import MessagesRepo
-from zero.store.reviews import ReviewsRepo
-from zero.store.sessions import SessionsRepo
 
 
 class Writer(FakeProvider):
@@ -190,9 +190,9 @@ async def test_no_review_without_a_model_or_when_turned_off(
 def test_the_app_goes_over_conversations_while_it_runs() -> None:
     from fastapi.testclient import TestClient
 
-    from zero.config import Config
-    from zero.server.app import create_app
-    from zero.server.state import get_state
+    from phantasm.config import Config
+    from phantasm.server.app import create_app
+    from phantasm.server.state import get_state
 
     app = create_app(Config())
     with TestClient(app):

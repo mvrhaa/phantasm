@@ -1,12 +1,12 @@
-"""Install Zero as a LaunchAgent, so it starts by itself when you log in.
+"""Install Phantasm as a LaunchAgent, so it starts by itself when you log in.
 
     uv run python scripts/install_launchagent.py              install (or reinstall) and start
     uv run python scripts/install_launchagent.py --print      show the plist, change nothing
     uv run python scripts/install_launchagent.py --uninstall  stop and remove
 
-The agent runs this project's Python with ``-m zero``. launchd restarts it only
-if it crashes: a clean exit (for example because Zero already runs) stays an
-exit. Its output goes to ~/Library/Logs/Zero; Zero's own log is there too.
+The agent runs this project's Python with ``-m phantasm``. launchd restarts it only
+if it crashes: a clean exit (for example because Phantasm already runs) stays an
+exit. Its output goes to ~/Library/Logs/Phantasm; Phantasm's own log is there too.
 """
 
 import argparse
@@ -18,7 +18,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-DEFAULT_LABEL = "local.zero.brain"
+DEFAULT_LABEL = "local.phantasm.brain"
 
 Run = Callable[[Sequence[str]], int]
 
@@ -32,7 +32,7 @@ def build_plist(label: str, python: str, logs: Path, path_env: str) -> dict[str,
     """The agent's description for launchd."""
     return {
         "Label": label,
-        "ProgramArguments": [python, "-m", "zero"],
+        "ProgramArguments": [python, "-m", "phantasm"],
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
@@ -53,7 +53,7 @@ def _run(command: Sequence[str]) -> int:
 
 def install(label: str, home: Path, python: str, path_env: str, uid: int, run: Run = _run) -> Path:
     """Write the plist and (re)load it into the user's launchd domain; returns the plist."""
-    logs = home / "Library" / "Logs" / "Zero"
+    logs = home / "Library" / "Logs" / "Phantasm"
     logs.mkdir(parents=True, exist_ok=True)
     target = plist_path(label, home)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +75,7 @@ def uninstall(label: str, home: Path, uid: int, run: Run = _run) -> bool:
 
 
 def main(argv: Sequence[str] | None = None, run: Run = _run) -> int:
-    parser = argparse.ArgumentParser(description="Start Zero by itself at login.")
+    parser = argparse.ArgumentParser(description="Start Phantasm by itself at login.")
     parser.add_argument("--uninstall", action="store_true", help="stop and remove the agent")
     parser.add_argument("--print", action="store_true", help="show the plist, change nothing")
     parser.add_argument("--label", default=DEFAULT_LABEL, help="launchd label of the agent")
@@ -89,7 +89,7 @@ def main(argv: Sequence[str] | None = None, run: Run = _run) -> int:
         return 0
     path_env = os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
     if arguments.print:
-        logs = home / "Library" / "Logs" / "Zero"
+        logs = home / "Library" / "Logs" / "Phantasm"
         plist = build_plist(arguments.label, sys.executable, logs, path_env)
         print(plistlib.dumps(plist).decode())
         return 0
@@ -98,7 +98,7 @@ def main(argv: Sequence[str] | None = None, run: Run = _run) -> int:
     except RuntimeError as exc:
         print(exc, file=sys.stderr)
         return 1
-    print(f"Installed {target}; Zero now starts at login. Check: curl 127.0.0.1:47400/health")
+    print(f"Installed {target}; Phantasm now starts at login. Check: curl 127.0.0.1:47400/health")
     return 0
 
 

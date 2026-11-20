@@ -1,11 +1,11 @@
-"""Tests for zero.core.cancellation."""
+"""Tests for phantasm.core.cancellation."""
 
 import asyncio
 
 import pytest
 
-from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.providers.base import CancelSignal
+from phantasm.core.cancellation import CancelToken, TurnCancelled
+from phantasm.providers.base import CancelSignal
 
 
 def test_new_token_is_not_cancelled() -> None:

@@ -7,11 +7,10 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.turns import FakeApprover, FuncTool, Harness, registry, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.paths import db_path, files_dir
-from zero.protocol.messages import (
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.paths import db_path, files_dir
+from phantasm.protocol.messages import (
     Character,
     ClientInfo,
     FilePart,
@@ -22,15 +21,16 @@ from zero.protocol.messages import (
     ToolRun,
     ToolStarted,
 )
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.store.db import Database
-from zero.store.tool_runs import ToolRunsRepo
-from zero.tools.base import ToolContext, ToolResult, output_preview, text_result
-from zero.tools.builtin import builtin_registry, files
-from zero.tools.permissions import PathGuard
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.store.db import Database
+from phantasm.store.tool_runs import ToolRunsRepo
+from phantasm.tools.base import ToolContext, ToolResult, output_preview, text_result
+from phantasm.tools.builtin import builtin_registry, files
+from phantasm.tools.permissions import PathGuard
+from tests.turns import FakeApprover, FuncTool, Harness, registry, text_of
 
 
 @pytest.fixture
@@ -251,7 +251,7 @@ async def test_denied_call_is_recorded_as_denied(harness: Harness) -> None:
 
 
 async def test_set_expression_is_not_recorded(harness: Harness) -> None:
-    character = Character(name="Zero", poses=["idle"], moods=["happy"])
+    character = Character(name="Phantasm", poses=["idle"], moods=["happy"])
     client = ClientInfo(app="desktop", client_id="c-1", character=character)
     recorder = Recorder()
     provider = FakeProvider(

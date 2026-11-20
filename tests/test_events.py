@@ -1,20 +1,20 @@
-"""Tests for zero.core.events."""
+"""Tests for phantasm.core.events."""
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 import pytest
 
-from zero.config import Config
-from zero.core.events import EventBus, ReplyTo
-from zero.core.turn import Turn
-from zero.paths import db_path
-from zero.protocol.messages import Envelope, Pong, SessionDeleted
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
-from zero.store.db import Database
-from zero.store.messages import MessagesRepo
-from zero.store.sessions import SessionsRepo
+from phantasm.config import Config
+from phantasm.core.events import EventBus, ReplyTo
+from phantasm.core.turn import Turn
+from phantasm.paths import db_path
+from phantasm.protocol.messages import Envelope, Pong, SessionDeleted
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
+from phantasm.store.db import Database
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.sessions import SessionsRepo
 
 
 @dataclass

@@ -11,18 +11,18 @@ import uvicorn
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
+from phantasm import __main__ as entry
+from phantasm.approvals.manager import WITHDRAWN_BY
+from phantasm.config import Config
+from phantasm.core.turn_manager import TurnManager
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server import app as app_module
+from phantasm.server.app import create_app, graceful_stop
+from phantasm.server.state import AppState, get_state
+from phantasm.server.ws import CLOSE_GOING_AWAY
+from phantasm.tools.base import ToolContext
 from tests.turns import FuncTool, Harness, registry, until
-from zero import __main__ as entry
-from zero.approvals.manager import WITHDRAWN_BY
-from zero.config import Config
-from zero.core.turn_manager import TurnManager
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server import app as app_module
-from zero.server.app import create_app, graceful_stop
-from zero.server.state import AppState, get_state
-from zero.server.ws import CLOSE_GOING_AWAY
-from zero.tools.base import ToolContext
 
 HELLO = {"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"}}
 
@@ -104,7 +104,7 @@ def test_stop_withdraws_approvals_ends_turns_and_closes_clients() -> None:
         assert receive_until(ws, "turn.finished")["status"] == "cancelled"
         while (frame := ws.receive())["type"] != "websocket.close":
             pass
-        assert (frame["code"], frame["reason"]) == (CLOSE_GOING_AWAY, "Zero is shutting down")
+        assert (frame["code"], frame["reason"]) == (CLOSE_GOING_AWAY, "Phantasm is shutting down")
         assert state.turns.active == []
         assert state.approvals.waiting == []
 
@@ -160,26 +160,26 @@ def test_leaving_the_app_stops_gracefully(monkeypatch: pytest.MonkeyPatch) -> No
     assert state.stopping
 
 
-async def test_server_winds_zero_down_before_uvicorn_drops_connections(
+async def test_server_winds_phantasm_down_before_uvicorn_drops_connections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     order: list[str] = []
 
-    async def zero_stop(state: AppState) -> None:
-        order.append("zero")
+    async def phantasm_stop(state: AppState) -> None:
+        order.append("phantasm")
 
     async def uvicorn_stop(
         self: uvicorn.Server, sockets: list[socket.socket] | None = None
     ) -> None:
         order.append("uvicorn")
 
-    monkeypatch.setattr(entry, "graceful_stop", zero_stop)
+    monkeypatch.setattr(entry, "graceful_stop", phantasm_stop)
     monkeypatch.setattr(uvicorn.Server, "shutdown", uvicorn_stop)
     app = create_app(Config(), FakeProvider([]))
-    server = entry.ZeroServer(uvicorn.Config(app, log_config=None))
+    server = entry.PhantasmServer(uvicorn.Config(app, log_config=None))
 
     await server.shutdown()
-    app.state.zero = object.__new__(AppState)
+    app.state.phantasm = object.__new__(AppState)
     await server.shutdown()
 
-    assert order == ["uvicorn", "zero", "uvicorn"]
+    assert order == ["uvicorn", "phantasm", "uvicorn"]

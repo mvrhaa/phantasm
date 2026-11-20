@@ -22,8 +22,8 @@ import uuid
 
 import websockets
 
-from zero.config import load_config
-from zero.paths import token_path
+from phantasm.config import load_config
+from phantasm.paths import token_path
 
 
 def build(line: str) -> dict[str, object] | None:

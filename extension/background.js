@@ -1,5 +1,5 @@
-// Zero's extension: connects to the brain (ws://127.0.0.1:<port>/browser) and runs what it asks
-// in a Chrome window of Zero's own. The user's own tabs are never touched.
+// Phantasm's extension: connects to the brain (ws://127.0.0.1:<port>/browser) and runs what it asks
+// in a Chrome window of Phantasm's own. The user's own tabs are never touched.
 
 const PING_MS = 20000;
 const LOAD_MS = 20000;
@@ -19,7 +19,7 @@ async function connect() {
   if (socket && socket.readyState <= WebSocket.OPEN) return;
   const { port, token } = await chrome.storage.local.get({ port: 47400, token: "" });
   if (!token) {
-    await setStatus("no token: paste the output of `zero token`");
+    await setStatus("no token: paste the output of `phantasm token`");
     return;
   }
   const ws = new WebSocket(`ws://127.0.0.1:${port}/browser?token=${encodeURIComponent(token)}`);
@@ -27,7 +27,7 @@ async function connect() {
   ws.onopen = () => setStatus("connected");
   ws.onclose = (event) => {
     if (socket === ws) socket = null;
-    setStatus(event.code === 4401 ? "wrong token" : "not connected (is Zero running?)");
+    setStatus(event.code === 4401 ? "wrong token" : "not connected (is Phantasm running?)");
   };
   ws.onerror = () => {};
   ws.onmessage = async (event) => {
@@ -52,7 +52,7 @@ setInterval(() => {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
   else connect();
 }, PING_MS);
-chrome.alarms.create("zero-connect", { periodInMinutes: 0.5 });
+chrome.alarms.create("phantasm-connect", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
@@ -64,9 +64,9 @@ chrome.storage.onChanged.addListener((changes) => {
 });
 connect();
 
-// ---------- Zero's window and tabs ----------
+// ---------- Phantasm's window and tabs ----------
 
-async function zeroWindow() {
+async function phantasmWindow() {
   const { windowId } = await chrome.storage.session.get({ windowId: null });
   if (windowId !== null) {
     try {
@@ -82,7 +82,7 @@ async function zeroWindow() {
 async function ownTab(id) {
   const tab = await chrome.tabs.get(Number(id));
   const { windowId } = await chrome.storage.session.get({ windowId: null });
-  if (tab.windowId !== windowId) throw new Error(`tab ${id} is not one of Zero's tabs`);
+  if (tab.windowId !== windowId) throw new Error(`tab ${id} is not one of Phantasm's tabs`);
   return tab;
 }
 
@@ -119,7 +119,7 @@ const COMMANDS = {
       id = (await ownTab(tab)).id;
       await chrome.tabs.update(id, { url });
     } else {
-      const windowId = await zeroWindow();
+      const windowId = await phantasmWindow();
       const blank = await chrome.tabs.query({ windowId, url: "chrome://newtab/" });
       const created = await chrome.tabs.create({ windowId, url, active: true });
       id = created.id;
@@ -200,14 +200,14 @@ function readPage(maxText, maxElements) {
     "[role=button]", "[role=link]", "[role=checkbox]", "[role=tab]", "[role=menuitem]",
     "[contenteditable=true]",
   ].join(",");
-  document.querySelectorAll("[data-zero-ref]").forEach((el) => el.removeAttribute("data-zero-ref"));
+  document.querySelectorAll("[data-phantasm-ref]").forEach((el) => el.removeAttribute("data-phantasm-ref"));
   const elements = [];
   for (const el of document.querySelectorAll(selector)) {
     const box = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     if (box.width === 0 || box.height === 0 || style.visibility === "hidden") continue;
     const ref = elements.length + 1;
-    el.setAttribute("data-zero-ref", String(ref));
+    el.setAttribute("data-phantasm-ref", String(ref));
     const raw = el.getAttribute("aria-label") || el.innerText || el.value || el.placeholder ||
       el.title || el.alt || el.name || "";
     const field = el.tagName === "INPUT" || el.tagName === "TEXTAREA";
@@ -226,7 +226,7 @@ function readPage(maxText, maxElements) {
 }
 
 function clickElement(ref) {
-  const el = document.querySelector(`[data-zero-ref="${ref}"]`);
+  const el = document.querySelector(`[data-phantasm-ref="${ref}"]`);
   if (!el) return { error: `no element [${ref}]: read the page again` };
   el.scrollIntoView({ block: "center" });
   el.click();
@@ -234,7 +234,7 @@ function clickElement(ref) {
 }
 
 function typeInto(ref, text, submit) {
-  const el = document.querySelector(`[data-zero-ref="${ref}"]`);
+  const el = document.querySelector(`[data-phantasm-ref="${ref}"]`);
   if (!el) return { error: `no element [${ref}]: read the page again` };
   el.scrollIntoView({ block: "center" });
   el.focus();

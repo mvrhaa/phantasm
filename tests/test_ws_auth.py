@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from zero.config import Config
-from zero.logging_setup import log_file_path, setup_logging
-from zero.server.app import create_app
-from zero.server.state import get_state
+from phantasm.config import Config
+from phantasm.logging_setup import log_file_path, setup_logging
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
 
 
 @pytest.fixture
@@ -107,7 +107,7 @@ def test_token_from_a_logged_url_is_redacted(token: str) -> None:
     logging.getLogger("uvicorn.error").info(
         '%s - "WebSocket %s" [accepted]', "127.0.0.1:5000", f"/ws?token={token}&x=1"
     )
-    logging.getLogger("zero.test").info("no secrets here")
+    logging.getLogger("phantasm.test").info("no secrets here")
 
     text = path.read_text(encoding="utf-8")
     assert token not in text

@@ -9,16 +9,16 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from zero.config import Config
-from zero.core import attachments
-from zero.core.attachments import AttachmentError, prepare_for_model, save_attachments
-from zero.paths import db_path, files_dir
-from zero.protocol.messages import Attachment, FilePart, ImagePart, TextPart
-from zero.providers.base import Message, TextDelta
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.permissions import PathGuard
+from phantasm.config import Config
+from phantasm.core import attachments
+from phantasm.core.attachments import AttachmentError, prepare_for_model, save_attachments
+from phantasm.paths import db_path, files_dir
+from phantasm.protocol.messages import Attachment, FilePart, ImagePart, TextPart
+from phantasm.providers.base import Message, TextDelta
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.permissions import PathGuard
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
 PNG_B64 = base64.b64encode(PNG).decode()

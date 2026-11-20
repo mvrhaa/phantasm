@@ -7,17 +7,15 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FrozenClock
-from tests.turns import Harness
-from zero import cli
-from zero.config import Config
-from zero.core.cancellation import TurnCancelled
-from zero.core.compaction import summarize
-from zero.core.model_call import metered
-from zero.core.titles import make_title
-from zero.paths import db_path
-from zero.protocol.messages import TextPart
-from zero.providers.base import (
+from phantasm import cli
+from phantasm.config import Config
+from phantasm.core.cancellation import TurnCancelled
+from phantasm.core.compaction import summarize
+from phantasm.core.model_call import metered
+from phantasm.core.titles import make_title
+from phantasm.paths import db_path
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import (
     CancelSignal,
     Message,
     ProviderError,
@@ -26,11 +24,13 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.store.db import Database
-from zero.store.usage import ModelCall, UsageRepo
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.store.db import Database
+from phantasm.store.usage import ModelCall, UsageRepo
+from tests.conftest import FrozenClock
+from tests.turns import Harness
 
 
 class Recorder:
@@ -170,7 +170,7 @@ async def test_totals_per_model_since_a_moment(frozen_clock: FrozenClock) -> Non
     assert everything[0].requests == 3
 
 
-def test_the_service_records_turns_and_zero_usage_shows_them(
+def test_the_service_records_turns_and_phantasm_usage_shows_them(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with TestClient(create_app(Config(), FakeProvider())) as client:
@@ -192,6 +192,6 @@ def test_the_service_records_turns_and_zero_usage_shows_them(
     )
 
 
-def test_zero_usage_without_a_database(capsys: pytest.CaptureFixture[str]) -> None:
+def test_phantasm_usage_without_a_database(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["usage"]) == 0
     assert capsys.readouterr().out.count("no model calls") == 2

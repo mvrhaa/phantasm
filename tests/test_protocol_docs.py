@@ -6,8 +6,8 @@ from types import ModuleType
 
 from pydantic import TypeAdapter
 
-from zero import __version__
-from zero.protocol.messages import ClientMessage, ServerEvent
+from phantasm import __version__
+from phantasm.protocol.messages import ClientMessage, ServerEvent
 
 ROOT = Path(__file__).parent.parent
 SCRIPT = ROOT / "scripts" / "gen_protocol_docs.py"
@@ -46,5 +46,5 @@ def test_every_message_has_a_section_and_its_example_is_valid() -> None:
 
 
 def test_the_reference_names_the_version() -> None:
-    assert f"Zero {__version__}." in load().render()
+    assert f"Phantasm {__version__}." in load().render()
     assert __version__ == "0.1.0"

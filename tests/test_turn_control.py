@@ -9,16 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
+from phantasm.config import Config
+from phantasm.core.turn import NOT_RUN, RETRY_DELAYS_S
+from phantasm.core.turn_manager import TurnManager
+from phantasm.protocol.messages import Envelope, TurnFinished
+from phantasm.providers.base import ProviderError, StreamEvent, TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.base import ToolContext
 from tests.turns import FuncTool, Harness, RecordingClient, registry, roles, text_of, until
-from zero.config import Config
-from zero.core.turn import NOT_RUN, RETRY_DELAYS_S
-from zero.core.turn_manager import TurnManager
-from zero.protocol.messages import Envelope, TurnFinished
-from zero.providers.base import ProviderError, StreamEvent, TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.base import ToolContext
 
 
 class BreaksAfterText(FakeProvider):

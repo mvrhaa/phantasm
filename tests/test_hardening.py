@@ -7,34 +7,34 @@ from pathlib import Path
 
 import pytest
 
+from phantasm import clock
+from phantasm.approvals.manager import ApprovalAsk, ApprovalManager
+from phantasm.config import Config, ConfigError, load_config
+from phantasm.core.attachments import images_to_files, remove_files
+from phantasm.core.cancellation import CancelToken
+from phantasm.core.context import NO_ANSWER, to_history
+from phantasm.core.prompting import HISTORY_FETCH_LIMIT, PromptBuilder, _first_user
+from phantasm.core.turn import IMAGE_UNSEEN, _keep_latest_images
+from phantasm.logging_setup import RedactingFormatter, RedactTokenFilter
+from phantasm.paths import db_path, files_dir
+from phantasm.protocol.messages import FilePart, ImagePart, TextPart
+from phantasm.providers.base import Message, TextDelta, ToolCall, ToolCallEvent, writes_prose
+from phantasm.providers.chat_format import wire_messages
+from phantasm.providers.fake import FakeProvider
+from phantasm.scheduler.rules import parse_rule, zone_named
+from phantasm.scheduler.runner import MIN_PAUSE_S, SchedulerRunner
+from phantasm.store.db import Database
+from phantasm.store.messages import StoredMessage
+from phantasm.store.schedules import SchedulesRepo
+from phantasm.store.sessions import SessionsRepo
+from phantasm.store.summaries import SummariesRepo
+from phantasm.store.tool_runs import ToolRunsRepo
+from phantasm.tools.base import Tool, ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.builtin.edit import EditFile, EditFileInput
+from phantasm.tools.builtin.shell import KEEP_BYTES, Output
+from phantasm.tools.permissions import PathGuard
 from tests.turns import FuncTool, Harness, NoInput, registry, until
-from zero import clock
-from zero.approvals.manager import ApprovalAsk, ApprovalManager
-from zero.config import Config, ConfigError, load_config
-from zero.core.attachments import images_to_files, remove_files
-from zero.core.cancellation import CancelToken
-from zero.core.context import NO_ANSWER, to_history
-from zero.core.prompting import HISTORY_FETCH_LIMIT, PromptBuilder, _first_user
-from zero.core.turn import IMAGE_UNSEEN, _keep_latest_images
-from zero.logging_setup import RedactingFormatter, RedactTokenFilter
-from zero.paths import db_path, files_dir
-from zero.protocol.messages import FilePart, ImagePart, TextPart
-from zero.providers.base import Message, TextDelta, ToolCall, ToolCallEvent, writes_prose
-from zero.providers.chat_format import wire_messages
-from zero.providers.fake import FakeProvider
-from zero.scheduler.rules import parse_rule, zone_named
-from zero.scheduler.runner import MIN_PAUSE_S, SchedulerRunner
-from zero.store.db import Database
-from zero.store.messages import StoredMessage
-from zero.store.schedules import SchedulesRepo
-from zero.store.sessions import SessionsRepo
-from zero.store.summaries import SummariesRepo
-from zero.store.tool_runs import ToolRunsRepo
-from zero.tools.base import Tool, ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry
-from zero.tools.builtin.edit import EditFile, EditFileInput
-from zero.tools.builtin.shell import KEEP_BYTES, Output
-from zero.tools.permissions import PathGuard
 
 
 def context(folder: Path) -> ToolContext:
@@ -188,7 +188,7 @@ async def test_a_model_without_sight_gets_a_note_instead_of_a_tool_image(
 
 def test_secrets_in_a_traceback_are_masked(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "zero.logging_setup.mask_secrets", lambda t: t.replace("s3cretvalue", "***")
+        "phantasm.logging_setup.mask_secrets", lambda t: t.replace("s3cretvalue", "***")
     )
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)

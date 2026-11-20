@@ -1,12 +1,12 @@
-"""Tests for zero.tools.permissions.PathGuard: the sandbox for paths."""
+"""Tests for phantasm.tools.permissions.PathGuard: the sandbox for paths."""
 
 import os
 from pathlib import Path
 
 import pytest
 
-from zero.config import Config
-from zero.tools.permissions import PathDenied, PathGuard
+from phantasm.config import Config
+from phantasm.tools.permissions import PathDenied, PathGuard
 
 
 @pytest.fixture

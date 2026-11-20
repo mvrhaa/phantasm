@@ -1,4 +1,4 @@
-"""End to end: Zero hands a task to an agent, answers its question and gets the report.
+"""End to end: Phantasm hands a task to an agent, answers its question and gets the report.
 
 A real service and WebSocket; the model is scripted, one script for the main
 conversation and one for the agent (see ``RoleProvider``).
@@ -12,13 +12,13 @@ from typing import Any
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
+from phantasm.config import Config
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
 from tests.agents import AGENT_ID, RoleProvider
 from tests.turns import text_of
-from zero.config import Config
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
 
 HELLO = {"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"}}
 
@@ -61,7 +61,7 @@ def until_main_says(ws: WebSocketTestSession, text: str) -> list[dict[str, Any]]
 
 def test_an_agent_reads_asks_gets_the_answer_and_reports(tmp_path: Path) -> None:
     notes = tmp_path / "notes.txt"
-    notes.write_text("hello zero\nsecond line\n")
+    notes.write_text("hello phantasm\nsecond line\n")
     config = Config()
     config.permissions.allowed_roots = [str(tmp_path)]
     provider = RoleProvider(
@@ -71,7 +71,7 @@ def test_an_agent_reads_asks_gets_the_answer_and_reports(tmp_path: Path) -> None
                 say("Started a reader."),
                 call("agent_message", id=AGENT_ID, text="Quote the first line."),
                 say("Answered the reader."),
-                say("The reader says the first line is 'hello zero'."),
+                say("The reader says the first line is 'hello phantasm'."),
             ]
         ),
         agent=FakeProvider(
@@ -79,22 +79,22 @@ def test_an_agent_reads_asks_gets_the_answer_and_reports(tmp_path: Path) -> None
                 call("read_file", path=str(notes)),
                 call("ask_parent", question="Which line should I quote?"),
                 say("Asked; waiting for the answer."),
-                say("The first line is 'hello zero'."),
+                say("The first line is 'hello phantasm'."),
             ]
         ),
     )
     with service(provider, config) as (state, ws):
         send(ws, "read my notes")
-        seen = until_main_says(ws, "The reader says the first line is 'hello zero'.")
+        seen = until_main_says(ws, "The reader says the first line is 'hello phantasm'.")
         agent_id = next(e["agent"]["id"] for e in seen if e["type"] == "agent.updated")
 
     updates = [e["agent"] for e in seen if e["type"] == "agent.updated"]
     assert [a["status"] for a in updates] == ["working", "asking", "working", "done"]
-    assert updates[-1]["report"] == "The first line is 'hello zero'."
+    assert updates[-1]["report"] == "The first line is 'hello phantasm'."
     main_session, agent_session = updates[0]["parent_session_id"], updates[0]["session_id"]
 
     read = provider.agent.calls[1].messages[-1]
-    assert read.role == "tool" and "hello zero" in text_of(read)
+    assert read.role == "tool" and "hello phantasm" in text_of(read)
 
     question = provider.main.calls[2].messages[-1]
     assert (question.role, text_of(question)) == (
@@ -106,7 +106,8 @@ def test_an_agent_reads_asks_gets_the_answer_and_reports(tmp_path: Path) -> None
     assert (answer.role, text_of(answer)) == ("user", "Quote the first line.")
     report = provider.main.calls[4].messages[-1]
     assert text_of(report) == (
-        f"Agent 'reader' (id {agent_id}) has finished. Its report:\nThe first line is 'hello zero'."
+        f"Agent 'reader' (id {agent_id}) has finished. Its report:\n"
+        "The first line is 'hello phantasm'."
     )
 
     started = [(e["session_id"], e["source"]) for e in seen if e["type"] == "turn.started"]

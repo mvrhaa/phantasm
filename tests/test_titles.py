@@ -8,10 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from tests.turns import NO_DELAYS, Harness, text_of
-from zero.config import Config
-from zero.core import titles
-from zero.core.titles import (
+from phantasm.config import Config
+from phantasm.core import titles
+from phantasm.core.titles import (
     TITLE_MAX_CHARS,
     TITLE_PROMPT,
     clean_title,
@@ -19,8 +18,8 @@ from zero.core.titles import (
     make_title,
     title_new_session,
 )
-from zero.protocol.messages import SessionUpdated
-from zero.providers.base import (
+from phantasm.protocol.messages import SessionUpdated
+from phantasm.providers.base import (
     CancelSignal,
     Message,
     ProviderError,
@@ -28,10 +27,11 @@ from zero.providers.base import (
     TextDelta,
     ToolSpec,
 )
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.store.usage import ModelCall
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.store.usage import ModelCall
+from tests.turns import NO_DELAYS, Harness, text_of
 
 LONG_MESSAGE = "plan a trip to Rome next spring with three friends"
 

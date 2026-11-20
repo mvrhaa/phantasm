@@ -15,7 +15,7 @@ from pathlib import Path
 
 DIR = Path(os.environ["FAKE_CLAUDE_DIR"])
 ARGV = sys.argv[1:]
-PREFIX = "mcp__zero__"
+PREFIX = "mcp__phantasm__"
 
 
 def log(entry: dict) -> None:
@@ -92,14 +92,14 @@ def main() -> None:
         ask(
             {
                 "subtype": "mcp_message",
-                "server_name": "zero",
+                "server_name": "phantasm",
                 "message": {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}},
             }
         )
         listed = ask(
             {
                 "subtype": "mcp_message",
-                "server_name": "zero",
+                "server_name": "phantasm",
                 "message": {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             }
         )
@@ -200,7 +200,7 @@ def main() -> None:
             result = ask(
                 {
                     "subtype": "mcp_message",
-                    "server_name": "zero",
+                    "server_name": "phantasm",
                     "message": {
                         "jsonrpc": "2.0",
                         "id": 100 + uses,

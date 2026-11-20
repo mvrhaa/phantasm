@@ -1,4 +1,4 @@
-"""Tests for zero.store.db."""
+"""Tests for phantasm.store.db."""
 
 import sqlite3
 import stat
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from zero.paths import db_path
-from zero.store.db import Database, MigrationError
+from phantasm.paths import db_path
+from phantasm.store.db import Database, MigrationError
 
 CREATE_NOTES = """
 CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL);
@@ -44,7 +44,7 @@ async def scalar(db: Database, sql: str) -> object:
 
 
 async def test_connect_creates_the_file_and_its_directory(tmp_path: Path) -> None:
-    path = tmp_path / "nested" / "zero.db"
+    path = tmp_path / "nested" / "phantasm.db"
 
     async with Database(path):
         assert path.is_file()

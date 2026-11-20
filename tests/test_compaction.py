@@ -5,27 +5,27 @@ from typing import Any
 
 import pytest
 
-from tests.turns import NO_DELAYS, Audience, Harness, RecordingClient, text_of
-from zero.config import Config
-from zero.core import compaction
-from zero.core.compaction import compact, digest, summarize, transcript
-from zero.core.context import keep_from
-from zero.core.events import EventBus
-from zero.core.turn import Turn
-from zero.paths import db_path
-from zero.protocol.messages import SessionCompacted, TextPart
-from zero.providers.base import (
+from phantasm.config import Config
+from phantasm.core import compaction
+from phantasm.core.compaction import compact, digest, summarize, transcript
+from phantasm.core.context import keep_from
+from phantasm.core.events import EventBus
+from phantasm.core.turn import Turn
+from phantasm.paths import db_path
+from phantasm.protocol.messages import SessionCompacted, TextPart
+from phantasm.providers.base import (
     CancelSignal,
     Message,
     ProviderError,
     TextDelta,
     ToolSpec,
 )
-from zero.providers.fake import FakeProvider
-from zero.store.db import Database
-from zero.store.messages import MessagesRepo
-from zero.store.sessions import SessionsRepo
-from zero.store.summaries import SummariesRepo
+from phantasm.providers.fake import FakeProvider
+from phantasm.store.db import Database
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.sessions import SessionsRepo
+from phantasm.store.summaries import SummariesRepo
+from tests.turns import NO_DELAYS, Audience, Harness, RecordingClient, text_of
 
 
 class Writer:
@@ -253,7 +253,7 @@ async def test_long_history_reaches_the_model_as_a_summary_and_the_latest_turns(
     harness: Harness, stores: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, _, summaries = stores
-    monkeypatch.setattr("zero.core.prompting.SUMMARY_RESERVE_TOKENS", 0)
+    monkeypatch.setattr("phantasm.core.prompting.SUMMARY_RESERVE_TOKENS", 0)
     await chat(
         harness.messages, harness.session_id, *[(f"q{n} " * 30, f"a{n} " * 30) for n in range(6)]
     )
@@ -327,7 +327,7 @@ async def test_the_summary_is_written_by_the_small_model(
     harness: Harness, stores: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, _, summaries = stores
-    monkeypatch.setattr("zero.core.prompting.SUMMARY_RESERVE_TOKENS", 0)
+    monkeypatch.setattr("phantasm.core.prompting.SUMMARY_RESERVE_TOKENS", 0)
     await chat(
         harness.messages, harness.session_id, *[(f"q{n} " * 30, f"a{n} " * 30) for n in range(6)]
     )

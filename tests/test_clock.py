@@ -1,10 +1,10 @@
-"""Tests for zero.clock."""
+"""Tests for phantasm.clock."""
 
 from datetime import UTC, datetime, timedelta, timezone
 
-from zero import clock
-from zero.clock import from_iso, to_iso
-from zero.clock import now as imported_now
+from phantasm import clock
+from phantasm.clock import from_iso, to_iso
+from phantasm.clock import now as imported_now
 
 
 def test_now_is_timezone_aware_utc() -> None:

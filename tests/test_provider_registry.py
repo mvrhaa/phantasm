@@ -1,13 +1,13 @@
-"""Tests for zero.providers.registry."""
+"""Tests for phantasm.providers.registry."""
 
 import pytest
 
-from zero.config import Config, ProviderConfig
-from zero.providers.base import LLMProvider
-from zero.providers.chat_completions import ChatCompletionsProvider
-from zero.providers.fake import FakeProvider
-from zero.providers.registry import ProviderNotConfigured, get_provider, small_model
-from zero.secrets import env_file
+from phantasm.config import Config, ProviderConfig
+from phantasm.providers.base import LLMProvider
+from phantasm.providers.chat_completions import ChatCompletionsProvider
+from phantasm.providers.fake import FakeProvider
+from phantasm.providers.registry import ProviderNotConfigured, get_provider, small_model
+from phantasm.secrets import env_file
 
 
 def test_default_config_gives_the_fake_provider_in_echo_mode() -> None:

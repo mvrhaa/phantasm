@@ -13,12 +13,12 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
-from zero.config import Config
-from zero.protocol.messages import ImagePart
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
+from phantasm.config import Config
+from phantasm.protocol.messages import ImagePart
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
 
 PIXEL = {"type": "image", "mime": "image/png", "data_b64": "iVBORw0KGgo="}
 SCREENSHOT = {

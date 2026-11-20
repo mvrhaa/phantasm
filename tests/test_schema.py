@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from zero.paths import db_path
-from zero.store.db import MIGRATIONS_DIR, Database
+from phantasm.paths import db_path
+from phantasm.store.db import MIGRATIONS_DIR, Database
 
 NOW = "2026-01-01T12:00:00Z"
 

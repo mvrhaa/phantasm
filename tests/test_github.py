@@ -4,10 +4,10 @@ import json
 import sys
 from pathlib import Path
 
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.tools.base import ToolContext
-from zero.tools.builtin.github import (
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.tools.base import ToolContext
+from phantasm.tools.builtin.github import (
     GithubApi,
     GithubApiInput,
     GithubFailedLog,
@@ -16,7 +16,7 @@ from zero.tools.builtin.github import (
     GithubGetInput,
     run_gh,
 )
-from zero.tools.permissions import PathGuard
+from phantasm.tools.permissions import PathGuard
 
 FAKE_GH = """#!{python}
 import json, os, sys

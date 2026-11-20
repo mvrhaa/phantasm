@@ -1,4 +1,4 @@
-// The extension's settings: Zero's port and token (the output of `zero token`).
+// The extension's settings: Phantasm's port and token (the output of `phantasm token`).
 const port = document.getElementById("port");
 const token = document.getElementById("token");
 const status = document.getElementById("status");

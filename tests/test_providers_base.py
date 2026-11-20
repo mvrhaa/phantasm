@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers.base import (
+from phantasm.protocol.messages import ImagePart, TextPart
+from phantasm.providers.base import (
     CancelSignal,
     LLMProvider,
     Message,

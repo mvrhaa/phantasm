@@ -4,9 +4,9 @@ from typing import Any
 
 from starlette.testclient import WebSocketTestSession
 
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
 from tests.test_turn_text import connected, running, send, until_finished
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
 
 
 def history(ws: WebSocketTestSession, session_id: str) -> list[dict[str, Any]]:

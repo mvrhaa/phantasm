@@ -1,4 +1,4 @@
-"""Tests for zero.config."""
+"""Tests for phantasm.config."""
 
 import json
 import logging
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from zero.config import Config, ConfigError, ServerConfig, load_config, save_config
-from zero.paths import config_path
+from phantasm.config import Config, ConfigError, ServerConfig, load_config, save_config
+from phantasm.paths import config_path
 
 SPEC_DEFAULTS = {
     "server": {"host": "127.0.0.1", "port": 47400},
@@ -99,10 +99,10 @@ def test_save_then_load_round_trip() -> None:
     assert load_config() == config
 
 
-def test_save_leaves_no_temporary_file(zero_home: Path) -> None:
+def test_save_leaves_no_temporary_file(phantasm_home: Path) -> None:
     save_config(Config())
 
-    assert [p.name for p in zero_home.iterdir()] == ["config.json"]
+    assert [p.name for p in phantasm_home.iterdir()] == ["config.json"]
 
 
 def test_partial_file_is_filled_with_defaults() -> None:
@@ -118,7 +118,7 @@ def test_partial_file_is_filled_with_defaults() -> None:
 def test_unknown_keys_warn_but_do_not_fail(caplog: pytest.LogCaptureFixture) -> None:
     write_config({"server": {"port": 5000, "hots": "127.0.0.1"}, "theme": "dark"})
 
-    with caplog.at_level(logging.WARNING, logger="zero.config"):
+    with caplog.at_level(logging.WARNING, logger="phantasm.config"):
         config = load_config()
 
     assert config.server.port == 5000
@@ -144,7 +144,7 @@ def test_free_form_sections_do_not_warn(caplog: pytest.LogCaptureFixture) -> Non
         }
     )
 
-    with caplog.at_level(logging.WARNING, logger="zero.config"):
+    with caplog.at_level(logging.WARNING, logger="phantasm.config"):
         config = load_config()
 
     assert caplog.records == []

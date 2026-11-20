@@ -7,23 +7,23 @@ from pathlib import Path
 
 import pytest
 
+from phantasm import clock
+from phantasm.logging_setup import reset_logging
+from phantasm.paths import db_path
+from phantasm.store.db import Database
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.sessions import SessionsRepo
 from tests.turns import Harness
-from zero import clock
-from zero.logging_setup import reset_logging
-from zero.paths import db_path
-from zero.store.db import Database
-from zero.store.messages import MessagesRepo
-from zero.store.sessions import SessionsRepo
 
 
 @pytest.fixture(autouse=True)
-def zero_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point ZERO_HOME at a temporary directory so tests never touch real app data.
+def phantasm_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point PHANTASM_HOME at a temporary directory so tests never touch real app data.
 
     The .env file moves next to it, so no test ever reads the real API keys.
     """
-    monkeypatch.setenv("ZERO_HOME", str(tmp_path))
-    monkeypatch.setenv("ZERO_ENV_FILE", str(tmp_path.parent / f"{tmp_path.name}.env"))
+    monkeypatch.setenv("PHANTASM_HOME", str(tmp_path))
+    monkeypatch.setenv("PHANTASM_ENV_FILE", str(tmp_path.parent / f"{tmp_path.name}.env"))
     return tmp_path
 
 
@@ -53,7 +53,7 @@ class FrozenClock:
 
 @pytest.fixture
 def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> FrozenClock:
-    """Make ``zero.clock.now()`` return a fixed time controlled by the test."""
+    """Make ``phantasm.clock.now()`` return a fixed time controlled by the test."""
     frozen = FrozenClock(datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC))
     monkeypatch.setattr(clock, "_source", frozen)
     return frozen

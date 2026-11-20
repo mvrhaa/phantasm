@@ -1,12 +1,12 @@
-"""Tests for zero.core.context."""
+"""Tests for phantasm.core.context."""
 
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from zero.core.context import PROMPTS_DIR, Computer, build_system_prompt
-from zero.protocol.messages import Character, ClientInfo
+from phantasm.core.context import PROMPTS_DIR, Computer, build_system_prompt
+from phantasm.protocol.messages import Character, ClientInfo
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 PRAGUE = timezone(timedelta(hours=1), "CET")
@@ -15,7 +15,7 @@ CLIENT = ClientInfo(
     app="desktop",
     client_id="c-1",
     character=Character(
-        name="Zero",
+        name="Phantasm",
         persona="A curious fool who loves a good question.",
         poses=["idle", "sit", "wave"],
         moods=["neutral", "happy", "sad"],
@@ -56,7 +56,7 @@ def test_blocks_come_in_the_order_of_the_spec() -> None:
 def test_persona_block_has_name_and_persona() -> None:
     text = prompt()
 
-    assert "Your name is Zero." in text
+    assert "Your name is Phantasm." in text
     assert "A curious fool who loves a good question." in text
 
 
@@ -149,12 +149,12 @@ def test_empty_persona_keeps_only_the_name() -> None:
     client = ClientInfo(
         app="desktop",
         client_id="c-1",
-        character=Character(name="Zero", poses=["idle"], moods=["neutral"]),
+        character=Character(name="Phantasm", poses=["idle"], moods=["neutral"]),
     )
 
     text = prompt(client)
 
-    assert "Your name is Zero.\n\n# Expression" in text
+    assert "Your name is Phantasm.\n\n# Expression" in text
 
 
 def test_only_the_time_block_changes_between_turns() -> None:
@@ -177,13 +177,15 @@ def test_base_rules_prefer_the_file_tools_and_a_narrow_search() -> None:
 
 
 def test_computer_block_names_home_own_code_and_access() -> None:
-    computer = Computer(home=Path("/Users/u"), own_code=Path("/Users/u/zero"), allowed_roots=["~"])
+    computer = Computer(
+        home=Path("/Users/u"), own_code=Path("/Users/u/phantasm"), allowed_roots=["~"]
+    )
 
     text = build_system_prompt(CLIENT, "desktop", now=NOW, tz=PRAGUE, computer=computer)
 
     assert "# Computer" in text
     assert "Home folder: /Users/u. Commands run there unless you give them another cwd." in text
-    assert "Your own code (Zero, this brain): /Users/u/zero" in text
+    assert "Your own code (Phantasm, this brain): /Users/u/phantasm" in text
     assert "You may read and work with files in: ~" in text
     assert text.index("# Environment") < text.index("# Computer") < text.index("# Expression")
 
@@ -203,4 +205,4 @@ def test_the_computer_is_found() -> None:
     assert computer.home == Path.home()
     assert computer.own_code is not None
     assert (computer.own_code / "pyproject.toml").is_file()
-    assert (computer.own_code / "src" / "zero").is_dir()
+    assert (computer.own_code / "src" / "phantasm").is_dir()

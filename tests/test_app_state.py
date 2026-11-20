@@ -5,15 +5,15 @@ import stat
 import pytest
 from fastapi.testclient import TestClient
 
-from zero.config import Config
-from zero.paths import db_path, token_path
-from zero.protocol.messages import TextPart
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
-from zero.store.db import MIGRATIONS_DIR, MigrationError
+from phantasm.config import Config
+from phantasm.paths import db_path, token_path
+from phantasm.protocol.messages import TextPart
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
+from phantasm.store.db import MIGRATIONS_DIR, MigrationError
 
 
-def test_startup_opens_a_migrated_database_in_zero_home() -> None:
+def test_startup_opens_a_migrated_database_in_phantasm_home() -> None:
     app = create_app(Config())
     assert not db_path().exists()
 
@@ -101,7 +101,7 @@ def test_failed_migration_stops_startup_and_closes_the_database(
     async def broken_migrate(self: object) -> list[int]:
         raise MigrationError("boom")
 
-    monkeypatch.setattr("zero.store.db.Database.migrate", broken_migrate)
+    monkeypatch.setattr("phantasm.store.db.Database.migrate", broken_migrate)
     app = create_app(Config())
 
     with pytest.raises(MigrationError, match="boom"):

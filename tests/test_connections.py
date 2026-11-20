@@ -1,11 +1,11 @@
-"""Tests for zero.server.connections."""
+"""Tests for phantasm.server.connections."""
 
 import json
 
 from starlette.websockets import WebSocketDisconnect
 
-from zero.protocol.messages import ClientInfo, Pong
-from zero.server.connections import Connection, ConnectionManager
+from phantasm.protocol.messages import ClientInfo, Pong
+from phantasm.server.connections import Connection, ConnectionManager
 
 
 class FakeSocket:

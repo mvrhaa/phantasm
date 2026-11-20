@@ -8,25 +8,25 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.turns import text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.protocol.messages import ImagePart
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools import builtin
-from zero.tools.base import NEEDS_APPROVAL, ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry
-from zero.tools.builtin.files import (
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.protocol.messages import ImagePart
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools import builtin
+from phantasm.tools.base import NEEDS_APPROVAL, ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.builtin.files import (
     MAX_LINE_CHARS,
     ListDirInput,
     ReadFileInput,
     human_size,
     looks_secret,
 )
-from zero.tools.permissions import PathGuard
+from phantasm.tools.permissions import PathGuard
+from tests.turns import text_of
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
 

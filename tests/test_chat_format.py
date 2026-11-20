@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from zero.protocol.messages import FilePart, ImagePart, TextPart
-from zero.providers.base import Message, ProviderError, ToolCall, ToolSpec
-from zero.providers.chat_format import (
+from phantasm.protocol.messages import FilePart, ImagePart, TextPart
+from phantasm.providers.base import Message, ProviderError, ToolCall, ToolSpec
+from phantasm.providers.chat_format import (
     TOOL_IMAGES,
     ThoughtFilter,
     ToolCallAssembler,
@@ -31,7 +31,7 @@ def test_a_whole_conversation() -> None:
     call = ToolCall(id="call_1", name="read_file", input={"path": "/tmp/a.txt", "note": "ё"})
     shot = ToolCall(id="abcdefghi", name="screenshot")
     messages = [
-        Message(role="system", content=[TextPart(text="You are Zero.")]),
+        Message(role="system", content=[TextPart(text="You are Phantasm.")]),
         Message(
             role="user",
             content=[
@@ -48,7 +48,7 @@ def test_a_whole_conversation() -> None:
     ]
 
     assert wire_messages(messages) == [
-        {"role": "system", "content": "You are Zero."},
+        {"role": "system", "content": "You are Phantasm."},
         {
             "role": "user",
             "content": [

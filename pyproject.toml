@@ -1,5 +1,5 @@
 [project]
-name = "zero"
+name = "phantasm"
 version = "0.1.0"
 description = "Local brain of an AI companion for macOS"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-zero = "zero.cli:main"
+phantasm = "phantasm.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]

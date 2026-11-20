@@ -6,22 +6,22 @@ from typing import Any
 
 import pytest
 
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.paths import db_path
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import ToolCall
+from phantasm.store.db import Database
+from phantasm.store.journal import note_time
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.sessions import SessionsRepo
+from phantasm.store.summaries import SummariesRepo
+from phantasm.tools.base import ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.builtin.sessions import SessionStores
+from phantasm.tools.permissions import PathGuard
 from tests.conftest import FrozenClock
 from tests.turns import FakeApprover, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.paths import db_path
-from zero.protocol.messages import TextPart
-from zero.providers.base import ToolCall
-from zero.store.db import Database
-from zero.store.journal import note_time
-from zero.store.messages import MessagesRepo
-from zero.store.sessions import SessionsRepo
-from zero.store.summaries import SummariesRepo
-from zero.tools.base import ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry
-from zero.tools.builtin.sessions import SessionStores
-from zero.tools.permissions import PathGuard
 
 
 @dataclass
@@ -86,7 +86,7 @@ async def test_sessions_read_gives_the_plain_turns(rig: Rig) -> None:
     result = await rig.call("sessions_read", session_id=session.id)
 
     assert text_of(result) == (
-        "Trip\nUser: When is the train?\nZero: At 9:15.\nUser: And back?\nZero: At 18:40."
+        "Trip\nUser: When is the train?\nPhantasm: At 9:15.\nUser: And back?\nPhantasm: At 18:40."
     )
     assert "file text" not in text_of(result)
 
@@ -100,7 +100,7 @@ async def test_sessions_read_shows_the_summary_of_what_is_left_out(rig: Rig) -> 
 
     assert text_of(result) == (
         "Long\n[8 earlier lines not shown; summary of the start: They planned a trip.]\n"
-        "User: q4\nZero: a4"
+        "User: q4\nPhantasm: a4"
     )
 
 

@@ -7,16 +7,16 @@ from typing import Any
 
 import pytest
 
+from phantasm import cli, secrets
+from phantasm.config import Config, ConfigError, load_config
+from phantasm.core.cancellation import CancelToken
+from phantasm.logging_setup import log_file_path, setup_logging
+from phantasm.paths import config_path
+from phantasm.providers.base import ToolCall
+from phantasm.secrets import api_key, env_file, mask_secrets, read_env_file
+from phantasm.tools.base import ToolContext
+from phantasm.tools.permissions import PathDenied, PathGuard
 from tests.turns import FuncTool, registry, text_of
-from zero import cli, secrets
-from zero.config import Config, ConfigError, load_config
-from zero.core.cancellation import CancelToken
-from zero.logging_setup import log_file_path, setup_logging
-from zero.paths import config_path
-from zero.providers.base import ToolCall
-from zero.secrets import api_key, env_file, mask_secrets, read_env_file
-from zero.tools.base import ToolContext
-from zero.tools.permissions import PathDenied, PathGuard
 
 KEY = "mk-test-0123456789abcdef"
 
@@ -29,8 +29,8 @@ def write_env(text: str, mode: int = 0o600) -> Path:
     return path
 
 
-def test_tests_never_see_the_real_env_file(zero_home: Path) -> None:
-    assert env_file().parent == zero_home.parent
+def test_tests_never_see_the_real_env_file(phantasm_home: Path) -> None:
+    assert env_file().parent == phantasm_home.parent
     assert env_file() != Path(secrets.__file__).resolve().parents[2] / ".env"
 
 
@@ -91,7 +91,7 @@ def test_the_key_never_reaches_the_log() -> None:
     write_env(f"MISTRAL_API_KEY={KEY}\n")
     setup_logging()
 
-    logging.getLogger("zero.test").warning("request with header Bearer %s failed", KEY)
+    logging.getLogger("phantasm.test").warning("request with header Bearer %s failed", KEY)
 
     text = log_file_path().read_text(encoding="utf-8")
     assert KEY not in text
@@ -126,10 +126,10 @@ async def test_tool_output_and_errors_carry_no_key() -> None:
     assert text_of(error) == "Tool 'broken' failed: bad key ***"
 
 
-def test_the_env_file_is_off_limits_to_tools(zero_home: Path) -> None:
+def test_the_env_file_is_off_limits_to_tools(phantasm_home: Path) -> None:
     path = write_env(f"MISTRAL_API_KEY={KEY}\n")
     config = Config()
-    config.permissions.allowed_roots = [str(zero_home.parent)]
+    config.permissions.allowed_roots = [str(phantasm_home.parent)]
     config.permissions.denied_paths = []
     guard = PathGuard.from_config(config.permissions)
 
@@ -137,7 +137,7 @@ def test_the_env_file_is_off_limits_to_tools(zero_home: Path) -> None:
         guard.check(path)
     with pytest.raises(PathDenied):
         guard.check(str(path).upper())
-    assert guard.check(zero_home / "notes.txt") == (zero_home / "notes.txt").resolve()
+    assert guard.check(phantasm_home / "notes.txt") == (phantasm_home / "notes.txt").resolve()
 
 
 def test_the_config_has_no_place_for_keys() -> None:

@@ -8,18 +8,18 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from phantasm.approvals.manager import Answer, ApprovalAsk, Decision
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.base import DENIED, NEEDS_APPROVAL, ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.builtin.edit import Target, diff_summary, make_diff
+from phantasm.tools.permissions import PathGuard
 from tests.turns import FakeApprover, text_of
-from zero.approvals.manager import Answer, ApprovalAsk, Decision
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.base import DENIED, NEEDS_APPROVAL, ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry
-from zero.tools.builtin.edit import Target, diff_summary, make_diff
-from zero.tools.permissions import PathGuard
 
 
 @pytest.fixture
@@ -486,9 +486,9 @@ async def test_valid_change_and_other_files_are_not_checked(home: Path) -> None:
 
 
 async def test_changes_are_recorded_for_going_back(home: Path) -> None:
-    from zero.paths import db_path
-    from zero.store.db import Database
-    from zero.store.file_changes import FileChangesRepo, sha256
+    from phantasm.paths import db_path
+    from phantasm.store.db import Database
+    from phantasm.store.file_changes import FileChangesRepo, sha256
 
     async with Database(db_path()) as db:
         await db.migrate()

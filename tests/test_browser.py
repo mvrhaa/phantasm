@@ -1,4 +1,4 @@
-"""Zero's browser: the bridge to the Chrome extension, its endpoint and the browser tools."""
+"""Phantasm's browser: the bridge to the Chrome extension, its endpoint and the browser tools."""
 
 import asyncio
 import json
@@ -7,13 +7,13 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from zero.browser import BrowserBridge, BrowserError
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.protocol.messages import ImagePart
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.builtin.browser import BrowserClick, BrowserScreenshot, BrowserType, describe
+from phantasm.browser import BrowserBridge, BrowserError
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.protocol.messages import ImagePart
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.builtin.browser import BrowserClick, BrowserScreenshot, BrowserType, describe
 
 EXTENSION = {"origin": "chrome-extension://abcdef"}
 
@@ -60,14 +60,14 @@ async def test_a_call_gets_the_extensions_answer() -> None:
 
 
 async def test_errors_and_absence_become_browser_errors(monkeypatch) -> None:
-    monkeypatch.setattr("zero.browser.CONNECT_WAIT_S", 0.05)
+    monkeypatch.setattr("phantasm.browser.CONNECT_WAIT_S", 0.05)
     bridge = BrowserBridge()
     with pytest.raises(BrowserError, match="Chrome is not connected"):
         await bridge.call("tabs", {})
-    socket = FakeSocket(lambda m: {"error": "tab 3 is not one of Zero's tabs"})
+    socket = FakeSocket(lambda m: {"error": "tab 3 is not one of Phantasm's tabs"})
     serving = asyncio.create_task(bridge.attach(socket))
     await asyncio.sleep(0)
-    with pytest.raises(BrowserError, match="not one of Zero's tabs"):
+    with pytest.raises(BrowserError, match="not one of Phantasm's tabs"):
         await bridge.call("read", {"tab": 3})
     silent = FakeSocket(lambda m: {})
     silent.send_text = _swallow(silent)  # type: ignore[method-assign]

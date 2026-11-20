@@ -10,27 +10,27 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.testclient import WebSocketTestSession
 
-from tests.agents import RoleProvider, RunnerKit
-from tests.turns import Audience, FakeApprover, RecordingClient
-from zero.agents.runner import AgentApprovals, AgentError
-from zero.approvals.manager import ApprovalAsk
-from zero.config import AgentConfig, Config
-from zero.core.cancellation import CancelToken
-from zero.core.events import EventBus, ReplyTo
-from zero.paths import db_path
-from zero.protocol.messages import (
+from phantasm.agents.runner import AgentApprovals, AgentError
+from phantasm.approvals.manager import ApprovalAsk
+from phantasm.config import AgentConfig, Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.core.events import EventBus, ReplyTo
+from phantasm.paths import db_path
+from phantasm.protocol.messages import (
     AgentRef,
     SessionCreated,
     SessionInfo,
     TextDelta,
     TurnStarted,
 )
-from zero.providers.base import TextDelta as TextDeltaEvent
-from zero.providers.base import ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
-from zero.store.db import Database
+from phantasm.providers.base import TextDelta as TextDeltaEvent
+from phantasm.providers.base import ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
+from phantasm.store.db import Database
+from tests.agents import RoleProvider, RunnerKit
+from tests.turns import Audience, FakeApprover, RecordingClient
 
 HELLO = {"type": "hello", "protocol": 1, "client": {"app": "t", "client_id": "c"}}
 READER = AgentRef(id="a1", name="reader")

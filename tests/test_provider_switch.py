@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
+from phantasm.config import Config, load_config
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.thinker import find_claude, thinker_info
 from tests.test_turn_text import HELLO, connected, running, send, until_finished
-from zero.config import Config, load_config
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
-from zero.server.thinker import find_claude, thinker_info
 
 
 def answer(events: list[dict]) -> str:
@@ -74,7 +74,7 @@ def test_find_claude_looks_in_the_install_folders(tmp_path: Path, monkeypatch) -
     command.write_text("#!/bin/sh\n")
     command.chmod(0o755)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    monkeypatch.setattr("zero.server.thinker.INSTALL_FOLDERS", (str(folder),))
+    monkeypatch.setattr("phantasm.server.thinker.INSTALL_FOLDERS", (str(folder),))
     assert find_claude("claude") == str(command)
     assert find_claude(str(command)) == str(command)
     assert find_claude(str(tmp_path / "missing")) is None

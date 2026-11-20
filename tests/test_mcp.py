@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
+from phantasm.core.cancellation import CancelToken
+from phantasm.mcp_client import McpClient, McpError
+from phantasm.paths import home_dir
+from phantasm.protocol.messages import ImagePart, TextPart
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
+from phantasm.tools.mcp import McpHost, to_result, tool_name
 from tests.test_turn_text import connected, running, send, until_finished
-from zero.core.cancellation import CancelToken
-from zero.mcp_client import McpClient, McpError
-from zero.paths import home_dir
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
-from zero.tools.mcp import McpHost, to_result, tool_name
 
 FAKE = str(Path(__file__).with_name("fake_mcp.py"))
 

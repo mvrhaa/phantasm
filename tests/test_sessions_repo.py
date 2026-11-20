@@ -1,4 +1,4 @@
-"""Tests for zero.store.sessions."""
+"""Tests for phantasm.store.sessions."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from zero.paths import db_path
-from zero.store.db import Database
-from zero.store.sessions import Session, SessionsRepo
+from phantasm.paths import db_path
+from phantasm.store.db import Database
+from phantasm.store.sessions import Session, SessionsRepo
 
 START = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 

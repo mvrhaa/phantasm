@@ -41,9 +41,9 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_plist_restarts_only_after_a_crash(home: Path) -> None:
-    plist = agent.build_plist("local.zero.brain", "/venv/bin/python", home / "logs", "/a:/b")
+    plist = agent.build_plist("local.phantasm.brain", "/venv/bin/python", home / "logs", "/a:/b")
 
-    assert plist["ProgramArguments"] == ["/venv/bin/python", "-m", "zero"]
+    assert plist["ProgramArguments"] == ["/venv/bin/python", "-m", "phantasm"]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] == {"SuccessfulExit": False}
     assert plist["EnvironmentVariables"] == {"PATH": "/a:/b"}
@@ -53,14 +53,14 @@ def test_plist_restarts_only_after_a_crash(home: Path) -> None:
 def test_install_writes_the_plist_and_reloads_the_agent(home: Path) -> None:
     launchctl = FakeLaunchctl()
 
-    target = agent.install("local.zero.brain", home, "/venv/bin/python", "/a", 501, launchctl)
+    target = agent.install("local.phantasm.brain", home, "/venv/bin/python", "/a", 501, launchctl)
 
-    assert target == home / "Library" / "LaunchAgents" / "local.zero.brain.plist"
+    assert target == home / "Library" / "LaunchAgents" / "local.phantasm.brain.plist"
     written = plistlib.loads(target.read_bytes())
-    assert written["Label"] == "local.zero.brain"
-    assert (home / "Library" / "Logs" / "Zero").is_dir()
+    assert written["Label"] == "local.phantasm.brain"
+    assert (home / "Library" / "Logs" / "Phantasm").is_dir()
     assert launchctl.commands == [
-        ["launchctl", "bootout", "gui/501/local.zero.brain"],
+        ["launchctl", "bootout", "gui/501/local.phantasm.brain"],
         ["launchctl", "bootstrap", "gui/501", str(target)],
     ]
 
@@ -74,12 +74,12 @@ def test_failed_load_is_reported(home: Path, capsys: pytest.CaptureFixture[str])
 
 def test_uninstall_stops_and_removes_the_agent(home: Path) -> None:
     launchctl = FakeLaunchctl()
-    target = agent.install("local.zero.brain", home, "/py", "/a", 501, launchctl)
+    target = agent.install("local.phantasm.brain", home, "/py", "/a", 501, launchctl)
 
-    assert agent.uninstall("local.zero.brain", home, 501, launchctl)
+    assert agent.uninstall("local.phantasm.brain", home, 501, launchctl)
     assert not target.exists()
-    assert launchctl.commands[-1] == ["launchctl", "bootout", "gui/501/local.zero.brain"]
-    assert not agent.uninstall("local.zero.brain", home, 501, launchctl)
+    assert launchctl.commands[-1] == ["launchctl", "bootout", "gui/501/local.phantasm.brain"]
+    assert not agent.uninstall("local.phantasm.brain", home, 501, launchctl)
 
 
 def test_print_shows_the_plist_and_changes_nothing(
@@ -87,10 +87,10 @@ def test_print_shows_the_plist_and_changes_nothing(
 ) -> None:
     launchctl = FakeLaunchctl()
 
-    assert agent.main(["--print", "--label", "test.zero"], run=launchctl) == 0
+    assert agent.main(["--print", "--label", "test.phantasm"], run=launchctl) == 0
 
     shown = plistlib.loads(capsys.readouterr().out.encode())
-    assert shown["Label"] == "test.zero"
+    assert shown["Label"] == "test.phantasm"
     assert launchctl.commands == []
     assert not (home / "Library").exists()
 
@@ -99,6 +99,6 @@ def test_main_installs_and_uninstalls(home: Path, capsys: pytest.CaptureFixture[
     launchctl = FakeLaunchctl()
 
     assert agent.main([], run=launchctl) == 0
-    assert "Zero now starts at login" in capsys.readouterr().out
+    assert "Phantasm now starts at login" in capsys.readouterr().out
     assert agent.main(["--uninstall"], run=launchctl) == 0
     assert capsys.readouterr().out.startswith("Removed")

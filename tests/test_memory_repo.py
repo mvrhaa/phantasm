@@ -1,13 +1,13 @@
-"""Tests for zero.store.memory: the memory repository and its full-text search."""
+"""Tests for phantasm.store.memory: the memory repository and its full-text search."""
 
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 
-from zero.paths import db_path
-from zero.store.db import Database
-from zero.store.memory import Memory, MemoryRepo, fts_query
+from phantasm.paths import db_path
+from phantasm.store.db import Database
+from phantasm.store.memory import Memory, MemoryRepo, fts_query
 
 
 @pytest.fixture

@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 
-import zero
-from zero.config import Config
-from zero.server.app import create_app
-from zero.server.state import AppState, get_state
+import phantasm
+from phantasm.config import Config
+from phantasm.server.app import create_app
+from phantasm.server.state import AppState, get_state
 
 HELLO: dict[str, Any] = {
     "type": "hello",
@@ -20,7 +20,7 @@ HELLO: dict[str, Any] = {
     "client": {
         "app": "desktop",
         "client_id": "c-1",
-        "character": {"name": "Zero", "poses": ["idle"], "moods": ["neutral"]},
+        "character": {"name": "Phantasm", "poses": ["idle"], "moods": ["neutral"]},
         "actions": [{"name": "screenshot", "description": "Capture the screen"}],
     },
 }
@@ -49,7 +49,7 @@ def test_hello_is_answered_with_hello_ok(ws: WebSocketTestSession) -> None:
     assert ws.receive_json() == {
         "type": "hello.ok",
         "reply_to": "h1",
-        "zero_version": zero.__version__,
+        "phantasm_version": phantasm.__version__,
         "protocol": 1,
         "sessions": [],
         "thinker": {"claude_code": False, "name": "Fake"},
@@ -81,7 +81,7 @@ def test_hello_stores_the_declaration_on_the_connection(
     assert connection.client_id == "c-1"
     assert connection.hello is not None
     assert connection.hello.character is not None
-    assert connection.hello.character.name == "Zero"
+    assert connection.hello.character.name == "Phantasm"
     assert [action.name for action in connection.hello.actions] == ["screenshot"]
 
 

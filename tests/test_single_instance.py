@@ -7,12 +7,12 @@ from typing import Any
 import httpx
 import pytest
 
-from zero import __main__ as entry
-from zero.__main__ import PortState, main, probe_port
-from zero.logging_setup import log_file_path
-from zero.paths import config_path, token_path
+from phantasm import __main__ as entry
+from phantasm.__main__ import PortState, main, probe_port
+from phantasm.logging_setup import log_file_path
+from phantasm.paths import config_path, token_path
 
-ZERO_HEALTH = {"app": "zero", "version": "0.0.1", "status": "ok"}
+PHANTASM_HEALTH = {"app": "phantasm", "version": "0.0.1", "status": "ok"}
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -32,8 +32,8 @@ def probe(handler: Handler, host: str = "127.0.0.1", port: int = 47400) -> PortS
     return probe_port(host, port, transport=httpx.MockTransport(handler))
 
 
-def test_running_zero_is_recognized() -> None:
-    assert probe(respond(json=ZERO_HEALTH)) is PortState.ZERO_RUNNING
+def test_running_phantasm_is_recognized() -> None:
+    assert probe(respond(json=PHANTASM_HEALTH)) is PortState.PHANTASM_RUNNING
 
 
 def test_refused_connection_means_port_is_free() -> None:
@@ -45,9 +45,9 @@ def test_refused_connection_means_port_is_free() -> None:
     [
         respond(json={"app": "something-else", "status": "ok"}),
         respond(json={"status": "ok"}),
-        respond(json=["zero"]),
+        respond(json=["phantasm"]),
         respond(text="<html>hello</html>"),
-        respond(404, json=ZERO_HEALTH),
+        respond(404, json=PHANTASM_HEALTH),
         respond(500),
         respond(302, headers={"location": "http://example.com/"}),
         fail_with(httpx.ReadTimeout),
@@ -82,7 +82,7 @@ def test_probe_requests_health_on_the_given_address(host: str, expected_url: str
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return httpx.Response(200, json=ZERO_HEALTH)
+        return httpx.Response(200, json=PHANTASM_HEALTH)
 
     probe(handler, host=host, port=5000)
 
@@ -96,7 +96,7 @@ def test_probe_ignores_proxy_settings_from_the_environment(
     for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
         monkeypatch.setenv(name, "http://proxy.invalid:9")
 
-    assert probe(respond(json=ZERO_HEALTH)) is PortState.ZERO_RUNNING
+    assert probe(respond(json=PHANTASM_HEALTH)) is PortState.PHANTASM_RUNNING
 
 
 class FakeUvicorn:
@@ -112,7 +112,7 @@ class FakeUvicorn:
 @pytest.fixture
 def fake_uvicorn(monkeypatch: pytest.MonkeyPatch) -> FakeUvicorn:
     fake = FakeUvicorn()
-    monkeypatch.setattr(entry.ZeroServer, "run", fake)
+    monkeypatch.setattr(entry.PhantasmServer, "run", fake)
     return fake
 
 
@@ -131,7 +131,7 @@ def set_port_state(monkeypatch: pytest.MonkeyPatch, state: PortState) -> list[tu
 def test_second_instance_exits_with_code_0(
     monkeypatch: pytest.MonkeyPatch, fake_uvicorn: FakeUvicorn
 ) -> None:
-    set_port_state(monkeypatch, PortState.ZERO_RUNNING)
+    set_port_state(monkeypatch, PortState.PHANTASM_RUNNING)
 
     exit_code = main()
 

@@ -1,4 +1,4 @@
-"""Tests for the ``python -m zero`` entry point. The server itself is never started."""
+"""Tests for the ``python -m phantasm`` entry point. The server itself is never started."""
 
 import json
 import stat
@@ -8,10 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from zero import __main__ as entry
-from zero.__main__ import PortState, main
-from zero.logging_setup import log_file_path
-from zero.paths import config_path, token_path
+from phantasm import __main__ as entry
+from phantasm.__main__ import PortState, main
+from phantasm.logging_setup import log_file_path
+from phantasm.paths import config_path, token_path
 
 pytestmark = pytest.mark.usefixtures("clean_root_logger")
 
@@ -22,7 +22,7 @@ class FakeUvicorn:
     def __init__(self) -> None:
         self.calls: list[tuple[FastAPI, dict[str, Any]]] = []
 
-    def run(self, server: entry.ZeroServer) -> None:
+    def run(self, server: entry.PhantasmServer) -> None:
         config = server.config
         settings = {
             "host": config.host,
@@ -42,7 +42,9 @@ def port_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def fake_uvicorn(monkeypatch: pytest.MonkeyPatch) -> FakeUvicorn:
     fake = FakeUvicorn()
-    monkeypatch.setattr(entry.ZeroServer, "run", lambda server, *args, **kwargs: fake.run(server))
+    monkeypatch.setattr(
+        entry.PhantasmServer, "run", lambda server, *args, **kwargs: fake.run(server)
+    )
     return fake
 
 
@@ -74,7 +76,7 @@ def test_first_run_creates_config_token_and_log(fake_uvicorn: FakeUvicorn) -> No
 
     assert config_path().is_file()
     assert stat.S_IMODE(token_path().stat().st_mode) == 0o600
-    assert "Starting Zero" in log_file_path().read_text(encoding="utf-8")
+    assert "Starting Phantasm" in log_file_path().read_text(encoding="utf-8")
 
 
 def test_token_is_not_written_to_the_log(fake_uvicorn: FakeUvicorn) -> None:

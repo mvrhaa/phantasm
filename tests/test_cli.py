@@ -1,4 +1,4 @@
-"""Tests of the ``zero`` command."""
+"""Tests of the ``phantasm`` command."""
 
 import json
 import sqlite3
@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from zero import cli
-from zero.__main__ import PortState
-from zero.paths import config_path, db_path, token_path
-from zero.secrets import env_file
+from phantasm import cli
+from phantasm.__main__ import PortState
+from phantasm.paths import config_path, db_path, token_path
+from phantasm.secrets import env_file
 
 
 def run(
@@ -53,11 +53,11 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         cli.main(["--version"])
 
-    assert capsys.readouterr().out.startswith("Zero ")
+    assert capsys.readouterr().out.startswith("Phantasm ")
 
 
 def test_doctor_on_a_fresh_install_is_green_and_changes_nothing(
-    capsys: pytest.CaptureFixture[str], zero_home: Path
+    capsys: pytest.CaptureFixture[str], phantasm_home: Path
 ) -> None:
     code, output = run(capsys, "doctor")
 
@@ -65,7 +65,7 @@ def test_doctor_on_a_fresh_install_is_green_and_changes_nothing(
     assert output.splitlines()[-1] == "All good."
     for name in ("config", "database", "token", "port", "provider"):
         assert f"✓ {name}" in output
-    assert list(zero_home.iterdir()) == []
+    assert list(phantasm_home.iterdir()) == []
 
 
 def test_doctor_after_a_start_reports_the_files(capsys: pytest.CaptureFixture[str]) -> None:
@@ -76,17 +76,17 @@ def test_doctor_after_a_start_reports_the_files(capsys: pytest.CaptureFixture[st
             f"INSERT INTO schema_version VALUES ({cli.latest_schema()});"
         )
 
-    code, output = run(capsys, "doctor", state=PortState.ZERO_RUNNING)
+    code, output = run(capsys, "doctor", state=PortState.PHANTASM_RUNNING)
 
     assert code == 0
     assert f"✓ database      schema {cli.latest_schema()}" in output
     assert f"✓ token         {token_path()}" in output
-    assert "Zero is running on 127.0.0.1:47400" in output
+    assert "Phantasm is running on 127.0.0.1:47400" in output
 
 
 @pytest.mark.parametrize(
     ("version", "expected"),
-    [(1, "upgraded to"), (999, "newer than this Zero")],
+    [(1, "upgraded to"), (999, "newer than this Phantasm")],
 )
 def test_doctor_compares_the_schema(
     capsys: pytest.CaptureFixture[str], version: int, expected: str
@@ -115,7 +115,7 @@ def test_doctor_compares_the_schema(
     ],
 )
 def test_doctor_finds_problems(
-    capsys: pytest.CaptureFixture[str], zero_home: Path, setup: str, problem: str
+    capsys: pytest.CaptureFixture[str], phantasm_home: Path, setup: str, problem: str
 ) -> None:
     state = PortState.FREE
     if setup == "bad_config":
@@ -151,7 +151,7 @@ def test_doctor_without_ripgrep_only_warns(
 def test_entry_point_is_declared() -> None:
     pyproject = (Path(__file__).parent.parent / "pyproject.toml").read_text()
 
-    assert '[project.scripts]\nzero = "zero.cli:main"' in pyproject
+    assert '[project.scripts]\nphantasm = "phantasm.cli:main"' in pyproject
 
 
 def test_doctor_lists_every_check(capsys: pytest.CaptureFixture[str]) -> None:

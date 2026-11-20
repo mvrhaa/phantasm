@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from zero.cli import main
-from zero.config import Config
-from zero.evals import check_one, load_tasks, run_task, task_config
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
+from phantasm.cli import main
+from phantasm.config import Config
+from phantasm.evals import check_one, load_tasks, run_task, task_config
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
 
 
 def test_every_task_loads_and_has_a_check() -> None:
@@ -68,13 +68,13 @@ def _async(value):
 
 
 def test_a_task_runs_through_the_brain_on_a_fake_model() -> None:
-    home = os.environ["ZERO_HOME"]
-    task = {"name": "t", "prompt": "Sign it.", "check": {"reply": ["Signed, Zero"]}}
-    good = run_task(task, Config(), FakeProvider([[TextDelta(text="Signed, Zero")]] * 2))
+    home = os.environ["PHANTASM_HOME"]
+    task = {"name": "t", "prompt": "Sign it.", "check": {"reply": ["Signed, Phantasm"]}}
+    good = run_task(task, Config(), FakeProvider([[TextDelta(text="Signed, Phantasm")]] * 2))
     assert good.passed and good.detail == "ok"
     bad = run_task(task, Config(), FakeProvider([[TextDelta(text="No.")]] * 2))
-    assert not bad.passed and "lack ['Signed, Zero']" in bad.detail
-    assert os.environ["ZERO_HOME"] == home
+    assert not bad.passed and "lack ['Signed, Phantasm']" in bad.detail
+    assert os.environ["PHANTASM_HOME"] == home
 
 
 def test_cli_refuses_unknown_tasks(capsys) -> None:

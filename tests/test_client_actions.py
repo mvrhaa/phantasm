@@ -4,18 +4,18 @@ from typing import Any
 
 import pytest
 
+from phantasm.config import Config, PermissionsConfig, Policy
+from phantasm.core.cancellation import CancelToken
+from phantasm.core.events import ReplyTo
+from phantasm.core.turn import Turn
+from phantasm.protocol.messages import ActionDecl, Character, ClientInfo
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.tools.base import ToolContext, ToolResult, text_result
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.client_actions import ClientActionTool, action_tools
+from phantasm.tools.permissions import PathGuard, decide, stricter
 from tests.turns import FakeApprover, Harness, text_of
-from zero.config import Config, PermissionsConfig, Policy
-from zero.core.cancellation import CancelToken
-from zero.core.events import ReplyTo
-from zero.core.turn import Turn
-from zero.protocol.messages import ActionDecl, Character, ClientInfo
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.tools.base import ToolContext, ToolResult, text_result
-from zero.tools.builtin import builtin_registry
-from zero.tools.client_actions import ClientActionTool, action_tools
-from zero.tools.permissions import PathGuard, decide, stricter
 
 FROM_DESKTOP = ReplyTo("conn-1", "m1")
 

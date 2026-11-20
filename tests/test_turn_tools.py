@@ -6,15 +6,15 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+from phantasm.config import Config
+from phantasm.protocol.messages import ClientInfo, TextPart, ToolStarted
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent, UsageEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
+from phantasm.tools.permissions import PathDenied
 from tests.turns import FuncTool, Harness, registry, roles, text_of
-from zero.config import Config
-from zero.protocol.messages import ClientInfo, TextPart, ToolStarted
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent, UsageEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.base import Tool, ToolContext, ToolRegistry, ToolResult, text_result
-from zero.tools.permissions import PathDenied
 
 
 class AddInput(BaseModel):

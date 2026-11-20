@@ -7,14 +7,14 @@ from collections.abc import Awaitable, Callable
 import httpx
 import pytest
 
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.providers.base import ToolCall
+from phantasm.tools.base import CANCELLED, ToolContext, ToolResult
+from phantasm.tools.builtin import web
+from phantasm.tools.builtin.web import USER_AGENT, WebFetch, is_internal
+from phantasm.tools.permissions import PathGuard
 from tests.turns import FakeApprover, registry, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.providers.base import ToolCall
-from zero.tools.base import CANCELLED, ToolContext, ToolResult
-from zero.tools.builtin import web
-from zero.tools.builtin.web import USER_AGENT, WebFetch, is_internal
-from zero.tools.permissions import PathGuard
 
 ARTICLE = """<html><head><title>Trip to Rome</title></head><body>
 <nav><a href="/">Home</a> <a href="/shop">Shop</a> Login</nav>
@@ -120,14 +120,14 @@ async def test_html_page_comes_back_as_its_main_text() -> None:
     assert (result.summary, result.is_error) == (f"200, {web.human_size(len(ARTICLE))}", False)
 
 
-async def test_request_names_zero_and_nothing_personal() -> None:
+async def test_request_names_phantasm_and_nothing_personal() -> None:
     site = Web(lambda request: html())
 
     await site.fetch("https://example.com/")
 
     agent = site.requests[0].headers["user-agent"]
     assert agent == USER_AGENT
-    assert agent.startswith("Zero/") and "@" not in agent
+    assert agent.startswith("Phantasm/") and "@" not in agent
 
 
 @pytest.mark.parametrize(

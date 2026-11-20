@@ -9,6 +9,23 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
+from phantasm.approvals.manager import (
+    WITHDRAWN_BY,
+    Answer,
+    ApprovalAsk,
+    ApprovalManager,
+    Decision,
+)
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken, TurnCancelled
+from phantasm.core.events import EventBus
+from phantasm.protocol.messages import ApprovalRequest, ApprovalResolved, Envelope
+from phantasm.providers.base import TextDelta, ToolCall, ToolCallEvent
+from phantasm.providers.fake import FakeProvider
+from phantasm.server.app import create_app
+from phantasm.server.state import get_state
+from phantasm.tools.base import CANCELLED, DENIED, Preview, ToolContext, ToolResult
+from phantasm.tools.permissions import PathGuard
 from tests.turns import (
     Audience,
     FakeApprover,
@@ -19,23 +36,6 @@ from tests.turns import (
     text_of,
     until,
 )
-from zero.approvals.manager import (
-    WITHDRAWN_BY,
-    Answer,
-    ApprovalAsk,
-    ApprovalManager,
-    Decision,
-)
-from zero.config import Config
-from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.core.events import EventBus
-from zero.protocol.messages import ApprovalRequest, ApprovalResolved, Envelope
-from zero.providers.base import TextDelta, ToolCall, ToolCallEvent
-from zero.providers.fake import FakeProvider
-from zero.server.app import create_app
-from zero.server.state import get_state
-from zero.tools.base import CANCELLED, DENIED, Preview, ToolContext, ToolResult
-from zero.tools.permissions import PathGuard
 
 ASK = ApprovalAsk(
     session_id="s1",

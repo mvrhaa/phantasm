@@ -4,12 +4,12 @@ import base64
 from datetime import UTC, datetime
 from typing import Any
 
+from phantasm.config import Config
+from phantasm.core.context import build_system_prompt
+from phantasm.protocol.messages import ImagePart, TextPart
+from phantasm.providers.base import TextDelta
+from phantasm.providers.fake import FakeProvider
 from tests.test_turn_text import HELLO, connected, history, running, send, until_finished
-from zero.config import Config
-from zero.core.context import build_system_prompt
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers.base import TextDelta
-from zero.providers.fake import FakeProvider
 
 QUICK = {
     "name": "Quick",
@@ -164,7 +164,7 @@ def test_a_turn_with_tools_keeps_the_expression_rules() -> None:
 
 def test_a_character_without_expressions_gets_no_expression_tool() -> None:
     provider = FakeProvider([[TextDelta(text="ok")]])
-    character = {"name": "Zero", "persona": "Calm."}
+    character = {"name": "Phantasm", "persona": "Calm."}
     plain = {**HELLO, "client": {**HELLO["client"], "character": character}}
     with running(provider) as (client, state):
         with client.websocket_connect(f"/ws?token={state.token}") as ws:

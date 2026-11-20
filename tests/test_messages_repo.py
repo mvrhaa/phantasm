@@ -1,4 +1,4 @@
-"""Tests for zero.store.messages."""
+"""Tests for phantasm.store.messages."""
 
 import sqlite3
 import uuid
@@ -7,11 +7,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from zero.paths import db_path
-from zero.protocol.messages import FilePart, ImagePart, TextPart
-from zero.store.db import Database
-from zero.store.messages import MessagesRepo, StoredMessage
-from zero.store.sessions import SessionsRepo
+from phantasm.paths import db_path
+from phantasm.protocol.messages import FilePart, ImagePart, TextPart
+from phantasm.store.db import Database
+from phantasm.store.messages import MessagesRepo, StoredMessage
+from phantasm.store.sessions import SessionsRepo
 
 START = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 

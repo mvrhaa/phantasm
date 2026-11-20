@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from zero.core.cancellation import CancelToken, TurnCancelled
-from zero.protocol.messages import TextPart
-from zero.providers.base import (
+from phantasm.core.cancellation import CancelToken, TurnCancelled
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import (
     LLMProvider,
     Message,
     ProviderError,
@@ -18,7 +18,7 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
-from zero.providers.fake import FakeProvider
+from phantasm.providers.fake import FakeProvider
 
 USER = Message(role="user", content=[TextPart(text="hi")])
 TOOL = ToolSpec(name="read_file", description="Read a file", input_schema={"type": "object"})
@@ -302,7 +302,7 @@ async def test_delay_pauses_before_every_event(monkeypatch: pytest.MonkeyPatch) 
         pauses.append(seconds)
         await real_sleep(0)
 
-    monkeypatch.setattr("zero.providers.fake.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("phantasm.providers.fake.asyncio.sleep", fake_sleep)
 
     events = await play(FakeProvider([[TextDelta(text="a"), TextDelta(text="b")]], delay_s=0.5))
 

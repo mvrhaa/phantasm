@@ -1,12 +1,12 @@
-"""Tests for the history window in zero.core.context."""
+"""Tests for the history window in phantasm.core.context."""
 
 from datetime import UTC, datetime
 from typing import Any
 
-from zero.core.context import IMAGE_OMITTED, build_history, clear_old_results, estimate_tokens
-from zero.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
-from zero.providers.base import Message, ToolCall
-from zero.store.messages import StoredMessage
+from phantasm.core.context import IMAGE_OMITTED, build_history, clear_old_results, estimate_tokens
+from phantasm.protocol.messages import ContentPart, FilePart, ImagePart, TextPart
+from phantasm.providers.base import Message, ToolCall
+from phantasm.store.messages import StoredMessage
 
 WHEN = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 CALL = {"id": "c1", "name": "read_file", "input": {"path": "a.txt"}}

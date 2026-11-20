@@ -6,23 +6,23 @@ from typing import Any
 
 import pytest
 
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.core.context import build_system_prompt
+from phantasm.core.events import EventBus
+from phantasm.core.prompting import PromptBuilder
+from phantasm.paths import db_path
+from phantasm.providers.base import ToolCall
+from phantasm.providers.fake import FakeProvider
+from phantasm.store.db import Database
+from phantasm.store.memory import MemoryRepo
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.session_memory import SessionMemoryRepo
+from phantasm.store.sessions import SessionsRepo
+from phantasm.tools.base import ToolContext, ToolResult
+from phantasm.tools.builtin import builtin_registry
+from phantasm.tools.permissions import PathGuard
 from tests.turns import Audience, FakeApprover, RecordingClient, text_of
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.core.context import build_system_prompt
-from zero.core.events import EventBus
-from zero.core.prompting import PromptBuilder
-from zero.paths import db_path
-from zero.providers.base import ToolCall
-from zero.providers.fake import FakeProvider
-from zero.store.db import Database
-from zero.store.memory import MemoryRepo
-from zero.store.messages import MessagesRepo
-from zero.store.session_memory import SessionMemoryRepo
-from zero.store.sessions import SessionsRepo
-from zero.tools.base import ToolContext, ToolResult
-from zero.tools.builtin import builtin_registry
-from zero.tools.permissions import PathGuard
 
 
 @dataclass
@@ -138,6 +138,6 @@ async def test_each_session_sees_only_its_own_memory(stores: Stores) -> None:
 
 
 def test_the_rules_explain_the_session_scope() -> None:
-    from zero.core.context import _base_rules
+    from phantasm.core.context import _base_rules
 
     assert 'scope "session"' in _base_rules()

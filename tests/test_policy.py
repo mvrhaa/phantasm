@@ -1,16 +1,16 @@
-"""Tests for zero.tools.permissions.decide and how ToolRegistry.execute obeys it."""
+"""Tests for phantasm.tools.permissions.decide and how ToolRegistry.execute obeys it."""
 
 from itertools import product
 from typing import Any
 
 import pytest
 
+from phantasm.config import Config, PermissionsConfig, Policy
+from phantasm.core.cancellation import CancelToken
+from phantasm.providers.base import ToolCall
+from phantasm.tools.base import NEEDS_APPROVAL, Preview, ToolContext, ToolRegistry, ToolResult
+from phantasm.tools.permissions import PathGuard, decide
 from tests.turns import FuncTool, text_of
-from zero.config import Config, PermissionsConfig, Policy
-from zero.core.cancellation import CancelToken
-from zero.providers.base import ToolCall
-from zero.tools.base import NEEDS_APPROVAL, Preview, ToolContext, ToolRegistry, ToolResult
-from zero.tools.permissions import PathGuard, decide
 
 POLICIES: list[Policy] = ["allow", "ask", "deny"]
 

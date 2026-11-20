@@ -1,4 +1,4 @@
-"""Tests for zero.logging_setup."""
+"""Tests for phantasm.logging_setup."""
 
 import logging
 import re
@@ -7,43 +7,43 @@ from pathlib import Path
 
 import pytest
 
-from zero import logging_setup
-from zero.logging_setup import reset_logging, setup_logging
-from zero.paths import logs_dir
+from phantasm import logging_setup
+from phantasm.logging_setup import reset_logging, setup_logging
+from phantasm.paths import logs_dir
 
 pytestmark = pytest.mark.usefixtures("clean_root_logger")
 
 
 def own_handlers() -> list[logging.Handler]:
-    names = ("zero-file", "zero-console")
+    names = ("phantasm-file", "phantasm-console")
     return [h for h in logging.getLogger().handlers if h.get_name() in names]
 
 
 def test_log_file_appears_in_logs_dir() -> None:
     path = setup_logging()
 
-    logging.getLogger("zero.test").info("hello from the test")
+    logging.getLogger("phantasm.test").info("hello from the test")
 
-    assert path == logs_dir() / "zero.log"
+    assert path == logs_dir() / "phantasm.log"
     assert "hello from the test" in path.read_text(encoding="utf-8")
 
 
-def test_log_directory_is_created_when_missing(zero_home: Path) -> None:
-    assert not (zero_home / "logs").exists()
+def test_log_directory_is_created_when_missing(phantasm_home: Path) -> None:
+    assert not (phantasm_home / "logs").exists()
 
     setup_logging()
 
-    assert (zero_home / "logs").is_dir()
+    assert (phantasm_home / "logs").is_dir()
 
 
 def test_log_line_has_utc_timestamp_level_and_logger_name() -> None:
     path = setup_logging()
 
-    logging.getLogger("zero.test").warning("formatted")
+    logging.getLogger("phantasm.test").warning("formatted")
 
     line = path.read_text(encoding="utf-8").strip()
     assert re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z WARNING  zero\.test: formatted", line
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z WARNING  phantasm\.test: formatted", line
     )
 
 
@@ -67,11 +67,11 @@ def test_console_handler_is_installed() -> None:
 
 
 def test_default_level_is_info(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ZERO_LOG", raising=False)
+    monkeypatch.delenv("PHANTASM_LOG", raising=False)
 
     path = setup_logging()
-    logging.getLogger("zero.test").debug("hidden")
-    logging.getLogger("zero.test").info("visible")
+    logging.getLogger("phantasm.test").debug("hidden")
+    logging.getLogger("phantasm.test").info("visible")
 
     text = path.read_text(encoding="utf-8")
     assert logging.getLogger().level == logging.INFO
@@ -84,7 +84,7 @@ def test_default_level_is_info(monkeypatch: pytest.MonkeyPatch) -> None:
     [("DEBUG", logging.DEBUG), ("debug", logging.DEBUG), (" Warning ", logging.WARNING)],
 )
 def test_level_comes_from_env(value: str, expected: int, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ZERO_LOG", value)
+    monkeypatch.setenv("PHANTASM_LOG", value)
 
     setup_logging()
 
@@ -92,19 +92,19 @@ def test_level_comes_from_env(value: str, expected: int, monkeypatch: pytest.Mon
 
 
 def test_unknown_level_falls_back_to_info_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ZERO_LOG", "loud")
+    monkeypatch.setenv("PHANTASM_LOG", "loud")
 
     path = setup_logging()
 
     assert logging.getLogger().level == logging.INFO
-    assert "Unknown ZERO_LOG level 'loud'" in path.read_text(encoding="utf-8")
+    assert "Unknown PHANTASM_LOG level 'loud'" in path.read_text(encoding="utf-8")
 
 
 def test_repeated_setup_does_not_duplicate_handlers() -> None:
     setup_logging()
     path = setup_logging()
 
-    logging.getLogger("zero.test").info("only once")
+    logging.getLogger("phantasm.test").info("only once")
 
     assert len(own_handlers()) == 2
     assert path.read_text(encoding="utf-8").count("only once") == 1
@@ -125,5 +125,5 @@ def test_setup_keeps_handlers_installed_by_others() -> None:
 
 
 def test_constants_match_spec() -> None:
-    assert logging_setup.LOG_FILE_NAME == "zero.log"
-    assert logging_setup.LOG_ENV == "ZERO_LOG"
+    assert logging_setup.LOG_FILE_NAME == "phantasm.log"
+    assert logging_setup.LOG_ENV == "PHANTASM_LOG"

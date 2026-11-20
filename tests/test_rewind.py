@@ -7,20 +7,20 @@ from typing import Any
 
 import pytest
 
+from phantasm.core.rewind import Rewinder, RewindError
+from phantasm.paths import db_path
+from phantasm.protocol.messages import TextPart
+from phantasm.store.agents import AgentsRepo
+from phantasm.store.db import Database
+from phantasm.store.file_changes import FileChangesRepo
+from phantasm.store.messages import MessagesRepo
+from phantasm.store.reviews import ReviewsRepo
+from phantasm.store.session_memory import SessionMemoryRepo
+from phantasm.store.sessions import SessionsRepo
+from phantasm.store.summaries import SummariesRepo
+from phantasm.store.todo import TodoRepo
+from phantasm.store.tool_runs import ToolRunsRepo
 from tests.conftest import FrozenClock
-from zero.core.rewind import Rewinder, RewindError
-from zero.paths import db_path
-from zero.protocol.messages import TextPart
-from zero.store.agents import AgentsRepo
-from zero.store.db import Database
-from zero.store.file_changes import FileChangesRepo
-from zero.store.messages import MessagesRepo
-from zero.store.reviews import ReviewsRepo
-from zero.store.session_memory import SessionMemoryRepo
-from zero.store.sessions import SessionsRepo
-from zero.store.summaries import SummariesRepo
-from zero.store.todo import TodoRepo
-from zero.store.tool_runs import ToolRunsRepo
 
 
 @dataclass
@@ -152,12 +152,12 @@ async def test_files_changed_since_go_back(
     ]
 
 
-async def test_a_file_changed_outside_zero_is_kept(
+async def test_a_file_changed_outside_phantasm_is_kept(
     rig: Rig, frozen_clock: FrozenClock, tmp_path: Path
 ) -> None:
     path = tmp_path / "notes.md"
     point = await rig.user("edit notes")
-    await rig.changes.record(rig.session_id, "t1", path, b"old", b"zero's")
+    await rig.changes.record(rig.session_id, "t1", path, b"old", b"phantasm's")
     path.write_text("the user's own edit")
 
     report = await rig.rewinder().rewind(rig.session_id, point)

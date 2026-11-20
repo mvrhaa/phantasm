@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from zero.config import Config
-from zero.core.cancellation import CancelToken
-from zero.plugins import PluginHost
-from zero.tools.base import ToolContext
-from zero.tools.builtin.plugins import NoInput, PluginInstall, PluginList, PluginNameInput
-from zero.tools.permissions import PathGuard
+from phantasm.config import Config
+from phantasm.core.cancellation import CancelToken
+from phantasm.plugins import PluginHost
+from phantasm.tools.base import ToolContext
+from phantasm.tools.builtin.plugins import NoInput, PluginInstall, PluginList, PluginNameInput
+from phantasm.tools.permissions import PathGuard
 
 TOOLS = '''
-from zero.plugin_api import tool
+from phantasm.plugin_api import tool
 
 
 @tool

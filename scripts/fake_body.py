@@ -22,8 +22,8 @@ from typing import Any
 
 import websockets
 
-from zero.config import load_config
-from zero.paths import token_path
+from phantasm.config import load_config
+from phantasm.paths import token_path
 
 SCREENSHOT = {
     "name": "screenshot",
@@ -33,7 +33,7 @@ SCREENSHOT = {
     "timeout_s": 15,
 }
 CHARACTER = {
-    "name": "Zero",
+    "name": "Phantasm",
     "persona": "A calm and curious companion.",
     "poses": ["idle", "wave", "think"],
     "moods": ["neutral", "happy", "sad"],

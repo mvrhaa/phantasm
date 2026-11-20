@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-from zero.core.cancellation import CancelToken
-from zero.protocol.messages import ImagePart, TextPart
-from zero.providers import claude_format as fmt
-from zero.providers.base import (
+from phantasm.core.cancellation import CancelToken
+from phantasm.protocol.messages import ImagePart, TextPart
+from phantasm.providers import claude_format as fmt
+from phantasm.providers.base import (
     Message,
     ProviderError,
     StopEvent,
@@ -21,7 +21,7 @@ from zero.providers.base import (
     ToolSpec,
     UsageEvent,
 )
-from zero.providers.claude_code import ClaudeCodeProvider
+from phantasm.providers.claude_code import ClaudeCodeProvider
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 NOTE = ToolSpec(
@@ -69,7 +69,7 @@ def user_lines(fake: Path) -> list[list[dict[str, Any]]]:
     ]
 
 
-def system(text: str = "You are Zero.") -> Message:
+def system(text: str = "You are Phantasm.") -> Message:
     return Message(role="system", content=[TextPart(text=text)])
 
 
@@ -295,7 +295,7 @@ def test_new_input_is_the_trailing_user_messages():
 
 
 async def test_idle_processes_are_limited(provider, fake, monkeypatch):
-    monkeypatch.setattr("zero.providers.claude_code.MAX_IDLE", 1)
+    monkeypatch.setattr("phantasm.providers.claude_code.MAX_IDLE", 1)
     turns(fake, [{"text": "One"}], [{"text": "Two"}])
     await collect(provider, [system(), user("first")], [NOTE])
     await collect(provider, [system(), user("other")], [NOTE])

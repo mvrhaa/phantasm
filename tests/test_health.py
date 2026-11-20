@@ -3,9 +3,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import zero
-from zero.config import Config
-from zero.server.app import create_app
+import phantasm
+from phantasm.config import Config
+from phantasm.server.app import create_app
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def test_health_reports_app_version_and_status(client: TestClient) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"app": "zero", "version": zero.__version__, "status": "ok"}
+    assert response.json() == {"app": "phantasm", "version": phantasm.__version__, "status": "ok"}
 
 
 def test_health_needs_no_authorization(client: TestClient) -> None:

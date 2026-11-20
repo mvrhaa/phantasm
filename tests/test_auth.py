@@ -1,4 +1,4 @@
-"""Tests for zero.server.auth."""
+"""Tests for phantasm.server.auth."""
 
 import logging
 import os
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from zero.paths import token_path
-from zero.server.auth import get_or_create_token, verify
+from phantasm.paths import token_path
+from phantasm.server.auth import get_or_create_token, verify
 
 
 def file_mode(path: Path) -> int:
@@ -67,10 +67,10 @@ def test_missing_parent_directory_is_created(tmp_path: Path) -> None:
     assert path.is_file()
 
 
-def test_no_temporary_file_is_left(zero_home: Path) -> None:
+def test_no_temporary_file_is_left(phantasm_home: Path) -> None:
     get_or_create_token()
 
-    assert [p.name for p in zero_home.iterdir()] == ["token"]
+    assert [p.name for p in phantasm_home.iterdir()] == ["token"]
 
 
 def test_existing_token_is_read_without_surrounding_whitespace() -> None:
@@ -86,7 +86,7 @@ def test_loose_permissions_on_existing_token_are_tightened(
     token_path().write_text("my-existing-token", encoding="utf-8")
     token_path().chmod(0o644)
 
-    with caplog.at_level(logging.WARNING, logger="zero.server.auth"):
+    with caplog.at_level(logging.WARNING, logger="phantasm.server.auth"):
         token = get_or_create_token()
 
     assert token == "my-existing-token"
@@ -137,7 +137,7 @@ def test_verify_never_accepts_an_empty_expected_token() -> None:
 def test_corrupted_token_file_is_regenerated(caplog: pytest.LogCaptureFixture) -> None:
     token_path().write_bytes(b"\xff\xfe\x00garbage")
 
-    with caplog.at_level(logging.WARNING, logger="zero.server.auth"):
+    with caplog.at_level(logging.WARNING, logger="phantasm.server.auth"):
         token = get_or_create_token()
 
     assert len(token) == 43

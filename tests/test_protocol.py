@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from zero.protocol.errors import PROTOCOL_VERSION, ErrorCode
-from zero.protocol.messages import (
+from phantasm.protocol.errors import PROTOCOL_VERSION, ErrorCode
+from phantasm.protocol.messages import (
     ActionCall,
     ActionDecl,
     ActionResult,
@@ -65,7 +65,7 @@ SPEC_HELLO = {
         "client_id": "c-1",
         "display_name": "Desktop on MacBook",
         "character": {
-            "name": "Zero",
+            "name": "Phantasm",
             "persona": "Markdown persona text",
             "poses": ["idle", "sit", "wave"],
             "moods": ["neutral", "happy", "sad", "angry", "surprised"],
@@ -413,8 +413,8 @@ def test_invalid_client_message_is_rejected(data: dict[str, Any]) -> None:
 @pytest.mark.parametrize(
     "character",
     [
-        {"name": "Zero", "poses": [], "moods": ["neutral"]},
-        {"name": "Zero", "poses": ["idle"], "moods": []},
+        {"name": "Phantasm", "poses": [], "moods": ["neutral"]},
+        {"name": "Phantasm", "poses": ["idle"], "moods": []},
         {"poses": ["idle"], "moods": ["neutral"]},
     ],
     ids=["no-poses", "no-moods", "no-name"],
@@ -434,7 +434,7 @@ def test_character_may_show_no_expressions() -> None:
     hello = {
         "type": "hello",
         "protocol": 1,
-        "client": {"app": "cli", "client_id": "c-1", "character": {"name": "Zero"}},
+        "client": {"app": "cli", "client_id": "c-1", "character": {"name": "Phantasm"}},
     }
 
     parsed = client_message.validate_python(hello)
@@ -500,7 +500,7 @@ TURN = {"session_id": "s1", "turn_id": "t1"}
 SESSION = SessionInfo(id="s1", title="Plans", updated_at=WHEN)
 
 SERVER_EVENTS: list[Envelope] = [
-    HelloOk(reply_to="h1", zero_version="0.0.1", protocol=1, sessions=[SESSION]),
+    HelloOk(reply_to="h1", phantasm_version="0.0.1", protocol=1, sessions=[SESSION]),
     Pong(reply_to="p1"),
     Error(code=ErrorCode.TURN_BUSY, message="a turn is already running", reply_to="m1"),
     TurnStarted(**TURN, source="desktop"),
@@ -611,7 +611,7 @@ def test_hello_ok_example_from_the_spec_is_parsed() -> None:
         {
             "type": "hello.ok",
             "reply_to": "7f9c",
-            "zero_version": "0.1.0",
+            "phantasm_version": "0.1.0",
             "protocol": 1,
             "sessions": [{"id": "s1", "title": "Plans", "updated_at": "2026-01-01T12:00:00Z"}],
         }

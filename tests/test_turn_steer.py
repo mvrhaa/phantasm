@@ -3,11 +3,9 @@
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from tests.test_turn_text import connected, running, send
-from tests.turns import FuncTool, Harness, registry, roles
-from zero.core.turn import Turn
-from zero.protocol.messages import TextPart
-from zero.providers.base import (
+from phantasm.core.turn import Turn
+from phantasm.protocol.messages import TextPart
+from phantasm.providers.base import (
     Message,
     StreamEvent,
     TextDelta,
@@ -15,7 +13,9 @@ from zero.providers.base import (
     ToolCallEvent,
     ToolSpec,
 )
-from zero.providers.fake import FakeProvider
+from phantasm.providers.fake import FakeProvider
+from tests.test_turn_text import connected, running, send
+from tests.turns import FuncTool, Harness, registry, roles
 
 
 def call(name: str) -> ToolCallEvent:
