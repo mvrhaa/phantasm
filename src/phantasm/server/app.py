@@ -19,6 +19,7 @@ from phantasm.core.rewind import Rewinder
 from phantasm.core.turn_manager import TurnManager
 from phantasm.paths import db_path
 from phantasm.plugins import PluginHost
+from phantasm.projects import ProjectBook
 from phantasm.providers.base import LLMProvider
 from phantasm.providers.registry import ProviderNotConfigured, get_provider, small_model
 from phantasm.scheduler.runner import SchedulerRunner
@@ -131,6 +132,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             todos = TodoRepo(db)
             file_changes = FileChangesRepo(db)
             skills = SkillBook(builtin=BUILTIN_SKILLS)
+            projects = ProjectBook()
             plugins = PluginHost()
             browser = BrowserBridge()
             plugins.load_installed()
@@ -161,6 +163,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                     plugins,
                     github=True,
                     browser=browser,
+                    projects=projects,
                 ),
                 approvals=ApprovalManager(events),
                 approval_rules=ApprovalRulesRepo(db),
@@ -209,6 +212,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
                 skills=skills,
                 plugins=plugins,
                 browser=browser,
+                projects=projects,
             )
             state.scheduler.start()
             state.reviewer.start()

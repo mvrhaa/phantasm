@@ -192,6 +192,9 @@ def test_model_receives_system_prompt_and_the_user_message() -> None:
         "memory_save",
         "memory_search",
         "skill_use",
+        "project_read",
+        "project_write",
+        "project_note",
         "tools_load",
         "set_expression",
     ]

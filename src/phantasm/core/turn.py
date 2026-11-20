@@ -16,6 +16,7 @@ from phantasm.core.expression import EXPRESSION_TOOL, ExpressionTool
 from phantasm.core.model_call import RETRY_DELAYS_S, ModelCaller, Progress, UsageRecorder
 from phantasm.core.prompting import MemorySource, PromptBuilder
 from phantasm.core.tool_runner import ToolRunner, ToolRunRecorder
+from phantasm.projects import ProjectBook
 from phantasm.protocol.messages import (
     AgentRef,
     ClientInfo,
@@ -155,6 +156,7 @@ class Turn:
         thinker: tuple[LLMProvider, str] | None = None,
         loaded_tools: set[str] | None = None,
         skills: SkillBook | None = None,
+        projects: ProjectBook | None = None,
     ) -> None:
         self.id = str(uuid.uuid4())
         self.session_id = session_id
@@ -226,6 +228,7 @@ class Turn:
             can_see_images=self._can_see_images,
             more_tools=more_tools,
             skills=skills if has_tools else None,
+            projects=projects if has_tools else None,
         )
         self._attachments = list(attachments)
         character = client.character if client is not None else None

@@ -13,6 +13,7 @@ from phantasm.core.review import ReviewRunner
 from phantasm.core.rewind import Rewinder
 from phantasm.core.turn_manager import TurnManager
 from phantasm.plugins import PluginHost
+from phantasm.projects import ProjectBook
 from phantasm.providers.base import LLMProvider
 from phantasm.scheduler.runner import SchedulerRunner
 from phantasm.server.connections import ConnectionManager
@@ -69,6 +70,7 @@ class AppState:
     jobs: JobManager = field(default_factory=JobManager)
     claude: LLMProvider | None = None
     skills: SkillBook = field(default_factory=SkillBook)
+    projects: ProjectBook | None = None
     mcp: McpHost = field(default_factory=McpHost)
     plugins: PluginHost = field(default_factory=PluginHost)
     browser: BrowserBridge = field(default_factory=BrowserBridge)

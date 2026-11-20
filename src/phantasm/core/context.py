@@ -226,6 +226,7 @@ def build_system_prompt(
     tools: bool = True,
     more_tools: str | None = None,
     skills: str | None = None,
+    projects: str | None = None,
 ) -> str:
     """Build the system prompt from blocks in a fixed order.
 
@@ -238,6 +239,7 @@ def build_system_prompt(
     ``tz`` is the user's time zone; the computer's own zone is used by default.
     ``agent_name`` turns the prompt into an agent's: its role follows the environment.
     ``more_tools`` lists the tools the model loads on demand (``tools/loading.py``).
+    ``projects`` is the project memory block (``phantasm/projects.py``).
     """
     character = client.character if client is not None else None
     blocks = [
@@ -247,6 +249,7 @@ def build_system_prompt(
         _computer(computer) if computer else None,
         more_tools if tools else None,
         skills if tools else None,
+        projects if tools else None,
         _agent_role(agent_name) if agent_name else None,
         _expression(character) if character and character.expressive and tools else None,
         _memories(memories) if memories else None,

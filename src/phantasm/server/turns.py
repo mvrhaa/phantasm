@@ -63,6 +63,7 @@ def make_turn(
         ),
         loaded_tools=state.loaded_tools.setdefault(session_id, set()),
         skills=state.skills,
+        projects=state.projects,
         sessions=state.sessions,
         messages=state.messages,
         events=state.events,

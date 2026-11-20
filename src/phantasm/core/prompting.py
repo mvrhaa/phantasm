@@ -1,5 +1,6 @@
 """Building the prompt of a turn: system prompt, memories, history and its summary."""
 
+import asyncio
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -17,6 +18,7 @@ from phantasm.core.context import (
 )
 from phantasm.core.events import EventBus
 from phantasm.core.model_call import UsageRecorder
+from phantasm.projects import ProjectBook
 from phantasm.protocol.messages import ClientInfo, TextPart
 from phantasm.providers.base import LLMProvider, Message
 from phantasm.providers.registry import small_model
@@ -31,6 +33,16 @@ HISTORY_FETCH_LIMIT = 500
 PROMPT_MEMORIES = 10
 JOURNAL_PROMPT_CHARS = 5000
 SUMMARY_RESERVE_TOKENS = 1500
+RECENT_USER_MESSAGES = 6
+
+
+def _recent_user_texts(stored: list[StoredMessage]) -> list[str]:
+    """The text of the user's last few messages, oldest first: what they are talking about."""
+    users = [message for message in stored if message.role == "user"][-RECENT_USER_MESSAGES:]
+    return [
+        " ".join(part.text for part in message.content if isinstance(part, TextPart))
+        for message in users
+    ]
 
 
 def _first_user(stored: list[StoredMessage]) -> int:
@@ -79,6 +91,7 @@ class PromptBuilder:
         can_see_images: bool | None = None,
         more_tools: str | None = None,
         skills: SkillBook | None = None,
+        projects: ProjectBook | None = None,
     ) -> None:
         self._session_id = session_id
         self._client = client
@@ -100,6 +113,7 @@ class PromptBuilder:
         self._can_see_images = can_see_images
         self._more_tools = more_tools
         self._skills = skills
+        self._projects = projects
 
     async def build(self) -> list[Message]:
         """The system prompt followed by the history, ready for the provider."""
@@ -143,6 +157,11 @@ class PromptBuilder:
                 usage=self._usage,
                 cancel=self._cancel,
             )
+        projects = (
+            await asyncio.to_thread(self._projects.prompt_block, _recent_user_texts(stored))
+            if self._projects is not None and self._agent_name is None
+            else None
+        )
         system = build_system_prompt(
             self._client,
             self._source,
@@ -157,6 +176,7 @@ class PromptBuilder:
             tools=self._tools,
             more_tools=self._more_tools,
             skills=self._skills.prompt_block() if self._skills is not None else None,
+            projects=projects,
         )
         prompt = [
             Message(role="system", content=[TextPart(text=system)]),

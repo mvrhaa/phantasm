@@ -2,6 +2,7 @@
 
 from phantasm.browser import BrowserBridge
 from phantasm.plugins import PluginHost
+from phantasm.projects import ProjectBook
 from phantasm.skills import SkillBook
 from phantasm.store.file_changes import FileChangesRepo
 from phantasm.store.journal import JournalRepo
@@ -19,6 +20,7 @@ from phantasm.tools.builtin.jobs import JobManager, job_tools
 from phantasm.tools.builtin.journal import journal_tools
 from phantasm.tools.builtin.memory import memory_tools
 from phantasm.tools.builtin.plugins import plugin_tools
+from phantasm.tools.builtin.projects import project_tools
 from phantasm.tools.builtin.sandbox import RunPython
 from phantasm.tools.builtin.schedule import schedule_tools
 from phantasm.tools.builtin.search import SearchFiles
@@ -43,6 +45,7 @@ def builtin_registry(
     plugins: PluginHost | None = None,
     github: bool = False,
     browser: BrowserBridge | None = None,
+    projects: ProjectBook | None = None,
 ) -> ToolRegistry:
     """A registry with every built-in tool; the ones with state need their stores."""
     registry = ToolRegistry()
@@ -69,6 +72,7 @@ def builtin_registry(
         *(plugin_tools(plugins) if plugins is not None else []),
         *(github_tools() if github else []),
         *(browser_tools(browser) if browser is not None else []),
+        *(project_tools(projects) if projects is not None else []),
     ]
     for tool in [*tools, *extra]:
         registry.register(tool)
