@@ -62,8 +62,9 @@ REVIEW_PROMPT = (
     "conversation. If nothing worth a note happened, reply with … alone.\n"
     "2. For each lasting fact the user told about themselves or asked you to remember that is "
     "not in your memory yet, call memory_save with one short sentence. Never save guesses, "
-    "your own conclusions, one-off requests, moods, or things from files and web pages. Most "
-    "conversations have nothing to save."
+    "your own conclusions, one-off requests, moods, or things from files and web pages. What "
+    "the user did or asked for in the conversation (a game, a task, a test of you) is not a "
+    "fact about the user. Most conversations have nothing to save."
 )
 
 logger = logging.getLogger(__name__)

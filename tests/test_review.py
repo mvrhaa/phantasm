@@ -200,3 +200,9 @@ def test_the_app_goes_over_conversations_while_it_runs() -> None:
         assert reviewer.running
     assert not reviewer.running
     assert Config().agent.review_conversations is True
+
+
+def test_the_review_does_not_take_what_was_done_for_a_fact() -> None:
+    from phantasm.core.review import REVIEW_PROMPT
+
+    assert "is not a fact about the user" in REVIEW_PROMPT

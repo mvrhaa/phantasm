@@ -212,3 +212,9 @@ def test_the_prompt_asks_to_check_code_before_giving_it() -> None:
     text = (PROMPTS_DIR / "base.md").read_text(encoding="utf-8")
     assert "# Checking code" in text
     assert "run_python" in text
+
+
+def test_the_prompt_keeps_memories_and_notes_in_the_background() -> None:
+    text = (PROMPTS_DIR / "base.md").read_text(encoding="utf-8")
+    assert "are background" in text
+    assert "do not steer the conversation" in text
