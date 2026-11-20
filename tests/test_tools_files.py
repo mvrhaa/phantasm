@@ -109,6 +109,7 @@ def test_builtin_tools_are_registered_and_allowed() -> None:
         "write_file",
         "edit_file",
         "run_command",
+        "run_python",
         "web_fetch",
         "send_file",
     ]

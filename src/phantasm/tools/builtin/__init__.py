@@ -19,6 +19,7 @@ from phantasm.tools.builtin.jobs import JobManager, job_tools
 from phantasm.tools.builtin.journal import journal_tools
 from phantasm.tools.builtin.memory import memory_tools
 from phantasm.tools.builtin.plugins import plugin_tools
+from phantasm.tools.builtin.sandbox import RunPython
 from phantasm.tools.builtin.schedule import schedule_tools
 from phantasm.tools.builtin.search import SearchFiles
 from phantasm.tools.builtin.sessions import SessionStores, session_tools
@@ -52,6 +53,7 @@ def builtin_registry(
         WriteFile(file_changes),
         EditFile(file_changes),
         RunCommand(jobs),
+        RunPython(),
         WebFetch(),
         SendFile(),
     )
