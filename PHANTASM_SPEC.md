@@ -253,6 +253,7 @@ Phantasm → клиент:
 | `approval.respond` | `approval_id`, `decision: "allow"\|"deny"\|"always"`, `note?` | Ход продолжается |
 | `action.result` | `call_id`, `ok: bool`, `content: [ContentPart]`, `error?` | Результат действия клиента возвращается в agent loop |
 | `session.list` | — | `session.list.ok` |
+| `skill.list` | — | `skill.list.ok {skills: [{name, description, argument_hint}]}`: навыки, которые пользователь может запустить через `/name` (встроенные и свои, кроме `user-invocable: false`), по имени; клиент предлагает их, пока пользователь набирает `/` (§9.6) |
 | `session.create` | `title?` | `session.created` |
 | `session.rename` | `session_id`, `title` | `session.updated` |
 | `session.delete` | `session_id` | `session.deleted`. Идущий в сессии ход сначала отменяется (приходит его `turn.finished` со `status: "cancelled"`), агенты, которых она запустила, останавливаются, и их сессии удаляются. Вместе с сессией удаляются её сообщения, список дел, саммари и записи `tool_runs`. Папки в `files/` с вложениями, копиями `send_file` и картинками инструментов этой сессии тоже удаляются. |
