@@ -1,6 +1,7 @@
 """Skills, as Claude has them: instructions for a kind of task, loaded only when a task needs them.
 
-A skill is a folder in ``skills/`` of Phantasm's data folder with a ``SKILL.md``:
+A skill is a folder in ``skills/`` of Phantasm's data folder, or one shipped in
+``builtin_skills/`` of the package (the user's win a name they share), with a ``SKILL.md``:
 YAML frontmatter, then the instructions, plus any files they point to. The
 prompt lists each skill's name and description; when a task matches one, the
 model loads its instructions with ``skill_use`` and reads its other files only
@@ -24,6 +25,7 @@ from phantasm.paths import home_dir
 NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 NAME_CHARS, DESCRIPTION_CHARS = 64, 1024
 MAX_SKILLS = 100
+BUILTIN_SKILLS = Path(__file__).parent / "builtin_skills"
 TRUE = {"true", "yes", "on", "1"}
 PLACEHOLDER = re.compile(r"\$ARGUMENTS\[(\d+)\]|\$ARGUMENTS\b|\$(\d+)|\$\{(?:CLAUDE_)?SKILL_DIR\}")
 USER_START = re.compile(r"^/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+(.*))?$", re.S)
@@ -93,19 +95,22 @@ def read_skill(folder: Path) -> Skill | None:
 
 
 class SkillBook:
-    """The skills in a folder, read anew on every call."""
+    """The user's skills in a folder, then the ones shipped with Phantasm (``builtin``);
+    read anew on every call."""
 
-    def __init__(self, folder: Path | None = None) -> None:
+    def __init__(self, folder: Path | None = None, builtin: Path | None = None) -> None:
         self.folder = folder or home_dir() / "skills"
+        self.builtin = builtin
 
     def all(self) -> list[Skill]:
-        if not self.folder.is_dir():
-            return []
         found: dict[str, Skill] = {}
-        for folder in sorted(self.folder.iterdir())[: MAX_SKILLS * 2]:
-            skill = read_skill(folder) if folder.is_dir() else None
-            if skill is not None and skill.name not in found:
-                found[skill.name] = skill
+        for root in (self.folder, self.builtin):
+            if root is None or not root.is_dir():
+                continue
+            for folder in sorted(root.iterdir())[: MAX_SKILLS * 2]:
+                skill = read_skill(folder) if folder.is_dir() else None
+                if skill is not None and skill.name not in found:
+                    found[skill.name] = skill
         return list(found.values())[:MAX_SKILLS]
 
     def get(self, name: str) -> Skill | None:

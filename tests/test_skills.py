@@ -7,7 +7,7 @@ from phantasm.core.cancellation import CancelToken
 from phantasm.paths import home_dir
 from phantasm.providers.base import TextDelta
 from phantasm.providers.fake import FakeProvider
-from phantasm.skills import SkillBook, expand, parse, user_start
+from phantasm.skills import BUILTIN_SKILLS, SkillBook, expand, parse, user_start
 from phantasm.tools.base import ToolContext
 from phantasm.tools.builtin.skills import SkillUse, SkillUseInput
 from phantasm.tools.permissions import PathGuard
@@ -110,3 +110,32 @@ def test_skills_reach_the_prompt_and_a_slash_message_runs_one() -> None:
     assert "# Skills" in system and "- greet: Greet warmly" in system
     assert "# Command\nGreet in Spanish." in system
     assert "skill_use" in {tool.name for tool in provider.calls[0].tools}
+
+
+SECURITY = ["ctf", "cve", "log-triage", "mac-audit", "secure-review", "trust-check"]
+
+
+def test_builtin_security_skills_are_complete() -> None:
+    skills = SkillBook(Path("/nonexistent"), builtin=BUILTIN_SKILLS).all()
+    assert sorted(skill.name for skill in skills) == SECURITY
+    for skill in skills:
+        assert skill.folder.name == skill.name
+        assert skill.description and len(skill.description) <= 1024
+        assert skill.model and skill.user
+        assert len(skill.body) > 300
+
+
+def test_a_users_skill_wins_over_a_builtin_one(tmp_path: Path) -> None:
+    write_skill(tmp_path, "cve", "---\nname: cve\ndescription: Mine.\n---\nMy way.")
+    book = SkillBook(tmp_path, builtin=BUILTIN_SKILLS)
+    assert book.get("cve") is not None and book.get("cve").description == "Mine."
+    assert book.get("mac-audit") is not None
+    assert len(book.all()) == len(SECURITY)
+
+
+def test_a_builtin_skill_starts_with_a_slash(tmp_path: Path) -> None:
+    started = user_start("/cve openssl 3.0.2", SkillBook(tmp_path, builtin=BUILTIN_SKILLS))
+    assert started is not None
+    skill, arguments = started
+    assert (skill.name, arguments) == ("cve", "openssl 3.0.2")
+    assert "ARGUMENTS: openssl 3.0.2" in expand(skill, arguments)

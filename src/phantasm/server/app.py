@@ -31,7 +31,7 @@ from phantasm.server.thinker import make_claude
 from phantasm.server.turns import start_agent_turn, start_notice_turn, start_scheduled_turn
 from phantasm.server.ws import CLOSE_GOING_AWAY
 from phantasm.server.ws import router as ws_router
-from phantasm.skills import SkillBook
+from phantasm.skills import BUILTIN_SKILLS, SkillBook
 from phantasm.store.agents import AgentsRepo
 from phantasm.store.approvals import ApprovalRulesRepo
 from phantasm.store.db import Database
@@ -130,7 +130,7 @@ def create_app(config: Config, provider: LLMProvider | None = None) -> FastAPI:
             summaries = SummariesRepo(db)
             todos = TodoRepo(db)
             file_changes = FileChangesRepo(db)
-            skills = SkillBook()
+            skills = SkillBook(builtin=BUILTIN_SKILLS)
             plugins = PluginHost()
             browser = BrowserBridge()
             plugins.load_installed()
