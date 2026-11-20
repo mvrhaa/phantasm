@@ -1086,7 +1086,7 @@ A file sent along with a user message, either inline or as a local path.
 
 ### MessageCommand
 
-How to run one turn: extra instructions, whether the model gets tools, which model. The instructions go into the system prompt of this turn only; `name` is kept with the user's message so a client can label it in the history.
+How to run one turn: extra instructions, whether the model gets tools, which model. The instructions go into the system prompt of this turn only; `name` is kept with the user's message so a client can label it in the history. With `shell` the turn asks no model: it runs that command with `run_command`, under the usual approval, and the command's output is the answer.
 
 | Field | Type | Default |
 |---|---|---|
@@ -1094,6 +1094,7 @@ How to run one turn: extra instructions, whether the model gets tools, which mod
 | `instructions` | string | `""` |
 | `tools` | `"all"` \| `"none"` | `"all"` |
 | `model` | `"main"` \| `"small"` | `"main"` |
+| `shell` | string | `null` |
 
 ### SessionInfo
 

@@ -126,13 +126,16 @@ class MessageCommand(BaseModel):
     """How to run one turn: extra instructions, whether the model gets tools, which model.
 
     The instructions go into the system prompt of this turn only; ``name`` is kept with
-    the user's message so a client can label it in the history.
+    the user's message so a client can label it in the history. With ``shell`` the turn
+    asks no model: it runs that command with ``run_command``, under the usual approval,
+    and the command's output is the answer.
     """
 
     name: str
     instructions: str = ""
     tools: Literal["all", "none"] = "all"
     model: Literal["main", "small"] = "main"
+    shell: str | None = Field(default=None, min_length=1)
 
 
 class MessageSend(Envelope):

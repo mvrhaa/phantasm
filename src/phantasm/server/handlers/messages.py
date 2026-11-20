@@ -6,7 +6,7 @@ from functools import partial
 
 from phantasm.core.attachments import AttachmentError, save_attachments
 from phantasm.core.events import ReplyTo
-from phantasm.core.titles import title_new_session
+from phantasm.core.titles import title_new_session, title_plainly
 from phantasm.protocol.errors import ErrorCode
 from phantasm.protocol.messages import (
     Error,
@@ -114,7 +114,15 @@ async def handle_message_send(
         command = MessageCommand(name=f"/{skill.name}", instructions=expand(skill, arguments))
 
     after = None
-    if session.title is None:
+    if session.title is None and command is not None and command.shell:
+        after = partial(
+            title_plainly,
+            session.id,
+            f"$ {command.shell}",
+            sessions=state.sessions,
+            events=state.events,
+        )
+    elif session.title is None:
         after = partial(
             title_new_session,
             session.id,

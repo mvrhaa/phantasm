@@ -28,6 +28,7 @@ from phantasm.protocol.messages import (
     TurnStarted,
     TurnSteered,
 )
+from phantasm.protocol.messages import TextDelta as TextDeltaEvent
 from phantasm.providers.base import (
     LLMProvider,
     Message,
@@ -59,6 +60,9 @@ from phantasm.tools.loading import ToolsLoadTool, more_tools_block
 from phantasm.tools.permissions import PathGuard
 
 NOT_RUN = "Not run: the user cancelled the turn."
+SHELL_TOOL = "run_command"
+SHELL_SILENT = "(the command printed nothing)"
+SHELL_OK = "[exit 0]"  # a successful command shows only what it printed
 IMAGE_UNSEEN = "[an image; this model cannot see images]"
 MAX_TOOL_IMAGES = 5
 
@@ -390,6 +394,10 @@ class Turn:
         wants tools when only one call is left, that call goes without tools so
         the model has to sum up. Returns True when the limit was reached.
         """
+        if self._command is not None and self._command.shell:
+            await self._run_shell(self._command.shell, progress)
+            self._closed = True
+            return False
         prompt = await self._prompts.build()
         step = 1
         while step < self._step_limit():
@@ -418,6 +426,26 @@ class Turn:
                 len(ignored),
             )
         return True
+
+    async def _run_shell(self, command: str, progress: Progress) -> None:
+        """A turn without the model (``command.shell``): the command goes through
+        ``run_command`` like a call of the model, approval included, and what it printed
+        becomes the answer."""
+        call = ToolCall(
+            id=f"shell-{uuid.uuid4().hex[:12]}", name=SHELL_TOOL, input={"command": command}
+        )
+        (result,) = await self._run_tools([], [call], progress)
+        output = "".join(part.text for part in result.content if isinstance(part, TextPart))
+        output = output.rstrip().removesuffix(SHELL_OK).rstrip()
+        if result.is_error:
+            answer = output.strip() or SHELL_SILENT
+        else:
+            answer = f"```\n{output.strip()}\n```" if output.strip() else SHELL_SILENT
+        progress.text += answer
+        progress.step_text += answer
+        await self._events.publish(
+            TextDeltaEvent(session_id=self.session_id, turn_id=self.id, delta=answer)
+        )
 
     def _specs(self) -> list[ToolSpec]:
         """The tools of the next step: the core ones and those loaded so far, or all of

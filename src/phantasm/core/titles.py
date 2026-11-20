@@ -93,6 +93,19 @@ async def make_title(
     return clean_title(raw) or fallback
 
 
+async def title_plainly(
+    session_id: str, text: str, *, sessions: SessionsRepo, events: EventBus
+) -> None:
+    """Title an untitled session with the first words of ``text``, asking no model: for a
+    turn that asked none (a shell command)."""
+    title = first_words(text)
+    if not title:
+        return
+    titled = await sessions.set_title_if_missing(session_id, title)
+    if titled is not None:
+        await events.publish(SessionUpdated(session=titled.info()))
+
+
 async def title_new_session(
     session_id: str,
     text: str,
